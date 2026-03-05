@@ -6,19 +6,25 @@ import '../models/user_model.dart';
 class ApiService {
   final String baseUrl = "http://localhost:3000";
 
-  Future<bool> registerUser(User user) async {
+  Future<bool> registerUser(User user, bool emailVerified) async {
     try {
+      Map<String, dynamic> userData = user.toJson();
+
+      userData['isVerified'] = emailVerified;
+
       final response = await http.post(
-        Uri.parse('$baseUrl/register'),
+        Uri.parse('$baseUrl/sync-user'),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode(user.toJson()),
+        body: jsonEncode(userData),
       );
 
-      if (response.statusCode == 201) {
-        print("✅ Registro exitoso");
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print("✅ Sincronización exitosa con Neon");
         return true;
       } else {
-        print("❌ Error en el registro: ${response.body}");
+        print(
+          "❌ Error en el servidor: ${response.statusCode} - ${response.body}",
+        );
         return false;
       }
     } catch (e) {

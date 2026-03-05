@@ -58,36 +58,33 @@ app.listen(3000, () => {
     console.log("🚀 Servidor corriendo en http://localhost:3000");
 });
 
-app.post("/login", async (req, res) => {
-    console.log("Datos recibidos:", req.body);
+app.post("/sync-user", async (req, res) => {
+    console.log("Sincronizando usuario:", req.body);
     
     try {
-        const { email, password, name } = req.body;
+        const { id, email, name, isVerified } = req.body;
 
-        const user = await prisma.user.findUnique({
-            where: {
+        const user = await prisma.user.upsert({
+            where: { id: id },
+            update: {isVerified: isVerified},
+            create: {
+                id: id,
                 email: email,
-                password: password,
-                name: name
-            }
+                name: name || "Usuario de Netflix",
+                isVerified: isVerified || false,
+            },
         });
-        if (user && user.password === password) {
-            console.log("✅ Login exitoso para:", user.name);
-            
-            res.status(200).json({
-                user: {
-                    id: user.id,
-                    name: user.name,
-                    email: user.email
-                }
-            });
-        } else {
-            console.log("❌ Credenciales inválidas");
-            res.status(401).json({ error: "Correo o contraseña incorrectos" });
-        }
+
+        console.log(`✅ Usuario ${user.email} sincronizado (Verificado: ${user.isVerified})`);
+        
+        res.status(200).json({
+            message: "Usuario sincronizado correctamente",
+            user: user
+        });
+
     } catch (error) {
-        console.error("❌ Error en el servidor:", error);
-        res.status(500).json({ error: "Error interno del servidor" });
+        console.error("❌ Error en Neon/Prisma:", error);
+        res.status(500).json({ error: "Error al sincronizar con la base de datos" });
     }
 });
 
@@ -96,23 +93,23 @@ app.get("/users", async (req, res) => {
     res.json(users);
 });
 
-// AGREGA ESTO EN TU index.js
 app.put("/users/:id", async (req, res) => {
-  const { id } = req.params; // El ID que viene de la URL
-  const { name, profilePic } = req.body; // Los datos que vienen de los TextField de Flutter
+  const { id } = req.params;
+  const { name, profilePic, plan } = req.body;
 
   try {
     const userUpdated = await prisma.user.update({
       where: { 
-        id: parseInt(id) // Convertimos el ID a número para Neon
+        id: id // Convertimos el ID a número para Neon
       },
       data: { 
         name: name, 
-        profilePic: profilePic 
+        profilePic: profilePic,
+        plan: plan
       },
     });
 
-    console.log("Usuario actualizado:", userUpdated);
+    console.log("Usuario actualizado:", userUpdated.name);
     res.json(userUpdated); // Le responde a Flutter que todo salió bien
   } catch (error) {
     console.error("Error al actualizar:", error);
