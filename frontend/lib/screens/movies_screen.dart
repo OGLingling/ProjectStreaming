@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart'
+    as firebase_auth; // Alias para evitar conflictos
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/movie_model.dart';
 import '../services/api_service.dart';
+import 'auth_screen.dart'; // Asegúrate de importar tu AuthScreen
 
 class MoviesScreen extends StatefulWidget {
   final Map<String, dynamic>? user;
@@ -43,92 +44,83 @@ class _MoviesScreenState extends State<MoviesScreen> {
     }
   }
 
-  // --- FUNCIÓN GOOGLE SIN ERRORES ROJOS ---
-  Future<void> loginConGoogle() async {
+  // MÉTODO PARA CERRAR SESIÓN (TEMPORAL)
+  Future<void> _signOut() async {
     try {
-      // Usamos dynamic para que el editor NO valide los métodos y desaparezca el rojo
-      final dynamic googleSignIn = GoogleSignIn();
-      final dynamic googleUser = await googleSignIn.signIn();
+      await firebase_auth.FirebaseAuth.instance.signOut();
+      // Si usas Google Sign In, también deberías desconectarlo
+      final googleSignIn = GoogleSignIn();
+      if (await googleSignIn.isSignedIn()) {
+        await googleSignIn.signOut();
+      }
 
-      if (googleUser == null) return;
-
-      final dynamic googleAuth = await googleUser.authentication;
-
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final UserCredential userCredential = await FirebaseAuth.instance
-          .signInWithCredential(credential);
-
-      if (userCredential.user != null && mounted) {
+      if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (context) => MoviesScreen(
-              user: {
-                'uid': userCredential.user!.uid,
-                'name': userCredential.user!.displayName,
-                'profilePic': userCredential.user!.photoURL,
-              },
-            ),
-          ),
+          MaterialPageRoute(builder: (context) => const AuthScreen()),
         );
       }
     } catch (e) {
-      debugPrint("Error de autenticación: $e");
+      debugPrint("Error al cerrar sesión: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black, // Fondo negro Netflix
-      extendBodyBehindAppBar: true, // Para que el banner suba hasta arriba
+      backgroundColor: const Color(0xFF000000),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.black.withOpacity(
+          0.5,
+        ), // Un poco de sombra para legibilidad
         elevation: 0,
         title: const Text(
-          "NETFLIX",
+          "MOVIEWIND",
           style: TextStyle(
-            color: Colors.red,
+            color: Color(0xFFE50914),
             fontWeight: FontWeight.bold,
-            fontSize: 30,
+            fontSize: 26,
+            letterSpacing: 1.5,
           ),
         ),
         actions: [
+          // BOTÓN DE CIERRE DE SESIÓN TEMPORAL
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white70),
+            tooltip: "Cerrar Sesión",
+            onPressed: _signOut,
+          ),
           if (widget.user != null)
             Padding(
               padding: const EdgeInsets.only(right: 15),
               child: CircleAvatar(
                 radius: 15,
-                backgroundImage: NetworkImage(widget.user!['profilePic'] ?? ""),
+                backgroundColor: Colors.red,
+                backgroundImage: widget.user!['profilePic'] != null
+                    ? NetworkImage(widget.user!['profilePic'])
+                    : null,
+                child: widget.user!['profilePic'] == null
+                    ? const Icon(Icons.person, size: 20, color: Colors.white)
+                    : null,
               ),
-            )
-          else
-            IconButton(
-              icon: const Icon(
-                Icons.account_circle,
-                color: Colors.white,
-                size: 30,
-              ),
-              onPressed: loginConGoogle,
             ),
         ],
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.red))
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFFE50914)),
+            )
           : SingleChildScrollView(
               child: Column(
                 children: [
-                  _buildHeroBanner(), // Banner "DOC"
+                  _buildHeroBanner(),
                   _buildHorizontalSection("Mi lista", movies),
                   _buildHorizontalSection(
-                    "Tendencias",
+                    "Tendencias ahora",
                     movies.reversed.toList(),
                   ),
-                  _buildHorizontalSection("Populares en MovieWind", movies),
+                  _buildHorizontalSection("Originales de MovieWind", movies),
                   const SizedBox(height: 50),
                 ],
               ),
@@ -136,16 +128,15 @@ class _MoviesScreenState extends State<MoviesScreen> {
     );
   }
 
-  // --- WIDGET DEL BANNER PRINCIPAL (ESTILO DOC) ---
+  // --- Los widgets de _buildHeroBanner, _actionBtn y _buildHorizontalSection se mantienen igual ---
   Widget _buildHeroBanner() {
     if (movies.isEmpty) return const SizedBox(height: 500);
     final movie = movies[0];
 
     return Stack(
       children: [
-        // Imagen de fondo
         Container(
-          height: 600,
+          height: 550,
           width: double.infinity,
           decoration: BoxDecoration(
             image: DecorationImage(
@@ -154,20 +145,18 @@ class _MoviesScreenState extends State<MoviesScreen> {
             ),
           ),
         ),
-        // Degradado estilo Netflix (Negro abajo)
         Container(
-          height: 600,
+          height: 550,
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Colors.black45, Colors.transparent, Colors.black],
+              colors: [Colors.black54, Colors.transparent, Colors.black],
             ),
           ),
         ),
-        // Título y Botones
         Positioned(
-          bottom: 60,
+          bottom: 40,
           left: 0,
           right: 0,
           child: Column(
@@ -177,26 +166,32 @@ class _MoviesScreenState extends State<MoviesScreen> {
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 45,
+                  fontSize: 38,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
+                  shadows: [
+                    Shadow(
+                      blurRadius: 10,
+                      color: Colors.black,
+                      offset: Offset(2, 2),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 25),
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _netflixBtn(
+                  _actionBtn(
                     Icons.play_arrow,
-                    "Reproducir",
+                    "Ver ahora",
                     Colors.white,
                     Colors.black,
                   ),
-                  const SizedBox(width: 15),
-                  _netflixBtn(
-                    Icons.info_outline,
-                    "Más información",
-                    Colors.grey.withOpacity(0.6),
+                  const SizedBox(width: 12),
+                  _actionBtn(
+                    Icons.add,
+                    "Mi lista",
+                    Colors.grey[800]!.withOpacity(0.8),
                     Colors.white,
                   ),
                 ],
@@ -208,23 +203,23 @@ class _MoviesScreenState extends State<MoviesScreen> {
     );
   }
 
-  Widget _netflixBtn(IconData icon, String label, Color bg, Color txt) {
+  Widget _actionBtn(IconData icon, String label, Color bg, Color txt) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(2),
       ),
       child: Row(
         children: [
-          Icon(icon, color: txt, size: 28),
-          const SizedBox(width: 10),
+          Icon(icon, color: txt, size: 24),
+          const SizedBox(width: 8),
           Text(
             label,
             style: TextStyle(
               color: txt,
               fontWeight: FontWeight.bold,
-              fontSize: 16,
+              fontSize: 14,
             ),
           ),
         ],
@@ -232,34 +227,38 @@ class _MoviesScreenState extends State<MoviesScreen> {
     );
   }
 
-  // --- SECCIÓN DE FILAS HORIZONTALES ---
   Widget _buildHorizontalSection(String title, List<Movie> list) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 20, top: 25, bottom: 10),
+          padding: const EdgeInsets.only(left: 15, top: 20, bottom: 8),
           child: Text(
             title,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
         SizedBox(
-          height: 200,
+          height: 180,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(left: 20),
+            padding: const EdgeInsets.only(left: 15),
             itemCount: list.length,
             itemBuilder: (context, index) => Container(
-              width: 140,
-              margin: const EdgeInsets.only(right: 12),
+              width: 125,
+              margin: const EdgeInsets.only(right: 10),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Image.network(list[index].imageUrl, fit: BoxFit.cover),
+                borderRadius: BorderRadius.circular(2),
+                child: Image.network(
+                  list[index].imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      Container(color: Colors.grey[900]),
+                ),
               ),
             ),
           ),
