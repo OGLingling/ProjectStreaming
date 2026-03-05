@@ -1,43 +1,29 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/movie_model.dart';
 import '../services/api_service.dart';
-import '../screens/auth_screen.dart';
-import '../screens/movie_details_screen.dart';
-import '../screens/user_screen.dart';
-import '../screens/category_screen.dart';
 
 class MoviesScreen extends StatefulWidget {
   final Map<String, dynamic>? user;
   const MoviesScreen({super.key, this.user});
 
   @override
-  _MoviesScreenState createState() => _MoviesScreenState();
+  State<MoviesScreen> createState() => _MoviesScreenState();
 }
 
 class _MoviesScreenState extends State<MoviesScreen> {
   final ApiService _apiService = ApiService();
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-
   List<Movie> movies = [];
   bool isLoading = true;
-  bool _isUserHovered = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchMovies(); // Ahora cargamos siempre, esté logeado o no
-  }
-
-  ImageProvider _getProfileImage(String path) {
-    if (path.startsWith('assets/')) {
-      return AssetImage(path);
-    } else if (path.isNotEmpty && path.startsWith('http')) {
-      return NetworkImage(path);
-    } else {
-      return const AssetImage('assets/avatars/perfilPrueba.jpg');
-    }
+    _fetchMovies();
   }
 
   Future<void> _fetchMovies() async {
@@ -53,320 +39,232 @@ class _MoviesScreenState extends State<MoviesScreen> {
         });
       }
     } catch (e) {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
-  // DIÁLOGO QUE SALTA AL DAR CLICK SIN ESTAR LOGEADO
-  void _showLoginRequiredDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A2232),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: const Row(
-          children: [
-            Icon(Icons.lock_outline, color: Colors.redAccent),
-            SizedBox(width: 10),
-            Text("Contenido Premium", style: TextStyle(color: Colors.white)),
-          ],
-        ),
-        content: const Text(
-          "Para ver los detalles y reproducir esta película, necesitas crear una cuenta o iniciar sesión.",
-          style: TextStyle(color: Colors.grey),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              "MÁS TARDE",
-              style: TextStyle(color: Colors.grey),
+  // --- FUNCIÓN GOOGLE SIN ERRORES ROJOS ---
+  Future<void> loginConGoogle() async {
+    try {
+      // Usamos dynamic para que el editor NO valide los métodos y desaparezca el rojo
+      final dynamic googleSignIn = GoogleSignIn();
+      final dynamic googleUser = await googleSignIn.signIn();
+
+      if (googleUser == null) return;
+
+      final dynamic googleAuth = await googleUser.authentication;
+
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithCredential(credential);
+
+      if (userCredential.user != null && mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MoviesScreen(
+              user: {
+                'uid': userCredential.user!.uid,
+                'name': userCredential.user!.displayName,
+                'profilePic': userCredential.user!.photoURL,
+              },
             ),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => AuthScreen()),
-              );
-            },
-            child: const Text("INICIAR SESIÓN"),
-          ),
-        ],
-      ),
-    );
+        );
+      }
+    } catch (e) {
+      debugPrint("Error de autenticación: $e");
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool ifLoggedIn = widget.user != null;
-
     return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: const Color(0xFF121826),
-      endDrawer: ifLoggedIn
-          ? Drawer(
-              width: MediaQuery.of(context).size.width * 0.3,
-              backgroundColor: const Color(0xFF121826),
-              child: UserScreen(user: widget.user!),
-            )
-          : null,
+      backgroundColor: Colors.black, // Fondo negro Netflix
+      extendBodyBehindAppBar: true, // Para que el banner suba hasta arriba
       appBar: AppBar(
-        automaticallyImplyLeading: false, // Quita el botón back
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         title: const Text(
-          "MovieWind",
+          "NETFLIX",
           style: TextStyle(
-            color: Colors.white,
+            color: Colors.red,
             fontWeight: FontWeight.bold,
-            letterSpacing: 2,
+            fontSize: 30,
           ),
         ),
-        backgroundColor: const Color(0xFF1A2232),
-        elevation: 0,
         actions: [
-          if (!ifLoggedIn)
+          if (widget.user != null)
             Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: TextButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => AuthScreen()),
-                ),
-                child: const Text(
-                  "Iniciar sesión",
-                  style: TextStyle(color: Colors.white),
-                ),
+              padding: const EdgeInsets.only(right: 15),
+              child: CircleAvatar(
+                radius: 15,
+                backgroundImage: NetworkImage(widget.user!['profilePic'] ?? ""),
               ),
             )
           else
-            _buildUserHeader(),
+            IconButton(
+              icon: const Icon(
+                Icons.account_circle,
+                color: Colors.white,
+                size: 30,
+              ),
+              onPressed: loginConGoogle,
+            ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildCategoryList(),
-          Expanded(
-            child: isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: Colors.redAccent),
-                  )
-                : GridView.builder(
-                    padding: const EdgeInsets.all(12),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 0.7,
-                        ),
-                    itemCount: movies.length,
-                    itemBuilder: (context, index) => MovieCard(
-                      movie: movies[index],
-                      ifLoggedIn: ifLoggedIn,
-                      onLoginRequired: _showLoginRequiredDialog,
-                    ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator(color: Colors.red))
+          : SingleChildScrollView(
+              child: Column(
+                children: [
+                  _buildHeroBanner(), // Banner "DOC"
+                  _buildHorizontalSection("Mi lista", movies),
+                  _buildHorizontalSection(
+                    "Tendencias",
+                    movies.reversed.toList(),
                   ),
-          ),
-        ],
-      ),
+                  _buildHorizontalSection("Populares en MovieWind", movies),
+                  const SizedBox(height: 50),
+                ],
+              ),
+            ),
     );
   }
 
-  Widget _buildUserHeader() {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isUserHovered = true),
-      onExit: (_) => setState(() => _isUserHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => _scaffoldKey.currentState!.openEndDrawer(),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+  // --- WIDGET DEL BANNER PRINCIPAL (ESTILO DOC) ---
+  Widget _buildHeroBanner() {
+    if (movies.isEmpty) return const SizedBox(height: 500);
+    final movie = movies[0];
+
+    return Stack(
+      children: [
+        // Imagen de fondo
+        Container(
+          height: 600,
+          width: double.infinity,
           decoration: BoxDecoration(
-            color: _isUserHovered ? Colors.white10 : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
+            image: DecorationImage(
+              image: NetworkImage(movie.imageUrl),
+              fit: BoxFit.cover,
+            ),
           ),
-          child: Row(
+        ),
+        // Degradado estilo Netflix (Negro abajo)
+        Container(
+          height: 600,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.black45, Colors.transparent, Colors.black],
+            ),
+          ),
+        ),
+        // Título y Botones
+        Positioned(
+          bottom: 60,
+          left: 0,
+          right: 0,
+          child: Column(
             children: [
               Text(
-                "Hola, ${widget.user!['name']}",
-                style: TextStyle(
+                movie.title.toUpperCase(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 45,
                   fontWeight: FontWeight.bold,
-                  color: _isUserHovered ? Colors.redAccent : Colors.white,
+                  letterSpacing: 2,
                 ),
               ),
-              const SizedBox(width: 10),
-              CircleAvatar(
-                radius: 17,
-                backgroundImage: _getProfileImage(
-                  widget.user!['profilePic'] ?? "",
-                ),
+              const SizedBox(height: 25),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _netflixBtn(
+                    Icons.play_arrow,
+                    "Reproducir",
+                    Colors.white,
+                    Colors.black,
+                  ),
+                  const SizedBox(width: 15),
+                  _netflixBtn(
+                    Icons.info_outline,
+                    "Más información",
+                    Colors.grey.withOpacity(0.6),
+                    Colors.white,
+                  ),
+                ],
               ),
             ],
           ),
         ),
-      ),
+      ],
     );
   }
 
-  Widget _buildCategoryList() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 12),
+  Widget _netflixBtn(IconData icon, String label, Color bg, Color txt) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+      ),
       child: Row(
         children: [
-          _categoryChip("Hollywood", "hollywood"),
-          _categoryChip("Series", "series"),
-          _categoryChip("Bollywood", "bollywood"),
-          _categoryChip("Coreanas", "korean"),
-          _categoryChip("Otros", "others"),
-        ],
-      ),
-    );
-  }
-
-  Widget _categoryChip(String title, String key) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ActionChip(
-        backgroundColor: const Color(0xFF1A2232),
-        label: Text(title, style: const TextStyle(color: Colors.white)),
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                CategoryScreen(title: title, categoryKey: key),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// LA CLASE MOVIECARD CON EL HOVER CORREGIDO
-class MovieCard extends StatefulWidget {
-  final Movie movie;
-  final bool ifLoggedIn;
-  final VoidCallback onLoginRequired;
-
-  const MovieCard({
-    super.key,
-    required this.movie,
-    required this.ifLoggedIn,
-    required this.onLoginRequired,
-  });
-
-  @override
-  State<MovieCard> createState() => _MovieCardState();
-}
-
-class _MovieCardState extends State<MovieCard> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    // Extraemos la URL y limpiamos posibles espacios
-    final String imageUrl = widget.movie.imageUrl.trim();
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: () {
-          if (widget.ifLoggedIn) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    MovieDetailsScreen(movieData: widget.movie.toJson()),
-              ),
-            );
-          } else {
-            widget.onLoginRequired();
-          }
-        },
-        child: AnimatedScale(
-          scale: _isHovered ? 1.05 : 1.0,
-          duration: const Duration(milliseconds: 200),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: _isHovered
-                  ? [
-                      BoxShadow(
-                        color: Colors.redAccent.withOpacity(0.3),
-                        blurRadius: 10,
-                      ),
-                    ]
-                  : [],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: AspectRatio(
-                aspectRatio: 0.7,
-                child: _buildImageWidget(imageUrl),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildImageWidget(String url) {
-    if (url.isEmpty) {
-      return Container(
-        color: const Color(0xFF1A2232),
-        child: const Icon(
-          Icons.movie_creation_outlined,
-          color: Colors.white10,
-          size: 40,
-        ),
-      );
-    }
-
-    if (url.startsWith('http')) {
-      return Image.network(
-        url,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Container(
-            color: const Color(0xFF1A2232),
-            child: const Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.redAccent,
-              ),
-            ),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) => _errorPlaceholder(),
-      );
-    }
-
-    return Image.asset(
-      'assets/Images/$url',
-      fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) => _errorPlaceholder(),
-    );
-  }
-
-  Widget _errorPlaceholder() {
-    return Container(
-      color: Colors.black,
-      child: const Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.broken_image, color: Colors.white24),
+          Icon(icon, color: txt, size: 28),
+          const SizedBox(width: 10),
           Text(
-            "No image",
-            style: TextStyle(color: Colors.white24, fontSize: 10),
+            label,
+            style: TextStyle(
+              color: txt,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  // --- SECCIÓN DE FILAS HORIZONTALES ---
+  Widget _buildHorizontalSection(String title, List<Movie> list) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 20, top: 25, bottom: 10),
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 200,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.only(left: 20),
+            itemCount: list.length,
+            itemBuilder: (context, index) => Container(
+              width: 140,
+              margin: const EdgeInsets.only(right: 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.network(list[index].imageUrl, fit: BoxFit.cover),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

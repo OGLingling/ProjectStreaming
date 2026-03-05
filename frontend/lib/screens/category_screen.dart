@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../screens/movie_details_screen.dart';
 import '../models/movie_model.dart';
@@ -39,9 +40,6 @@ class _CategoryScreenState extends State<CategoryScreen> {
       if (response.statusCode == 200) {
         List<dynamic> data = jsonDecode(response.body);
 
-        // DEBUG: Esto te dirá en consola qué está llegando exactamente
-        debugPrint("API DATA SAMPLE: ${data.isNotEmpty ? data[0] : 'Vacío'}");
-
         setState(() {
           movies = data.map((m) => Movie.fromJson(m)).where((movie) {
             final movieType = movie.type?.toLowerCase().trim() ?? '';
@@ -52,7 +50,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Error: $e");
+      debugPrint("Error al cargar datos: $e");
       setState(() => isLoading = false);
     }
   }
@@ -78,7 +76,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                 crossAxisCount: 4,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: 0.7,
+                childAspectRatio: 2 / 3,
               ),
               itemCount: movies.length,
               itemBuilder: (context, index) =>
@@ -108,51 +106,79 @@ class CategoryMovieCard extends StatefulWidget {
 class _CategoryMovieCardState extends State<CategoryMovieCard> {
   bool _isHovered = false;
 
-  // Función de apoyo para el error (Placeholder)
-  Widget _errorPlaceholder() {
-    return Container(
-      color: const Color(0xFF1A2232),
-      child: const Center(
-        child: Icon(Icons.movie, color: Colors.white10, size: 40),
-      ),
-    );
+  // Lógica de navegación ultra-compatible
+  Future<void> _handleNavigation(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // IMPORTANTE: Recarga forzada para Flutter Web
+    await prefs.reload();
+
+    // Buscamos cualquier rastro de sesión.
+    // Si la app muestra "Alfredo Pers", es porque 'user_name' o 'user' tiene datos.
+    final String? sessionValue =
+        prefs.getString('user_name') ??
+        prefs.getString('user') ??
+        prefs.getString('auth_token') ??
+        prefs.getString('token');
+
+    // Imprimimos en consola para que veas qué está pasando realmente
+    debugPrint("--- ESTADO DE SESIÓN ---");
+    debugPrint("Nombre/Token detectado: $sessionValue");
+    debugPrint("Todas las llaves: ${prefs.getKeys()}");
+
+    if (sessionValue != null && sessionValue.isNotEmpty) {
+      // SI HAY SESIÓN -> Entramos a detalles
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              MovieDetailsScreen(movieData: widget.movie.toJson()),
+        ),
+      );
+    } else {
+      // NO HAY SESIÓN -> Bloqueamos con el mensaje rojo
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debes iniciar sesión para ver los detalles'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Extraemos solo el nombre del archivo si la base de datos trae una ruta larga
-    // Si tu DB solo trae "mi_imagen.jpg", esto funcionará directo.
+    // Lógica original de tus Assets
     final String fileName = widget.movie.imageUrl.split('/').last;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  MovieDetailsScreen(movieData: widget.movie.toJson()),
-            ),
-          );
-        },
+        onTap: () => _handleNavigation(context),
         child: AnimatedScale(
           scale: _isHovered ? 1.05 : 1.0,
           duration: const Duration(milliseconds: 200),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: AspectRatio(
-              aspectRatio: 0.7,
+              aspectRatio: 2 / 3,
               child: Container(
                 color: const Color(0xFF1A2232),
-                // USAMOS IMAGE.ASSET COMO PEDISTE
                 child: Image.asset(
                   'assets/Images/$fileName',
                   fit: BoxFit.cover,
-                  // Si el archivo no existe en la carpeta assets, muestra el icono
-                  errorBuilder: (context, error, stackTrace) =>
-                      _errorPlaceholder(),
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    color: const Color(0xFF1A2232),
+                    child: const Icon(
+                      Icons.movie,
+                      color: Colors.white10,
+                      size: 40,
+                    ),
+                  ),
                 ),
               ),
             ),

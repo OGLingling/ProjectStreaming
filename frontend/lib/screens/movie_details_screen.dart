@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 class MovieDetailsScreen extends StatelessWidget {
@@ -7,60 +8,92 @@ class MovieDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Obtenemos el tamaño de la pantalla para que sea responsivo
     final size = MediaQuery.of(context).size;
+    final String imageUrl = movieData['imageUrl'] ?? '';
 
     return Scaffold(
       backgroundColor: const Color(0xFF121826),
       body: SingleChildScrollView(
-        // Para que el texto no se corte en pantallas pequeñas
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- PARTE SUPERIOR: IMAGEN AUTOAJUSTABLE ---
+            // --- PARTE SUPERIOR: PÓSTER ALARGADO CON FONDO ---
             Stack(
               children: [
+                // 1. Fondo desenfocado (para llenar los lados si la pantalla es ancha)
                 Container(
-                  height:
-                      size.height * 0.45, // 45% de la pantalla para la imagen
+                  height: size.height * 0.6,
                   width: double.infinity,
                   decoration: BoxDecoration(
                     image: DecorationImage(
-                      // Usamos la misma lógica híbrida (URL o Assets)
-                      image: movieData['imageUrl'].startsWith('http')
-                          ? NetworkImage(movieData['imageUrl'])
-                          : AssetImage('assets/images/${movieData['imageUrl']}')
+                      image: imageUrl.startsWith('http')
+                          ? NetworkImage(imageUrl)
+                          : AssetImage('assets/images/$imageUrl')
                                 as ImageProvider,
-                      fit: BoxFit
-                          .cover, // <--- Esto hace que la imagen se autoajuste
+                      fit: BoxFit.cover,
                     ),
                   ),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                    child: Container(color: Colors.black.withOpacity(0.5)),
+                  ),
                 ),
-                // Graduación oscura para que el texto resalte (Netflix Style)
+
+                // 2. El Póster central autoajustable (Proporción 2:3)
                 Container(
-                  height: size.height * 0.45,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Color(0xFF121826), // Se funde con el color de fondo
-                      ],
+                  width: double.infinity,
+                  padding: const EdgeInsets.only(top: 60, bottom: 20),
+                  child: Center(
+                    child: Hero(
+                      tag: movieData['id'] ?? imageUrl,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(15),
+                        child: Container(
+                          height:
+                              size.height * 0.5, // Altura fija para el póster
+                          child: AspectRatio(
+                            aspectRatio:
+                                2 / 3, // Relación de aspecto de póster real
+                            child: imageUrl.startsWith('http')
+                                ? Image.network(imageUrl, fit: BoxFit.cover)
+                                : Image.asset(
+                                    'assets/images/$imageUrl',
+                                    fit: BoxFit.cover,
+                                  ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
+
+                // 3. Gradiente para fundir con el fondo negro
+                Positioned.fill(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.transparent,
+                          Color(0xFF121826),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
                 // Botón de atrás
                 Positioned(
                   top: 40,
                   left: 20,
-                  child: IconButton(
-                    icon: const Icon(
-                      Icons.arrow_back,
-                      color: Colors.white,
-                      size: 30,
+                  child: CircleAvatar(
+                    backgroundColor: Colors.black.withOpacity(0.5),
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
                     ),
-                    onPressed: () => Navigator.pop(context),
                   ),
                 ),
               ],
@@ -87,12 +120,12 @@ class MovieDetailsScreen extends StatelessWidget {
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
+                          horizontal: 10,
+                          vertical: 5,
                         ),
                         decoration: BoxDecoration(
                           color: Colors.yellow[700],
-                          borderRadius: BorderRadius.circular(5),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           '${movieData['rating']} ★',
@@ -104,11 +137,12 @@ class MovieDetailsScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   Text(
                     "${movieData['category']} • ${movieData['releaseDate'].toString().substring(0, 4)}",
                     style: const TextStyle(
                       color: Colors.redAccent,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -121,17 +155,17 @@ class MovieDetailsScreen extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   Text(
                     movieData['description'] ??
                         'No hay descripción disponible.',
                     style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 16,
-                      height: 1.5,
+                      height: 1.6,
                     ),
                   ),
-                  const SizedBox(height: 50), // Espacio final
+                  const SizedBox(height: 50),
                 ],
               ),
             ),
