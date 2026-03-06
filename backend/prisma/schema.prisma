@@ -19,12 +19,18 @@ model Movie {
   createdAt   DateTime @default(now())
 }
 
+enum PlanType {
+  basico
+  estandar
+  premium
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
   name      String
   profilePic String? @default("https://via.placeholder.com/150")
   createdAt DateTime @default(now())
-  plan      String @default("free")
+  plan      String @default("basico")
   isVerified Boolean @default(false)
 }

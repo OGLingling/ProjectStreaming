@@ -6,6 +6,7 @@ class User {
   final bool isVerified;
   final DateTime? createdAt;
   final String? profilePic;
+  final String? plan;
 
   User({
     required this.id, // Ahora es requerido porque viene de Firebase
@@ -15,6 +16,7 @@ class User {
     this.isVerified = false, // Valor por defecto
     this.createdAt,
     this.profilePic,
+    this.plan,
   });
 
   // Constructor para recibir datos del Backend
@@ -29,6 +31,7 @@ class User {
         ? DateTime.parse(json["createdAt"])
         : null,
     profilePic: json["profilePic"],
+    plan: json["plan"],
   );
 
   // Para enviar datos al Backend
@@ -40,5 +43,6 @@ class User {
     "isVerified": isVerified,
     "profilePic": profilePic,
     "createdAt": createdAt?.toIso8601String(),
+    "plan": plan,
   };
 }
