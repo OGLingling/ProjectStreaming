@@ -14,7 +14,7 @@ class UserScreen extends StatefulWidget {
 class _UserScreenState extends State<UserScreen> {
   late TextEditingController _nameController;
   late TextEditingController _imageController;
-  final ApiService _apiService = ApiService();
+
   String _profileImage = "";
 
   final List<String> _defaultAvatars = List.generate(
@@ -64,7 +64,7 @@ class _UserScreenState extends State<UserScreen> {
   Future<void> _saveChanges() async {
     try {
       final userId = widget.user['id'];
-      await _apiService.updateUser(userId, {
+      await ApiService.updateUser(userId, {
         'name': _nameController.text,
         'profilePic': _imageController.text,
       });

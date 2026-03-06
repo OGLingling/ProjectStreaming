@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:firebase_auth/firebase_auth.dart'
-    as firebase_auth; // Alias para evitar conflictos
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:google_fonts/google_fonts.dart'; // Importante
 import '../models/movie_model.dart';
 import '../services/api_service.dart';
-import 'auth_screen.dart'; // Asegúrate de importar tu AuthScreen
+import 'auth_screen.dart';
 
 class MoviesScreen extends StatefulWidget {
   final Map<String, dynamic>? user;
@@ -17,7 +17,6 @@ class MoviesScreen extends StatefulWidget {
 }
 
 class _MoviesScreenState extends State<MoviesScreen> {
-  final ApiService _apiService = ApiService();
   List<Movie> movies = [];
   bool isLoading = true;
 
@@ -30,7 +29,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
   Future<void> _fetchMovies() async {
     try {
       final response = await http.get(
-        Uri.parse('${_apiService.baseUrl}/movies'),
+        Uri.parse('${ApiService.baseUrl}/movies'),
       );
       if (response.statusCode == 200) {
         List<dynamic> data = jsonDecode(response.body);
@@ -44,15 +43,11 @@ class _MoviesScreenState extends State<MoviesScreen> {
     }
   }
 
-  // MÉTODO PARA CERRAR SESIÓN (TEMPORAL)
   Future<void> _signOut() async {
     try {
       await firebase_auth.FirebaseAuth.instance.signOut();
-      // Si usas Google Sign In, también deberías desconectarlo
       final googleSignIn = GoogleSignIn();
-      if (await googleSignIn.isSignedIn()) {
-        await googleSignIn.signOut();
-      }
+      if (await googleSignIn.isSignedIn()) await googleSignIn.signOut();
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -68,41 +63,34 @@ class _MoviesScreenState extends State<MoviesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF000000),
+      backgroundColor: const Color(0xFF141414), // Negro Netflix
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(
-          0.5,
-        ), // Un poco de sombra para legibilidad
+        backgroundColor: Colors.black.withOpacity(0.4),
         elevation: 0,
-        title: const Text(
+        title: Text(
           "MOVIEWIND",
-          style: TextStyle(
-            color: Color(0xFFE50914),
-            fontWeight: FontWeight.bold,
+          style: GoogleFonts.montserrat(
+            color: const Color(0xFFE50914),
+            fontWeight: FontWeight.w900,
             fontSize: 26,
             letterSpacing: 1.5,
           ),
         ),
         actions: [
-          // BOTÓN DE CIERRE DE SESIÓN TEMPORAL
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white70),
-            tooltip: "Cerrar Sesión",
             onPressed: _signOut,
           ),
           if (widget.user != null)
             Padding(
               padding: const EdgeInsets.only(right: 15),
               child: CircleAvatar(
-                radius: 15,
-                backgroundColor: Colors.red,
-                backgroundImage: widget.user!['profilePic'] != null
-                    ? NetworkImage(widget.user!['profilePic'])
-                    : null,
-                child: widget.user!['profilePic'] == null
-                    ? const Icon(Icons.person, size: 20, color: Colors.white)
-                    : null,
+                radius: 16,
+                backgroundImage: NetworkImage(
+                  widget.user!['profilePic'] ??
+                      "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-qo9h82134t9nv0j0.jpg",
+                ),
               ),
             ),
         ],
@@ -115,6 +103,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
               child: Column(
                 children: [
                   _buildHeroBanner(),
+                  const SizedBox(height: 20),
                   _buildHorizontalSection("Mi lista", movies),
                   _buildHorizontalSection(
                     "Tendencias ahora",
@@ -128,7 +117,6 @@ class _MoviesScreenState extends State<MoviesScreen> {
     );
   }
 
-  // --- Los widgets de _buildHeroBanner, _actionBtn y _buildHorizontalSection se mantienen igual ---
   Widget _buildHeroBanner() {
     if (movies.isEmpty) return const SizedBox(height: 500);
     final movie = movies[0];
@@ -136,7 +124,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
     return Stack(
       children: [
         Container(
-          height: 550,
+          height: 600,
           width: double.infinity,
           decoration: BoxDecoration(
             image: DecorationImage(
@@ -146,17 +134,17 @@ class _MoviesScreenState extends State<MoviesScreen> {
           ),
         ),
         Container(
-          height: 550,
+          height: 600,
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Colors.black54, Colors.transparent, Colors.black],
+              colors: [Colors.black54, Colors.transparent, Color(0xFF141414)],
             ),
           ),
         ),
         Positioned(
-          bottom: 40,
+          bottom: 60,
           left: 0,
           right: 0,
           child: Column(
@@ -164,17 +152,10 @@ class _MoviesScreenState extends State<MoviesScreen> {
               Text(
                 movie.title.toUpperCase(),
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: GoogleFonts.montserrat(
                   color: Colors.white,
-                  fontSize: 38,
-                  fontWeight: FontWeight.bold,
-                  shadows: [
-                    Shadow(
-                      blurRadius: 10,
-                      color: Colors.black,
-                      offset: Offset(2, 2),
-                    ),
-                  ],
+                  fontSize: 45,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 20),
@@ -189,9 +170,9 @@ class _MoviesScreenState extends State<MoviesScreen> {
                   ),
                   const SizedBox(width: 12),
                   _actionBtn(
-                    Icons.add,
-                    "Mi lista",
-                    Colors.grey[800]!.withOpacity(0.8),
+                    Icons.info_outline,
+                    "Información",
+                    Colors.grey[700]!.withOpacity(0.8),
                     Colors.white,
                   ),
                 ],
@@ -205,21 +186,21 @@ class _MoviesScreenState extends State<MoviesScreen> {
 
   Widget _actionBtn(IconData icon, String label, Color bg, Color txt) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(2),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
         children: [
-          Icon(icon, color: txt, size: 24),
+          Icon(icon, color: txt, size: 28),
           const SizedBox(width: 8),
           Text(
             label,
-            style: TextStyle(
+            style: GoogleFonts.geologica(
               color: txt,
               fontWeight: FontWeight.bold,
-              fontSize: 14,
+              fontSize: 16,
             ),
           ),
         ],
@@ -232,38 +213,68 @@ class _MoviesScreenState extends State<MoviesScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 15, top: 20, bottom: 8),
+          padding: const EdgeInsets.only(left: 20, top: 30, bottom: 10),
           child: Text(
             title,
-            style: const TextStyle(
+            style: GoogleFonts.geologica(
               color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ),
         SizedBox(
-          height: 180,
+          height: 200,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(left: 15),
+            padding: const EdgeInsets.only(left: 20),
             itemCount: list.length,
-            itemBuilder: (context, index) => Container(
-              width: 125,
-              margin: const EdgeInsets.only(right: 10),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: Image.network(
-                  list[index].imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      Container(color: Colors.grey[900]),
-                ),
-              ),
-            ),
+            itemBuilder: (context, index) => MovieCard(movie: list[index]),
           ),
         ),
       ],
+    );
+  }
+}
+
+// Widget adicional para el efecto de Hover en las películas
+class MovieCard extends StatefulWidget {
+  final Movie movie;
+  const MovieCard({super.key, required this.movie});
+
+  @override
+  State<MovieCard> createState() => _MovieCardState();
+}
+
+class _MovieCardState extends State<MovieCard> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: _isHovered ? 150 : 140,
+        margin: const EdgeInsets.only(right: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: _isHovered ? Colors.white : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: Image.network(
+            widget.movie.imageUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) =>
+                Container(color: Colors.grey[900]),
+          ),
+        ),
+      ),
     );
   }
 }

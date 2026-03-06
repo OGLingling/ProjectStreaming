@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'package:google_fonts/google_fonts.dart'; // Importante añadir esto
 import '../services/api_service.dart';
-import '../models/user_model.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'profiles_screen.dart';
 import 'plan_selection_screen.dart';
@@ -25,8 +25,6 @@ class _AuthScreenState extends State<AuthScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
 
-  final ApiService _apiService = ApiService();
-
   final List<TextEditingController> _codeControllers = List.generate(
     4,
     (_) => TextEditingController(),
@@ -37,18 +35,14 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLoading = false;
 
   final String _bgPosters =
-      "https://assets.nflxext.com/ffe/siteui/vlv3/f841d4c7-10e1-40af-bcae-07a3f8dc141a/f6bc1730-68f9-4316-b1e8-7133036e4f32/US-en-20220502-popsignuptwoweeks-perspective_alpha_website_medium.jpg";
+      "https://wallpapers.com/images/hd/netflix-background-gs7hjuwvv2g0e9fj.jpg";
 
-  // --- LÓGICA DE MANEJO DE PASOS ---
   void _handleAction() {
     setState(() => _isLoading = true);
-
     Future.delayed(const Duration(seconds: 1), () {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-
-        // 1. LANDING DE REGISTRO -> PASAR A CONTRASEÑA
         if (_currentStep == AuthStep.registerLanding) {
           if (_emailController.text.isNotEmpty &&
               _emailController.text.contains('@')) {
@@ -56,31 +50,25 @@ class _AuthScreenState extends State<AuthScreen> {
           } else {
             _showErrorSnackBar("Ingresa un email válido para comenzar");
           }
-        }
-        // 2. CREACIÓN DE CONTRASEÑA -> NAVEGAR A SELECCIÓN DE PLAN
-        else if (_currentStep == AuthStep.registerPassword) {
+        } else if (_currentStep == AuthStep.registerPassword) {
           if (_passwordController.text.length >= 6 &&
               _nameController.text.isNotEmpty) {
-            // --- MODIFICACIÓN AQUÍ: Pasamos la contraseña al siguiente paso ---
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => PlanSelectionScreen(
                   userEmail: _emailController.text,
                   userName: _nameController.text,
-                  password:
-                      _passwordController.text, // <--- Nueva variable enviada
+                  password: _passwordController.text,
                 ),
               ),
             );
           } else {
             _showErrorSnackBar(
-              "Por favor, ingresa tu nombre y una clave de al menos 6 caracteres",
+              "Ingresa tu nombre y una clave de al menos 6 caracteres",
             );
           }
-        }
-        // 3. LOGIN EMAIL -> PASAR A CÓDIGO DE VERIFICACIÓN
-        else if (_currentStep == AuthStep.loginEmail) {
+        } else if (_currentStep == AuthStep.loginEmail) {
           if (_emailController.text.isNotEmpty &&
               _emailController.text.contains('@')) {
             _currentStep = AuthStep.loginCode;
@@ -88,40 +76,50 @@ class _AuthScreenState extends State<AuthScreen> {
           } else {
             _showErrorSnackBar("Ingresa un email válido");
           }
-        }
-        // 4. LOGIN CÓDIGO -> VERIFICAR Y ENTRAR A PERFILES
-        else if (_currentStep == AuthStep.loginCode) {
+        } else if (_currentStep == AuthStep.loginCode) {
           _verifyAndNavigate();
         }
       });
     });
   }
 
-  // Nueva función para validar el código de 4 dígitos y navegar
-  void _verifyAndNavigate() {
-    // Unimos los valores de los 4 cuadros
+  void _verifyAndNavigate() async {
+    // Añadimos async
     String code = _codeControllers.map((e) => e.text).join();
 
-    if (code.length == 4) {
-      // Simulación: Si el código es 1234, entra.
-      if (code == "1234") {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ProfilesScreen(
-              user: {
-                'email': _emailController.text,
-                'id': '123',
-                'plan': 'estandar',
-              },
+    if (code == "1234") {
+      setState(() => _isLoading = true);
+
+      try {
+        final user = await ApiService.getUserByEmail(_emailController.text);
+
+        if (!mounted) return;
+
+        if (user != null) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ProfilesScreen(
+                user: {
+                  'email': user.email,
+                  'id': user.id,
+                  'plan':
+                      user.plan, // Aquí ya vendrá 'Básico', 'Estándar', etc.
+                  'name': user.name,
+                },
+              ),
             ),
-          ),
-        );
-      } else {
-        _showErrorSnackBar("Código incorrecto. Intenta con 1234");
+          );
+        } else {
+          _showErrorSnackBar("No se encontró una cuenta con este email.");
+        }
+      } catch (e) {
+        _showErrorSnackBar("Error al conectar con el servidor.");
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
       }
     } else {
-      _showErrorSnackBar("Ingresa los 4 dígitos");
+      _showErrorSnackBar("Código incorrecto. Intenta con 1234");
     }
   }
 
@@ -130,12 +128,8 @@ class _AuthScreenState extends State<AuthScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    for (var controller in _codeControllers) {
-      controller.dispose();
-    }
-    for (var node in _codeFocusNodes) {
-      node.dispose();
-    }
+    for (var c in _codeControllers) c.dispose();
+    for (var n in _codeFocusNodes) n.dispose();
     super.dispose();
   }
 
@@ -146,14 +140,15 @@ class _AuthScreenState extends State<AuthScreen> {
         _currentStep == AuthStep.loginEmail ||
         _currentStep == AuthStep.loginCode;
 
-    // hasPosters controla si mostramos el fondo de las películas
-    bool hasPosters = isDarkBg;
+    double horizontalPadding = _currentStep == AuthStep.registerLanding
+        ? 45
+        : 25;
 
     return Scaffold(
       backgroundColor: isDarkBg ? const Color(0xFF141414) : Colors.white,
       body: Stack(
         children: [
-          if (hasPosters)
+          if (isDarkBg)
             Stack(
               fit: StackFit.expand,
               children: [
@@ -161,7 +156,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 ClipRect(
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
-                    child: Container(color: Colors.black.withOpacity(0.65)),
+                    child: Container(color: Colors.black.withOpacity(0.7)),
                   ),
                 ),
               ],
@@ -173,9 +168,11 @@ class _AuthScreenState extends State<AuthScreen> {
                 Expanded(
                   child: Center(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 25),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: horizontalPadding,
+                      ),
                       child: Container(
-                        constraints: const BoxConstraints(maxWidth: 420),
+                        constraints: const BoxConstraints(maxWidth: 500),
                         child: _buildStepContent(isDarkBg),
                       ),
                     ),
@@ -194,37 +191,36 @@ class _AuthScreenState extends State<AuthScreen> {
         _currentStep == AuthStep.loginEmail ||
         _currentStep == AuthStep.loginCode;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 25),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(
+          Text(
             "MOVIEWIND",
-            style: TextStyle(
-              color: Color(0xFFE50914),
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              letterSpacing: -1,
+            style: GoogleFonts.montserrat(
+              // Usamos Montserrat para el logo
+              color: const Color(0xFFE50914),
+              fontSize: 24,
+              fontWeight: FontWeight.w900, // Peso extra para el logo
+              letterSpacing: 1.2,
             ),
           ),
-          if (_currentStep != AuthStep.loginEmail)
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  // Si está en login, lo mandamos a registro. Si está en registro, a login.
-                  _currentStep = isAtLogin
-                      ? AuthStep.registerLanding
-                      : AuthStep.loginEmail;
-                });
-              },
-              child: Text(
-                isAtLogin ? "Registrarse" : "Iniciar sesión",
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black,
-                  fontWeight: FontWeight.bold,
-                ),
+          TextButton(
+            onPressed: () => setState(
+              () => _currentStep = isAtLogin
+                  ? AuthStep.registerLanding
+                  : AuthStep.loginEmail,
+            ),
+            child: Text(
+              isAtLogin ? "Registrarse" : "Iniciar sesión",
+              style: GoogleFonts.geologica(
+                // Usamos Geologica para UI
+                color: isDark ? Colors.white : Colors.black,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
               ),
             ),
+          ),
         ],
       ),
     );
@@ -249,100 +245,162 @@ class _AuthScreenState extends State<AuthScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          "Ingresa tu info para iniciar sesión",
-          style: TextStyle(
+        Text(
+          "Inicia sesión",
+          style: GoogleFonts.montserrat(
+            // Montserrat para títulos
             color: Colors.white,
             fontSize: 32,
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 10),
-        const Text(
-          "O bien, comienza con una cuenta nueva.",
-          style: TextStyle(color: Colors.white70, fontSize: 17),
+        Text(
+          "Ingresa tu email para continuar.",
+          style: GoogleFonts.geologica(
+            color: Colors.white70,
+            fontSize: 17,
+            fontWeight: FontWeight.w300,
+          ),
         ),
         const SizedBox(height: 30),
-        _buildInputField(_emailController, "Email o número de celular", true),
-        const SizedBox(height: 25),
+        _buildInputField(_emailController, "Email", true),
+        const SizedBox(height: 15),
         _buildMainButton("Continuar"),
         const SizedBox(height: 20),
-        const Center(
-          child: Text(
-            "Obtener ayuda ∨",
-            style: TextStyle(color: Colors.white70),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLoginCodeContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Ingresa el código que enviamos a tu email",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 15),
-        Row(
-          children: [
-            Expanded(
+        PopupMenuButton<String>(
+          color: const Color(0xFF222222),
+          offset: const Offset(0, 40),
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'soporte',
               child: Text(
-                _emailController.text,
-                style: const TextStyle(color: Colors.white, fontSize: 16),
+                'Centro de ayuda',
+                style: GoogleFonts.geologica(color: Colors.white),
               ),
             ),
-            GestureDetector(
-              onTap: () => setState(() => _currentStep = AuthStep.loginEmail),
-              child: const Text(
-                "Cambiar",
-                style: TextStyle(
-                  color: Colors.white,
-                  decoration: TextDecoration.underline,
-                ),
+            PopupMenuItem(
+              value: 'terminos',
+              child: Text(
+                'Términos de uso',
+                style: GoogleFonts.geologica(color: Colors.white),
               ),
             ),
           ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Text(
+              "Obtener ayuda ∨",
+              style: GoogleFonts.geologica(color: Colors.white70, fontSize: 15),
+            ),
+          ),
         ),
-        const SizedBox(height: 30),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(4, (index) => _buildCodeDigitInput(index)),
-        ),
-        const SizedBox(height: 25),
-        _buildMainButton("Continuar"),
       ],
     );
   }
 
   Widget _buildRegisterLandingContent() {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
+        Text(
           "Películas y series ilimitadas y mucho más",
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: GoogleFonts.montserrat(
             color: Colors.white,
             fontSize: 32,
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
           ),
         ),
         const SizedBox(height: 15),
-        const Text(
-          "A partir de S/ 24.90. Cancela cuando quieras.",
+        Text(
+          "Disfruta donde quieras. Cancela en cualquier momento.",
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white70, fontSize: 18),
+          style: GoogleFonts.geologica(color: Colors.white, fontSize: 18),
         ),
-        const SizedBox(height: 30),
-        _buildInputField(_emailController, "Email", true),
+        const SizedBox(height: 25),
+        Text(
+          "¿Quieres ver MovieWind ya? Ingresa tu email para crear una cuenta.",
+          textAlign: TextAlign.center,
+          style: GoogleFonts.geologica(color: Colors.white, fontSize: 16),
+        ),
         const SizedBox(height: 20),
-        _buildMainButton("COMENZAR >"),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _emailController,
+                  style: GoogleFonts.geologica(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: "Email",
+                    labelStyle: GoogleFonts.geologica(color: Colors.white60),
+                    filled: true,
+                    fillColor: Colors.black.withOpacity(0.5),
+                    border: const OutlineInputBorder(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(4),
+                        bottomLeft: Radius.circular(4),
+                      ),
+                      borderSide: BorderSide(color: Colors.white38),
+                    ),
+                    focusedBorder: const OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white, width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 20,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 2),
+              Expanded(
+                flex: 1,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE50914),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.only(
+                        topRight: Radius.circular(4),
+                        bottomRight: Radius.circular(4),
+                      ),
+                    ),
+                    padding: EdgeInsets.zero,
+                  ),
+                  onPressed: _isLoading ? null : _handleAction,
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              "Comenzar",
+                              style: GoogleFonts.geologica(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right, size: 24),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -351,17 +409,16 @@ class _AuthScreenState extends State<AuthScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           "PASO 1 DE 3",
-          style: TextStyle(
+          style: GoogleFonts.geologica(
             color: Colors.black54,
             fontWeight: FontWeight.bold,
-            fontSize: 13,
           ),
         ),
-        const Text(
-          "Crea una contraseña para iniciar tu membresía",
-          style: TextStyle(
+        Text(
+          "Crea tu cuenta",
+          style: GoogleFonts.montserrat(
             color: Colors.black,
             fontSize: 26,
             fontWeight: FontWeight.bold,
@@ -382,6 +439,34 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
+  Widget _buildLoginCodeContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Verifica tu cuenta",
+          style: GoogleFonts.montserrat(
+            color: Colors.white,
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          "Enviamos un código a ${_emailController.text}",
+          style: GoogleFonts.geologica(color: Colors.white70),
+        ),
+        const SizedBox(height: 30),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List.generate(4, (i) => _buildCodeDigitInput(i)),
+        ),
+        const SizedBox(height: 30),
+        _buildMainButton("Verificar"),
+      ],
+    );
+  }
+
   Widget _buildInputField(
     TextEditingController controller,
     String label,
@@ -391,15 +476,21 @@ class _AuthScreenState extends State<AuthScreen> {
     return TextField(
       controller: controller,
       obscureText: isPassword,
-      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+      style: GoogleFonts.geologica(color: isDark ? Colors.white : Colors.black),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: isDark ? Colors.white60 : Colors.black54),
+        labelStyle: GoogleFonts.geologica(
+          color: isDark ? Colors.white60 : Colors.black54,
+        ),
         filled: true,
         fillColor: isDark ? const Color(0xFF333333) : Colors.grey[200],
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(4),
           borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 20,
         ),
       ),
     );
@@ -408,11 +499,12 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget _buildMainButton(String text) {
     return SizedBox(
       width: double.infinity,
+      height: 60,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFE50914),
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
         ),
         onPressed: _isLoading ? null : _handleAction,
         child: _isLoading
@@ -426,10 +518,10 @@ class _AuthScreenState extends State<AuthScreen> {
               )
             : Text(
                 text,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                style: GoogleFonts.geologica(
                   color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
       ),
@@ -438,20 +530,20 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Widget _buildCodeDigitInput(int index) {
     return Container(
-      width: 70,
-      height: 70,
+      width: 60,
+      height: 65,
       decoration: BoxDecoration(
         border: Border.all(color: Colors.white38),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: TextField(
         controller: _codeControllers[index],
         focusNode: _codeFocusNodes[index],
         textAlign: TextAlign.center,
         keyboardType: TextInputType.number,
-        style: const TextStyle(
+        style: GoogleFonts.geologica(
           color: Colors.white,
-          fontSize: 28,
+          fontSize: 24,
           fontWeight: FontWeight.bold,
         ),
         maxLength: 1,
@@ -459,11 +551,10 @@ class _AuthScreenState extends State<AuthScreen> {
           border: InputBorder.none,
           counterText: "",
         ),
-        onChanged: (value) {
-          if (value.isNotEmpty && index < 3)
+        onChanged: (v) {
+          if (v.isNotEmpty && index < 3)
             _codeFocusNodes[index + 1].requestFocus();
-          if (value.isEmpty && index > 0)
-            _codeFocusNodes[index - 1].requestFocus();
+          if (v.isEmpty && index > 0) _codeFocusNodes[index - 1].requestFocus();
         },
       ),
     );
@@ -471,13 +562,19 @@ class _AuthScreenState extends State<AuthScreen> {
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+      SnackBar(
+        content: Text(message, style: GoogleFonts.geologica()),
+        backgroundColor: Colors.redAccent,
+      ),
     );
   }
 
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.green),
+      SnackBar(
+        content: Text(message, style: GoogleFonts.geologica()),
+        backgroundColor: Colors.green,
+      ),
     );
   }
 }

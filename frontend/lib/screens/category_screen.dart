@@ -21,7 +21,6 @@ class CategoryScreen extends StatefulWidget {
 }
 
 class _CategoryScreenState extends State<CategoryScreen> {
-  final ApiService _apiService = ApiService();
   List<Movie> movies = [];
   bool isLoading = true;
 
@@ -34,7 +33,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
   Future<void> _fetchCategoryData() async {
     try {
       final response = await http.get(
-        Uri.parse('${_apiService.baseUrl}/movies'),
+        Uri.parse('${ApiService.baseUrl}/movies'),
       );
 
       if (response.statusCode == 200) {

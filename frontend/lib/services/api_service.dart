@@ -4,9 +4,32 @@ import '../models/movie_model.dart';
 import '../models/user_model.dart';
 
 class ApiService {
-  final String baseUrl = "http://localhost:3000";
+  static const String baseUrl = "http://localhost:3000";
 
-  Future<bool> registerUser(User user, bool emailVerified) async {
+  static Future<User?> getUserByEmail(String email) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/users?email=$email',
+        ), // Ajusta este endpoint según tu backend
+        headers: {"Content-Type": "application/json"},
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        if (data.isNotEmpty) {
+          // Asumiendo que el backend devuelve una lista y tomamos el primero
+          return User.fromJson(data[0]);
+        }
+      }
+      return null;
+    } catch (e) {
+      print("❌ Error buscando usuario: $e");
+      return null;
+    }
+  }
+
+  static Future<bool> registerUser(User user, bool emailVerified) async {
     try {
       Map<String, dynamic> userData = user.toJson();
 
@@ -33,7 +56,7 @@ class ApiService {
     }
   }
 
-  Future<bool> postMovie(Movie movie) async {
+  static Future<bool> postMovie(Movie movie) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/movies'),
@@ -47,7 +70,7 @@ class ApiService {
     }
   }
 
-  Future<void> updateUser(int id, Map<String, dynamic> data) async {
+  static Future<void> updateUser(int id, Map<String, dynamic> data) async {
     try {
       final response = await http.put(
         Uri.parse('$baseUrl/users/$id'), // Endpoint para actualizar

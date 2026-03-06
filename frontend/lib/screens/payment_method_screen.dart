@@ -24,8 +24,6 @@ class PaymentMethodScreen extends StatefulWidget {
 }
 
 class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
-  final ApiService _apiService = ApiService(); // Instancia de tu API para Neon
-
   // --- FUNCIÓN PARA REGISTRO REAL (FIREBASE + NEON) ---
   void _procesarRegistro(BuildContext context) async {
     showDialog(
@@ -52,7 +50,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
         plan: widget.selectedPlan,
       );
 
-      await _apiService.registerUser(nuevoUsuario, false);
+      await ApiService.registerUser(nuevoUsuario, false);
 
       // Navegación
       if (!mounted) return;
