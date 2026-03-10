@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'payment_method_screen.dart';
 
 class PlanSelectionScreen extends StatefulWidget {
@@ -20,19 +21,34 @@ class PlanSelectionScreen extends StatefulWidget {
 class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
   int _selectedPlanIndex = 2; // Premium por defecto
 
+  // Lista de planes actualizada con la cantidad de dispositivos y usuarios
   final List<Map<String, dynamic>> _plans = [
-    {"name": "Básico", "price": "S/ 24.90", "quality": "Buena", "res": "720p"},
+    {
+      "name": "Básico",
+      "price": "S/ 24.90",
+      "quality": "Buena",
+      "res": "720p",
+      "screens": "1 dispositivo / 1 usuario",
+      "devices": "Móvil, Tableta, PC",
+      "gradient": [const Color(0xFF4A90E2), const Color(0xFF9013FE)],
+    },
     {
       "name": "Estándar",
       "price": "S/ 34.90",
       "quality": "Muy buena",
       "res": "1080p",
+      "screens": "2 dispositivos / 2 usuarios",
+      "devices": "Móvil, Tableta, PC, TV",
+      "gradient": [const Color(0xFF1CB5E0), const Color(0xFF000851)],
     },
     {
       "name": "Premium",
       "price": "S/ 44.90",
       "quality": "Excepcional",
       "res": "4K+HDR",
+      "screens": "4 dispositivos / 4 usuarios",
+      "devices": "Todos los dispositivos",
+      "gradient": [const Color(0xFFE50914), const Color(0xFF8E060C)],
     },
   ];
 
@@ -43,14 +59,13 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        // Evitamos que regresen para no duplicar procesos de registro
         automaticallyImplyLeading: false,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
+            child: Text(
               "Cerrar sesión",
-              style: TextStyle(
+              style: GoogleFonts.geologica(
                 color: Colors.black,
                 fontWeight: FontWeight.bold,
               ),
@@ -59,133 +74,98 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "PASO 2 DE 3",
-              style: TextStyle(
-                color: Colors.black54,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "PASO 2 DE 3",
+                    style: GoogleFonts.geologica(
+                      color: Colors.black54,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    "Selecciona el plan ideal para ti",
+                    style: GoogleFonts.montserrat(
+                      color: Colors.black,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 25),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            const Text(
-              "Selecciona el plan ideal para ti",
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildFeatureRow(
-              Icons.check,
-              "Ve todo lo que quieras. Sin anuncios.",
-            ),
-            _buildFeatureRow(
-              Icons.check,
-              "Recomendaciones exclusivas para ti.",
-            ),
-            _buildFeatureRow(
-              Icons.check,
-              "Cambia de plan o cancela cuando quieras.",
-            ),
-            const SizedBox(height: 30),
 
-            // Selector de Planes
-            Row(
-              children: List.generate(_plans.length, (index) {
-                bool isSelected = _selectedPlanIndex == index;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _selectedPlanIndex = index),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 5),
-                      height: 100,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? const Color(0xFFE50914)
-                            : const Color(0xFFE50914).withOpacity(0.6),
-                        borderRadius: BorderRadius.circular(4),
-                        boxShadow: isSelected
-                            ? [
-                                const BoxShadow(
-                                  color: Colors.black26,
-                                  blurRadius: 10,
-                                ),
-                              ]
-                            : [],
+            // Carrusel Horizontal de Planes (Evita que se estiren)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                children: List.generate(_plans.length, (index) {
+                  return _buildPlanCard(index);
+                }),
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  const SizedBox(height: 10),
+                  Text(
+                    "La disponibilidad del contenido en HD (720p), Full HD (1080p), Ultra HD (4K) y HDR depende de tu servicio de internet y de las capacidades de tu dispositivo.",
+                    style: GoogleFonts.geologica(
+                      color: Colors.black54,
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFE50914),
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       ),
-                      child: Center(
-                        child: Text(
-                          _plans[index]["name"],
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                      onPressed: () {
+                        String planSeleccionado =
+                            _plans[_selectedPlanIndex]["name"];
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PaymentMethodScreen(
+                              userEmail: widget.userEmail,
+                              userName: widget.userName,
+                              password: widget.password,
+                              selectedPlan: planSeleccionado,
+                            ),
                           ),
+                        );
+                      },
+                      child: Text(
+                        "SIGUIENTE",
+                        style: GoogleFonts.geologica(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          letterSpacing: 1.2,
                         ),
                       ),
                     ),
                   ),
-                );
-              }),
-            ),
-
-            const SizedBox(height: 30),
-            _buildDetailRow(
-              "Precio mensual",
-              _plans[_selectedPlanIndex]["price"],
-            ),
-            const Divider(),
-            _buildDetailRow(
-              "Calidad de video",
-              _plans[_selectedPlanIndex]["quality"],
-            ),
-            const Divider(),
-            _buildDetailRow("Resolución", _plans[_selectedPlanIndex]["res"]),
-            const SizedBox(height: 40),
-
-            const Text(
-              "La disponibilidad del contenido en HD (720p), Full HD (1080p), Ultra HD (4K) y HDR depende de tu servicio de internet y del dispositivo.",
-              style: TextStyle(color: Colors.black54, fontSize: 12),
-            ),
-            const SizedBox(height: 20),
-
-            // --- BOTÓN SIGUIENTE (MODIFICADO) ---
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE50914),
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                ),
-                onPressed: () {
-                  String planSeleccionado = _plans[_selectedPlanIndex]["name"];
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PaymentMethodScreen(
-                        userEmail: widget.userEmail,
-                        userName: widget.userName,
-                        password:
-                            widget.password, // <--- AHORA PASAMOS LA CLAVE
-                        selectedPlan: planSeleccionado,
-                      ),
-                    ),
-                  );
-                },
-                child: const Text(
-                  "SIGUIENTE",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                ],
               ),
             ),
           ],
@@ -194,43 +174,121 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
     );
   }
 
-  // Métodos auxiliares se mantienen igual para no alterar tu diseño
-  Widget _buildFeatureRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFFE50914)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 16, color: Colors.black87),
-            ),
+  Widget _buildPlanCard(int index) {
+    bool isSelected = _selectedPlanIndex == index;
+    var plan = _plans[index];
+
+    return GestureDetector(
+      onTap: () => setState(() => _selectedPlanIndex = index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        width: 280, // ANCHO FIJO PARA EVITAR ESTIRAMIENTO
+        margin: const EdgeInsets.only(right: 15),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? const Color(0xFFE50914) : Colors.grey.shade300,
+            width: isSelected ? 3 : 1,
           ),
-        ],
+          boxShadow: [
+            if (isSelected)
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
+              ),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Cabecera de la tarjeta con Degradado
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 15),
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(9),
+                ),
+                gradient: LinearGradient(
+                  colors: plan["gradient"],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    plan["name"],
+                    style: GoogleFonts.montserrat(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    plan["res"],
+                    style: GoogleFonts.geologica(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Detalles internos
+            Padding(
+              padding: const EdgeInsets.all(15),
+              child: Column(
+                children: [
+                  _buildCardDetail("Precio mensual", plan["price"]),
+                  _buildCardDetail("Calidad de video", plan["quality"]),
+                  _buildCardDetail("Resolución", plan["res"]),
+                  _buildCardDetail(
+                    "Uso simultáneo",
+                    plan["screens"],
+                  ), // Nuevo campo mostrado
+                  _buildCardDetail("Dispositivos", plan["devices"]),
+                  const SizedBox(height: 10),
+                  if (isSelected)
+                    const Icon(
+                      Icons.check_circle,
+                      color: Color(0xFFE50914),
+                      size: 30,
+                    )
+                  else
+                    const SizedBox(height: 30),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildDetailRow(String title, String value) {
+  Widget _buildCardDetail(String title, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(color: Colors.black54, fontSize: 16),
+            style: GoogleFonts.geologica(color: Colors.black54, fontSize: 12),
           ),
+          const SizedBox(height: 2),
           Text(
             value,
-            style: const TextStyle(
+            style: GoogleFonts.geologica(
               color: Colors.black87,
               fontWeight: FontWeight.bold,
-              fontSize: 16,
+              fontSize: 14,
             ),
           ),
+          const Divider(height: 20),
         ],
       ),
     );

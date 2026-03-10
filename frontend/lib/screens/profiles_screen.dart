@@ -14,42 +14,54 @@ class ProfilesScreen extends StatefulWidget {
 class _ProfilesScreenState extends State<ProfilesScreen> {
   @override
   Widget build(BuildContext context) {
-    // Lógica de restricción por plan
+    // 1. Lógica de restricción por plan
     String plan = (widget.user['plan'] ?? 'basico').toString().toLowerCase();
-    int maxProfiles = plan == 'premium' ? 5 : (plan == 'estandar' ? 3 : 1);
+    int maxProfiles;
 
+    switch (plan) {
+      case 'premium':
+        maxProfiles = 4;
+        break;
+      case 'estandar':
+        maxProfiles = 2;
+        break;
+      default:
+        maxProfiles = 1;
+    }
+
+    // 2. Nombre del dueño de la cuenta (obtenido de la creación de cuenta)
+    final String ownerName =
+        (widget.user['userName'] ?? widget.user['name'] ?? "USUARIO")
+            .toString()
+            .toUpperCase();
     final List<Map<String, String>> allProfiles = [
       {
-        "name": "TOMAS AMAYO",
+        "name": ownerName,
         "image":
             "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-qo9h82134t9nv0j0.jpg",
       },
       {
-        "name": "EIMI AMAYO",
+        "name": "USUARIO 2",
         "image":
             "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-v98z09sh9u527l6y.jpg",
       },
       {
-        "name": "ANTHONY AMAYO",
+        "name": "USUARIO 3",
         "image":
             "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-dy7st87fb36y39bc.jpg",
       },
       {
-        "name": "ESTHER PEREZ",
+        "name": "USUARIO 4",
         "image":
             "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-2fg93wnp9y929nu9.jpg",
       },
-      {
-        "name": "SISSY AMAYO",
-        "image":
-            "https://wallpapers.com/images/hd/netflix-profile-pictures-512-x-512-880696767n5isdjt.jpg",
-      },
     ];
 
+    // 4. Filtrado dinámico según el plan elegido
     final visibleProfiles = allProfiles.take(maxProfiles).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF141414), // Negro Netflix
+      backgroundColor: const Color(0xFF141414),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -88,7 +100,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   borderRadius: BorderRadius.circular(2),
                 ),
                 child: Text(
-                  "PLAN ${plan.toUpperCase()}",
+                  "PLAN ${plan.toUpperCase()} • $maxProfiles ${maxProfiles > 1 ? 'DISPOSITIVOS' : 'DISPOSITIVO'}",
                   style: GoogleFonts.geologica(
                     color: Colors.amber,
                     fontSize: 12,
@@ -149,7 +161,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
   }
 }
 
-// Widget Interno para manejar el efecto Hover de cada perfil
 class ProfileItem extends StatefulWidget {
   final Map<String, String> profile;
   final VoidCallback onTap;
@@ -176,7 +187,7 @@ class _ProfileItemState extends State<ProfileItem> {
             AnimatedContainer(
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeOutCubic,
-              width: _isHovered ? 125 : 115, // Aumenta de tamaño
+              width: _isHovered ? 125 : 115,
               height: _isHovered ? 125 : 115,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
