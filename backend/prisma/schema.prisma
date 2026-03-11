@@ -33,4 +33,6 @@ model User {
   createdAt DateTime @default(now())
   plan      String @default("basico")
   isVerified Boolean @default(false)
+  pin          String?
+  pinExpiresAt DateTime?
 }

@@ -1,18 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
-import 'package:google_fonts/google_fonts.dart'; // Importante añadir esto
+import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'profiles_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'plan_selection_screen.dart';
 
-enum AuthStep {
-  loginEmail,
-  loginCode,
-  profileSelection,
-  registerLanding,
-  registerPassword,
-}
+enum AuthStep { loginEmail, loginCode, registerLanding, registerPassword }
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -24,7 +17,6 @@ class _AuthScreenState extends State<AuthScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
-
   final List<TextEditingController> _codeControllers = List.generate(
     4,
     (_) => TextEditingController(),
@@ -37,130 +29,119 @@ class _AuthScreenState extends State<AuthScreen> {
   final String _bgPosters =
       "https://wallpapers.com/images/hd/netflix-background-gs7hjuwvv2g0e9fj.jpg";
 
-  void _handleAction() {
+  // --- LÓGICA DE ACCIÓN PRINCIPAL (Sin Cambios) ---
+
+  Future<void> _handleAction() async {
+    if (_isLoading) return;
+
+    if (_currentStep == AuthStep.registerLanding &&
+        !_emailController.text.contains('@')) {
+      _showErrorSnackBar("Ingresa un email válido");
+      return;
+    }
+
     setState(() => _isLoading = true);
-    Future.delayed(const Duration(seconds: 1), () {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        if (_currentStep == AuthStep.registerLanding) {
-          if (_emailController.text.isNotEmpty &&
-              _emailController.text.contains('@')) {
-            _currentStep = AuthStep.registerPassword;
-          } else {
-            _showErrorSnackBar("Ingresa un email válido para comenzar");
-          }
-        } else if (_currentStep == AuthStep.registerPassword) {
-          if (_passwordController.text.length >= 6 &&
-              _nameController.text.isNotEmpty) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => PlanSelectionScreen(
-                  userEmail: _emailController.text,
-                  userName: _nameController.text,
-                  password: _passwordController.text,
-                ),
-              ),
-            );
-          } else {
-            _showErrorSnackBar(
-              "Ingresa tu nombre y una clave de al menos 6 caracteres",
-            );
-          }
-        } else if (_currentStep == AuthStep.loginEmail) {
-          if (_emailController.text.isNotEmpty &&
-              _emailController.text.contains('@')) {
-            _currentStep = AuthStep.loginCode;
-            _showSuccessSnackBar("Código enviado a ${_emailController.text}");
-          } else {
-            _showErrorSnackBar("Ingresa un email válido");
-          }
-        } else if (_currentStep == AuthStep.loginCode) {
-          _verifyAndNavigate();
-        }
-      });
-    });
-  }
 
-  void _verifyAndNavigate() async {
-    // Añadimos async
-    String code = _codeControllers.map((e) => e.text).join();
-
-    if (code == "1234") {
-      setState(() => _isLoading = true);
-
-      try {
-        final user = await ApiService.getUserByEmail(_emailController.text);
-
-        if (!mounted) return;
-
-        if (user != null) {
-          Navigator.pushReplacement(
+    try {
+      if (_currentStep == AuthStep.registerLanding) {
+        setState(() => _currentStep = AuthStep.registerPassword);
+      } else if (_currentStep == AuthStep.registerPassword) {
+        if (_passwordController.text.length >= 6 &&
+            _nameController.text.isNotEmpty) {
+          Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ProfilesScreen(
-                user: {
-                  'email': user.email,
-                  'id': user.id,
-                  'plan':
-                      user.plan, // Aquí ya vendrá 'Básico', 'Estándar', etc.
-                  'name': user.name,
-                },
+              builder: (context) => PlanSelectionScreen(
+                userEmail: _emailController.text,
+                userName: _nameController.text,
+                password: _passwordController.text,
               ),
             ),
           );
         } else {
-          _showErrorSnackBar("No se encontró una cuenta con este email.");
+          _showErrorSnackBar("Nombre y clave (min. 6 carac.) requeridos");
         }
-      } catch (e) {
-        _showErrorSnackBar("Error al conectar con el servidor.");
-      } finally {
-        if (mounted) setState(() => _isLoading = false);
+      } else if (_currentStep == AuthStep.loginEmail) {
+        await _solicitarOTP();
+      } else if (_currentStep == AuthStep.loginCode) {
+        await _verificarOTPyEntrar();
       }
-    } else {
-      _showErrorSnackBar("Código incorrecto. Intenta con 1234");
+    } catch (e) {
+      _showErrorSnackBar("Error de conexión con el servidor");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    for (var c in _codeControllers) c.dispose();
-    for (var n in _codeFocusNodes) n.dispose();
-    super.dispose();
+  // --- LÓGICA DE LOGIN (Sin Cambios) ---
+
+  Future<void> _solicitarOTP() async {
+    final success = await ApiService.sendOTP(_emailController.text);
+    if (success) {
+      setState(() => _currentStep = AuthStep.loginCode);
+      _showSuccessSnackBar("Código enviado a ${_emailController.text}");
+    } else {
+      _showErrorSnackBar("El correo no está registrado o hubo un error.");
+    }
   }
+
+  Future<void> _verificarOTPyEntrar() async {
+    String code = _codeControllers.map((e) => e.text).join();
+
+    if (code.length < 4) {
+      _showErrorSnackBar("Por favor, ingresa el código de 4 dígitos");
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final userData = await ApiService.verifyOTP(_emailController.text, code);
+
+      if (userData != null) {
+        debugPrint("Login exitoso. Datos del usuario: $userData");
+        await _guardarSesionYNavegar(userData);
+      } else {
+        _showErrorSnackBar("Código incorrecto o expirado");
+      }
+    } catch (e) {
+      debugPrint("Error en verificación: $e");
+      _showErrorSnackBar("Error de conexión al verificar el código");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _guardarSesionYNavegar(Map<String, dynamic> userData) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_id', userData['id'].toString());
+    await prefs.setString(
+      'user_email',
+      userData['email'] ?? _emailController.text,
+    );
+    await prefs.setBool('is_logged_in', true);
+
+    if (!mounted) return;
+
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      '/profiles',
+      (route) => false,
+      arguments: userData,
+    );
+  }
+
+  // --- UI COMPONENTS REDISEÑADOS VISUALMENTE ---
 
   @override
   Widget build(BuildContext context) {
-    bool isDarkBg =
-        _currentStep == AuthStep.registerLanding ||
-        _currentStep == AuthStep.loginEmail ||
-        _currentStep == AuthStep.loginCode;
-
-    double horizontalPadding = _currentStep == AuthStep.registerLanding
-        ? 45
-        : 25;
+    bool isDarkBg = _currentStep != AuthStep.registerPassword;
 
     return Scaffold(
-      backgroundColor: isDarkBg ? const Color(0xFF141414) : Colors.white,
+      backgroundColor: isDarkBg ? Colors.black : Colors.white,
       body: Stack(
         children: [
-          if (isDarkBg)
-            Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.network(_bgPosters, fit: BoxFit.cover),
-                ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
-                    child: Container(color: Colors.black.withOpacity(0.7)),
-                  ),
-                ),
-              ],
-            ),
+          if (isDarkBg) _buildModernBackground(),
           SafeArea(
             child: Column(
               children: [
@@ -168,9 +149,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 Expanded(
                   child: Center(
                     child: SingleChildScrollView(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: horizontalPadding,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 25),
                       child: Container(
                         constraints: const BoxConstraints(maxWidth: 500),
                         child: _buildStepContent(isDarkBg),
@@ -186,41 +165,84 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
+  Widget _buildModernBackground() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.network(
+          _bgPosters,
+          fit: BoxFit.cover,
+          errorBuilder: (c, e, s) => Container(color: Colors.black),
+        ),
+        // Gradiente profundo como en la foto
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withOpacity(0.85),
+                Colors.black.withOpacity(0.4),
+                Colors.black.withOpacity(0.95),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildHeader(bool isDark) {
     bool isAtLogin =
         _currentStep == AuthStep.loginEmail ||
         _currentStep == AuthStep.loginCode;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 25),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          // LOGO ORIGINAL RESTAURADO AL 100%
           Text(
             "MOVIEWIND",
             style: GoogleFonts.montserrat(
-              // Usamos Montserrat para el logo
               color: const Color(0xFFE50914),
+              fontWeight: FontWeight.w900,
               fontSize: 24,
-              fontWeight: FontWeight.w900, // Peso extra para el logo
-              letterSpacing: 1.2,
+              letterSpacing: -0.8,
             ),
           ),
-          TextButton(
-            onPressed: () => setState(
-              () => _currentStep = isAtLogin
-                  ? AuthStep.registerLanding
-                  : AuthStep.loginEmail,
-            ),
-            child: Text(
-              isAtLogin ? "Registrarse" : "Iniciar sesión",
-              style: GoogleFonts.geologica(
-                // Usamos Geologica para UI
-                color: isDark ? Colors.white : Colors.black,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
+          if (_currentStep == AuthStep.registerLanding || isAtLogin)
+            TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: isAtLogin
+                    ? Colors.transparent
+                    : const Color(0xFFE50914),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              onPressed: () {
+                setState(() {
+                  _currentStep = isAtLogin
+                      ? AuthStep.registerLanding
+                      : AuthStep.loginEmail;
+                  _nameController.clear();
+                  _passwordController.clear();
+                });
+              },
+              child: Text(
+                isAtLogin ? "Ayuda" : "Iniciar sesión",
+                style: GoogleFonts.geologica(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -228,27 +250,55 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Widget _buildStepContent(bool isDark) {
     switch (_currentStep) {
-      case AuthStep.loginEmail:
-        return _buildLoginEmailContent();
-      case AuthStep.loginCode:
-        return _buildLoginCodeContent();
       case AuthStep.registerLanding:
-        return _buildRegisterLandingContent();
+        return _buildRegisterLanding();
+      case AuthStep.loginEmail:
+        return _buildLoginEmail();
       case AuthStep.registerPassword:
-        return _buildRegisterPasswordContent();
-      default:
-        return _buildLoginEmailContent();
+        return _buildRegisterPassword();
+      case AuthStep.loginCode:
+        return _buildLoginCode();
     }
   }
 
-  Widget _buildLoginEmailContent() {
+  Widget _buildRegisterLanding() {
+    return Column(
+      children: [
+        Text(
+          "Películas y series ilimitadas y mucho más",
+          textAlign: TextAlign.center,
+          style: GoogleFonts.montserrat(
+            color: Colors.white,
+            fontSize: 38,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 15),
+        Text(
+          "A partir de S/ 28.90. Cancela cuando quieras.",
+          style: GoogleFonts.geologica(color: Colors.white, fontSize: 18),
+        ),
+        const SizedBox(height: 25),
+        Text(
+          "¿Quieres ver MovieWind ya? Ingresa tu email para crear una cuenta o reiniciar tu membresía.",
+          textAlign: TextAlign.center,
+          style: GoogleFonts.geologica(color: Colors.white, fontSize: 16),
+        ),
+        const SizedBox(height: 20),
+        _buildNetflixTextField(_emailController, "Email"),
+        const SizedBox(height: 15),
+        _buildNetflixButton("Comenzar >", () => _handleAction()),
+      ],
+    );
+  }
+
+  Widget _buildLoginEmail() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           "Inicia sesión",
           style: GoogleFonts.montserrat(
-            // Montserrat para títulos
             color: Colors.white,
             fontSize: 32,
             fontWeight: FontWeight.bold,
@@ -256,42 +306,20 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
         const SizedBox(height: 10),
         Text(
-          "Ingresa tu email para continuar.",
-          style: GoogleFonts.geologica(
-            color: Colors.white70,
-            fontSize: 17,
-            fontWeight: FontWeight.w300,
-          ),
+          "O bien, comienza con una cuenta nueva.",
+          style: GoogleFonts.geologica(color: Colors.white70),
         ),
         const SizedBox(height: 30),
-        _buildInputField(_emailController, "Email", true),
-        const SizedBox(height: 15),
-        _buildMainButton("Continuar"),
+        _buildNetflixTextField(_emailController, "Email o número de celular"),
         const SizedBox(height: 20),
-        PopupMenuButton<String>(
-          color: const Color(0xFF222222),
-          offset: const Offset(0, 40),
-          itemBuilder: (context) => [
-            PopupMenuItem(
-              value: 'soporte',
-              child: Text(
-                'Centro de ayuda',
-                style: GoogleFonts.geologica(color: Colors.white),
-              ),
-            ),
-            PopupMenuItem(
-              value: 'terminos',
-              child: Text(
-                'Términos de uso',
-                style: GoogleFonts.geologica(color: Colors.white),
-              ),
-            ),
-          ],
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
+        _buildNetflixButton("Continuar", () => _handleAction()),
+        const SizedBox(height: 15),
+        Center(
+          child: TextButton(
+            onPressed: () {},
             child: Text(
               "Obtener ayuda ∨",
-              style: GoogleFonts.geologica(color: Colors.white70, fontSize: 15),
+              style: GoogleFonts.geologica(color: Colors.white70),
             ),
           ),
         ),
@@ -299,113 +327,7 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  Widget _buildRegisterLandingContent() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          "Películas y series ilimitadas y mucho más",
-          textAlign: TextAlign.center,
-          style: GoogleFonts.montserrat(
-            color: Colors.white,
-            fontSize: 32,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.5,
-          ),
-        ),
-        const SizedBox(height: 15),
-        Text(
-          "Disfruta donde quieras. Cancela en cualquier momento.",
-          textAlign: TextAlign.center,
-          style: GoogleFonts.geologica(color: Colors.white, fontSize: 18),
-        ),
-        const SizedBox(height: 25),
-        Text(
-          "¿Quieres ver MovieWind ya? Ingresa tu email para crear una cuenta.",
-          textAlign: TextAlign.center,
-          style: GoogleFonts.geologica(color: Colors.white, fontSize: 16),
-        ),
-        const SizedBox(height: 20),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  controller: _emailController,
-                  style: GoogleFonts.geologica(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: "Email",
-                    labelStyle: GoogleFonts.geologica(color: Colors.white60),
-                    filled: true,
-                    fillColor: Colors.black.withOpacity(0.5),
-                    border: const OutlineInputBorder(
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(4),
-                        bottomLeft: Radius.circular(4),
-                      ),
-                      borderSide: BorderSide(color: Colors.white38),
-                    ),
-                    focusedBorder: const OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.white, width: 1.5),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 20,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 2),
-              Expanded(
-                flex: 1,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE50914),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.only(
-                        topRight: Radius.circular(4),
-                        bottomRight: Radius.circular(4),
-                      ),
-                    ),
-                    padding: EdgeInsets.zero,
-                  ),
-                  onPressed: _isLoading ? null : _handleAction,
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              "Comenzar",
-                              style: GoogleFonts.geologica(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right, size: 24),
-                          ],
-                        ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRegisterPasswordContent() {
+  Widget _buildRegisterPassword() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -417,110 +339,102 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         ),
         Text(
-          "Crea tu cuenta",
+          "Crea una contraseña para comenzar tu membresía",
           style: GoogleFonts.montserrat(
             color: Colors.black,
-            fontSize: 26,
+            fontSize: 32,
             fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 20),
-        _buildInputField(_nameController, "Nombre", false),
+        const SizedBox(height: 25),
+        _buildNetflixTextField(_nameController, "Nombre", isDark: false),
         const SizedBox(height: 15),
-        _buildInputField(
+        _buildNetflixTextField(
           _passwordController,
           "Contraseña",
-          false,
+          isDark: false,
           isPassword: true,
         ),
-        const SizedBox(height: 25),
-        _buildMainButton("CONTINUAR"),
+        const SizedBox(height: 30),
+        _buildNetflixButton("SIGUIENTE", () => _handleAction()),
       ],
     );
   }
 
-  Widget _buildLoginCodeContent() {
+  Widget _buildLoginCode() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "Verifica tu cuenta",
+          "Verifica tu código",
           style: GoogleFonts.montserrat(
             color: Colors.white,
             fontSize: 28,
             fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 10),
-        Text(
-          "Enviamos un código a ${_emailController.text}",
-          style: GoogleFonts.geologica(color: Colors.white70),
-        ),
         const SizedBox(height: 30),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(4, (i) => _buildCodeDigitInput(i)),
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: List.generate(4, (i) => _buildCodeBox(i)),
         ),
         const SizedBox(height: 30),
-        _buildMainButton("Verificar"),
+        _buildNetflixButton("Entrar", () => _handleAction()),
       ],
     );
   }
 
-  Widget _buildInputField(
+  // --- ELEMENTOS DE DISEÑO ATÓMICOS CORREGIDOS ---
+
+  Widget _buildNetflixTextField(
     TextEditingController controller,
-    String label,
-    bool isDark, {
+    String hint, {
+    bool isDark = true,
     bool isPassword = false,
   }) {
     return TextField(
       controller: controller,
       obscureText: isPassword,
-      style: GoogleFonts.geologica(color: isDark ? Colors.white : Colors.black),
+      style: TextStyle(color: isDark ? Colors.white : Colors.black),
       decoration: InputDecoration(
-        labelText: label,
-        labelStyle: GoogleFonts.geologica(
-          color: isDark ? Colors.white60 : Colors.black54,
-        ),
+        labelText: hint,
+        labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
         filled: true,
-        fillColor: isDark ? const Color(0xFF333333) : Colors.grey[200],
-        border: OutlineInputBorder(
+        fillColor: isDark ? Colors.grey[900]!.withOpacity(0.85) : Colors.white,
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(
+            color: isDark ? Colors.white38 : Colors.black26,
+          ),
           borderRadius: BorderRadius.circular(4),
-          borderSide: BorderSide.none,
         ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 20,
+        focusedBorder: OutlineInputBorder(
+          borderSide: BorderSide(
+            color: isDark ? Colors.white : const Color(0xFFE50914),
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(4),
         ),
       ),
     );
   }
 
-  Widget _buildMainButton(String text) {
+  Widget _buildNetflixButton(String text, VoidCallback onPressed) {
     return SizedBox(
       width: double.infinity,
-      height: 60,
+      height: 55,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFE50914),
-          elevation: 0,
+          elevation: 0, // Botones planos como en la foto
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
         ),
-        onPressed: _isLoading ? null : _handleAction,
+        onPressed: _isLoading ? null : onPressed,
         child: _isLoading
-            ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
-                ),
-              )
+            ? const CircularProgressIndicator(color: Colors.white)
             : Text(
                 text,
                 style: GoogleFonts.geologica(
                   color: Colors.white,
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -528,11 +442,12 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  Widget _buildCodeDigitInput(int index) {
+  Widget _buildCodeBox(int index) {
     return Container(
       width: 60,
       height: 65,
       decoration: BoxDecoration(
+        color: Colors.white10,
         border: Border.all(color: Colors.white38),
         borderRadius: BorderRadius.circular(8),
       ),
@@ -541,15 +456,11 @@ class _AuthScreenState extends State<AuthScreen> {
         focusNode: _codeFocusNodes[index],
         textAlign: TextAlign.center,
         keyboardType: TextInputType.number,
-        style: GoogleFonts.geologica(
-          color: Colors.white,
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-        ),
+        style: const TextStyle(color: Colors.white, fontSize: 24),
         maxLength: 1,
         decoration: const InputDecoration(
-          border: InputBorder.none,
           counterText: "",
+          border: InputBorder.none,
         ),
         onChanged: (v) {
           if (v.isNotEmpty && index < 3)
@@ -560,21 +471,22 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: GoogleFonts.geologica()),
-        backgroundColor: Colors.redAccent,
-      ),
-    );
-  }
+  void _showErrorSnackBar(String message) =>
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+      );
+  void _showSuccessSnackBar(String message) =>
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.green),
+      );
 
-  void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: GoogleFonts.geologica()),
-        backgroundColor: Colors.green,
-      ),
-    );
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    for (var c in _codeControllers) c.dispose();
+    for (var n in _codeFocusNodes) n.dispose();
+    super.dispose();
   }
 }

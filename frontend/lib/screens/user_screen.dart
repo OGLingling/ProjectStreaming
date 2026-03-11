@@ -63,32 +63,40 @@ class _UserScreenState extends State<UserScreen> {
 
   Future<void> _saveChanges() async {
     try {
-      final userId = widget.user['id'];
-      await ApiService.updateUser(userId, {
+      final userId = widget.user['id']?.toString() ?? "";
+      if (userId.isEmpty) {
+        throw "ID de usuario no encontrado";
+      }
+
+      final success = await ApiService.updateUser(userId, {
         'name': _nameController.text,
         'profilePic': _imageController.text,
       });
 
-      setState(() {
-        _profileImage = _imageController.text;
-        widget.user['profilePic'] = _profileImage;
-        widget.user['name'] = _nameController.text;
-      });
+      if (success) {
+        setState(() {
+          _profileImage = _imageController.text;
+          widget.user['profilePic'] = _profileImage;
+          widget.user['name'] = _nameController.text;
+        });
 
-      // --- MEJORA 2: FEEDBACK VISUAL POSITIVO ---
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 10),
-              Text("¡Perfil actualizado correctamente!"),
-            ],
+        // --- MEJORA 2: FEEDBACK VISUAL POSITIVO ---
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 10),
+                Text("¡Perfil actualizado correctamente!"),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
           ),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+        );
+      } else {
+        throw "No se pudo actualizar el perfil en el servidor";
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

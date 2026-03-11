@@ -3,21 +3,61 @@ import 'package:google_fonts/google_fonts.dart';
 import 'movies_screen.dart';
 
 class ProfilesScreen extends StatefulWidget {
-  final Map<String, dynamic> user;
+  // Los datos del usuario pueden venir de los argumentos de la ruta o del constructor
+  final Map<String, dynamic>? user;
 
-  const ProfilesScreen({super.key, required this.user});
+  const ProfilesScreen({super.key, this.user});
 
   @override
   State<ProfilesScreen> createState() => _ProfilesScreenState();
 }
 
 class _ProfilesScreenState extends State<ProfilesScreen> {
+  // FUNCIÓN ACTUALIZADA: Navegación directa sin pedir PIN
+  void _navigateToMovies(
+    BuildContext context,
+    Map<String, String> profile,
+    Map<String, dynamic> userData,
+  ) {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MoviesScreen(
+          user: {
+            ...userData,
+            'selectedName': profile['name'],
+            'selectedImage': profile['image'],
+          },
+        ),
+      ),
+      (route) => false, // Limpia el historial para que no pueda volver atrás
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 1. Lógica de restricción por plan
-    String plan = (widget.user['plan'] ?? 'basico').toString().toLowerCase();
-    int maxProfiles;
+    // Intentamos obtener el usuario del constructor o de los argumentos de navegación
+    final Map<String, dynamic> userData =
+        widget.user ??
+        (ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
+            {});
 
+    final String plan = (userData['plan'] ?? 'basico').toString().toLowerCase();
+
+    // Lógica de nombres y fotos de perfil
+    final String realName =
+        (userData['name'] ??
+                userData['userName'] ??
+                (userData['email']?.toString().split('@')[0] ?? "Usuario"))
+            .toString();
+
+    final String realProfilePic =
+        (userData['profilePic'] ??
+                "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-qo9h82134t9nv0j0.jpg")
+            .toString();
+
+    // Determinamos el número de perfiles según el plan
+    int maxProfiles;
     switch (plan) {
       case 'premium':
         maxProfiles = 4;
@@ -29,17 +69,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         maxProfiles = 1;
     }
 
-    // 2. Nombre del dueño de la cuenta (obtenido de la creación de cuenta)
-    final String ownerName =
-        (widget.user['userName'] ?? widget.user['name'] ?? "USUARIO")
-            .toString()
-            .toUpperCase();
-    final List<Map<String, String>> allProfiles = [
-      {
-        "name": ownerName,
-        "image":
-            "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-qo9h82134t9nv0j0.jpg",
-      },
+    final List<Map<String, String>> dynamicProfiles = [
+      {"name": realName.toUpperCase(), "image": realProfilePic},
       {
         "name": "USUARIO 2",
         "image":
@@ -57,23 +88,22 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
       },
     ];
 
-    // 4. Filtrado dinámico según el plan elegido
-    final visibleProfiles = allProfiles.take(maxProfiles).toList();
+    final visibleProfiles = dynamicProfiles.take(maxProfiles).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          TextButton(
-            onPressed: () {},
-            child: Text(
-              "Editar",
-              style: GoogleFonts.geologica(color: Colors.white, fontSize: 16),
-            ),
+        centerTitle: true,
+        title: Text(
+          "MOVIEWIND",
+          style: GoogleFonts.montserrat(
+            color: const Color(0xFFE50914),
+            fontWeight: FontWeight.w900,
+            fontSize: 22,
           ),
-        ],
+        ),
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -82,146 +112,89 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             children: [
               Text(
                 "¿Quién está viendo ahora?",
-                style: GoogleFonts.montserrat(
+                style: GoogleFonts.geologica(
                   color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
-              const SizedBox(height: 10),
-              // Badge de Plan Estilizado
+              const SizedBox(height: 40),
+
+              // Los perfiles se generan dinámicamente según el plan
+              Wrap(
+                spacing: 25,
+                runSpacing: 25,
+                alignment: WrapAlignment.center,
+                children: visibleProfiles.map((profile) {
+                  return ProfileItem(
+                    profile: profile,
+                    // Llamamos a la navegación directa
+                    onTap: () => _navigateToMovies(context, profile, userData),
+                  );
+                }).toList(),
+              ),
+
+              const SizedBox(height: 60),
+
+              // Botón de Plan
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 4,
+                  horizontal: 12,
+                  vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.amber.withOpacity(0.5)),
-                  borderRadius: BorderRadius.circular(2),
+                  border: Border.all(color: Colors.white24),
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  "PLAN ${plan.toUpperCase()} • $maxProfiles ${maxProfiles > 1 ? 'DISPOSITIVOS' : 'DISPOSITIVO'}",
+                  "PLAN ${plan.toUpperCase()}",
                   style: GoogleFonts.geologica(
-                    color: Colors.amber,
+                    color: Colors.grey,
                     fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
+                    letterSpacing: 1.5,
                   ),
                 ),
               ),
-              const SizedBox(height: 50),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40),
-                child: Wrap(
-                  spacing: 30,
-                  runSpacing: 40,
-                  alignment: WrapAlignment.center,
-                  children: visibleProfiles.map((profile) {
-                    return ProfileItem(
-                      profile: profile,
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                MoviesScreen(user: widget.user),
-                          ),
-                        );
-                      },
-                    );
-                  }).toList(),
-                ),
-              ),
-              const SizedBox(height: 80),
-              _buildAdminButton(),
             ],
           ),
         ),
       ),
     );
   }
-
-  Widget _buildAdminButton() {
-    return OutlinedButton(
-      onPressed: () {},
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: Colors.grey, width: 1),
-        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      ),
-      child: Text(
-        "ADMINISTRAR PERFILES",
-        style: GoogleFonts.geologica(
-          color: Colors.grey,
-          fontSize: 14,
-          letterSpacing: 3,
-        ),
-      ),
-    );
-  }
 }
 
-class ProfileItem extends StatefulWidget {
+class ProfileItem extends StatelessWidget {
   final Map<String, String> profile;
   final VoidCallback onTap;
 
   const ProfileItem({super.key, required this.profile, required this.onTap});
 
   @override
-  State<ProfileItem> createState() => _ProfileItemState();
-}
-
-class _ProfileItemState extends State<ProfileItem> {
-  bool _isHovered = false;
-
-  @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Column(
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutCubic,
-              width: _isHovered ? 125 : 115,
-              height: _isHovered ? 125 : 115,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(
-                  color: _isHovered ? Colors.white : Colors.transparent,
-                  width: 3,
-                ),
-                image: DecorationImage(
-                  image: NetworkImage(widget.profile['image']!),
-                  fit: BoxFit.cover,
-                ),
-                boxShadow: _isHovered
-                    ? [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.5),
-                          blurRadius: 20,
-                          spreadRadius: 5,
-                        ),
-                      ]
-                    : [],
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              image: DecorationImage(
+                image: NetworkImage(profile['image']!),
+                fit: BoxFit.cover,
               ),
             ),
-            const SizedBox(height: 15),
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
-              style: GoogleFonts.geologica(
-                color: _isHovered ? Colors.white : Colors.grey,
-                fontSize: 16,
-                fontWeight: _isHovered ? FontWeight.bold : FontWeight.w400,
-              ),
-              child: Text(widget.profile['name']!),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            profile['name']!,
+            style: GoogleFonts.geologica(
+              color: Colors.grey.shade400,
+              fontSize: 14,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

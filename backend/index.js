@@ -1,118 +1,185 @@
 const express = require('express');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const prisma = new PrismaClient();
 
 app.use(cors());
-app.use(express.json()); // Vital para que el body no llegue {}
+app.use(express.json());
 
-// RUTA PARA CREAR PELÍCULA
-app.post("/movies", async (req, res) => {
-    console.log("Datos recibidos:", req.body);
-    
+// --- CONFIGURACIÓN DE NODEMAILER ---
+// Importante: Genera una "Contraseña de aplicación" en tu cuenta de Google
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: 'moviewindsupport@gmail.com', 
+        pass: 'vhchkvifdckabnyc' 
+    }
+});
+
+// --- RUTAS DE AUTENTICACIÓN (OTP) ---
+
+// 1. Enviar código de 4 dígitos
+app.post('/api/auth/send-otp', async (req, res) => {
+    const { email } = req.body;
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+
     try {
-        const { title, description, releaseDate, rating, imageUrl, category } = req.body;
-
-        const nuevaPelicula = await prisma.movie.create({
-            data: {
-                title: title,
-                description: description,
-                releaseDate: new Date(releaseDate), 
-                rating: parseFloat(rating),
-                imageUrl: imageUrl,
-                category: category
+        // Buscamos si el usuario existe, si no, lo creamos (Upsert)
+        await prisma.user.upsert({
+            where: { email },
+            update: { 
+                pin: otp, 
+                pinExpiresAt: new Date(Date.now() + 15 * 60000) 
+            },
+            create: { 
+                email, 
+                pin: otp, 
+                pinExpiresAt: new Date(Date.now() + 15 * 60000),
+                name: "Usuario Nuevo"
             }
         });
 
-        res.status(201).json(nuevaPelicula);
-        console.log("✅ Película guardada en Neon!");
+        await transporter.sendMail({
+            from: '"MovieWind" <tu-correo@gmail.com>',
+            to: email,
+            subject: "Tu código de acceso - MovieWind",
+            html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+                    <h2>Bienvenido de vuelta a MovieWind</h2>
+                    <p>Tu código de acceso a MovieWind es: <strong style="font-size: 24px; color: #E50914;">${otp}</strong></p>
+                    <p>Tu código expirará en 15 min.</p>
+                </div>
+            `,
+            text: `Bienvenido de vuelta a MovieWind, Tu código de acceso a MovieWind es ${otp}, tu código expirará en 15 min.`
+        });
+
+        console.log(`✅ OTP enviado a ${email}`);
+        res.json({ success: true });
     } catch (error) {
-        console.error("❌ Error al guardar:", error);
-        res.status(500).json({ error: "No se pudo guardar la película" });
+        console.error(error);
+        res.status(500).json({ error: "Error al enviar el código" });
     }
 });
 
-// RUTA PARA VER PELÍCULAS
-app.get('/movies', async (req, res) => {
-  const { category } = req.query; // Aquí recibimos el "hollywood", "series", etc.
+// 2. Verificar código
+app.post('/api/auth/verify-otp', async (req, res) => {
+    const { email, code } = req.body;
 
-  try {
-    const movies = await prisma.movie.findMany({
-      where: category ? {
-        category: {
-          equals: category,
-          mode: 'insensitive', // Esto hace que no importe si es "Hollywood" o "hollywood"
-        },
-      } : {}, // Si no hay categoría en la URL, trae TODAS (para la Home)
-    });
-    res.json(movies);
-  } catch (error) {
-    console.error("Error al filtrar:", error);
-    res.status(500).json({ error: "Error al obtener las películas" });
-  }
-});
-
-app.listen(3000, () => {
-    console.log("🚀 Servidor corriendo en http://localhost:3000");
-});
-
-app.post("/sync-user", async (req, res) => {
-    console.log("Sincronizando usuario:", req.body);
-    
     try {
-        const { id, email, name, isVerified } = req.body;
+        const user = await prisma.user.findUnique({ where: { email } });
 
-        const user = await prisma.user.upsert({
-            where: { id: id },
-            update: {isVerified: isVerified},
-            create: {
-                id: id,
-                email: email,
-                name: name || "Usuario de Netflix",
-                isVerified: isVerified || false,
-            },
-        });
-
-        console.log(`✅ Usuario ${user.email} sincronizado (Verificado: ${user.isVerified})`);
-        
-        res.status(200).json({
-            message: "Usuario sincronizado correctamente",
-            user: user
-        });
-
+        if (user && user.pin === code && new Date() < user.pinExpiresAt) {
+            // Limpiamos el PIN después de usarlo
+            await prisma.user.update({
+                where: { email },
+                data: { pin: null, pinExpiresAt: null, isVerified: true }
+            });
+            res.json(user); // Enviamos los datos del usuario a Flutter
+        } else {
+            res.status(401).json({ error: "Código incorrecto o expirado" });
+        }
     } catch (error) {
-        console.error("❌ Error en Neon/Prisma:", error);
-        res.status(500).json({ error: "Error al sincronizar con la base de datos" });
+        res.status(500).json({ error: "Error al verificar" });
     }
 });
 
-app.get("/users", async (req, res) => {
-    const users = await prisma.user.findMany();
-    res.json(users);
+// --- RUTAS DE PELÍCULAS ---
+
+app.get('/api/movies', async (req, res) => {
+    try {
+        const movies = await prisma.movie.findMany();
+        res.json(movies);
+    } catch (error) {
+        res.status(500).json({ error: "Error al obtener películas" });
+    }
 });
 
-app.put("/users/:id", async (req, res) => {
-  const { id } = req.params;
-  const { name, profilePic, plan } = req.body;
+app.post("/api/movies", async (req, res) => {
+    try {
+        const { title, description, releaseDate, rating, imageUrl, category } = req.body;
+        const nuevaPelicula = await prisma.movie.create({
+            data: {
+                title,
+                description,
+                releaseDate: new Date(releaseDate),
+                rating: parseFloat(rating),
+                imageUrl,
+                category
+            }
+        });
+        res.status(201).json(nuevaPelicula);
+    } catch (error) {
+        res.status(500).json({ error: "Error al guardar película" });
+    }
+});
 
-  try {
-    const userUpdated = await prisma.user.update({
-      where: { 
-        id: id // Convertimos el ID a número para Neon
-      },
-      data: { 
-        name: name, 
-        profilePic: profilePic,
-        plan: plan
-      },
-    });
+// --- RUTAS DE USUARIO ---
 
-    console.log("Usuario actualizado:", userUpdated.name);
-    res.json(userUpdated); // Le responde a Flutter que todo salió bien
-  } catch (error) {
-    console.error("Error al actualizar:", error);
-    res.status(500).json({ error: "No se pudo actualizar el usuario en la base de datos" });
-  }
+app.put("/api/users/:id", async (req, res) => {
+    const { id } = req.params;
+    const { name, profilePic, plan } = req.body;
+    try {
+        const userUpdated = await prisma.user.update({
+            where: { id: id },
+            data: { name, profilePic, plan },
+        });
+        res.json(userUpdated);
+    } catch (error) {
+        res.status(500).json({ error: "Error al actualizar usuario" });
+    }
+});
+
+app.post('/api/auth/register', async (req, res) => {
+    // Ahora recibimos también 'plan' y 'password' desde el body
+    const { email, name, password, plan } = req.body; 
+
+    try {
+        const user = await prisma.user.upsert({
+            where: { email },
+            update: { 
+                name,
+                plan: plan || "basico", // Actualiza el plan si el usuario ya existe
+            }, 
+            create: {
+                email,
+                name,
+                password, // Asegúrate de tener este campo en tu schema.prisma
+                plan: plan || "basico",
+                isVerified: true, 
+            }
+        });
+
+        // Configuración del correo de bienvenida con datos dinámicos
+        const mailOptions = {
+            from: '"MovieWind" <tu-correo@gmail.com>', // Usa tu variable de entorno aquí
+            to: email,
+            subject: "¡Bienvenido a MovieWind!",
+            html: `
+                <div style="font-family: sans-serif; border: 1px solid #e50914; padding: 20px;">
+                    <h1 style="color: #e50914;">¡Hola, ${name}!</h1>
+                    <p>Tu cuenta en <b>MovieWind</b> ha sido creada con éxito.</p>
+                    <p>Detalles de tu suscripción:</p>
+                    <ul>
+                        <li><b>Plan seleccionado:</b> ${plan.toUpperCase()}</li>
+                        <li><b>Email:</b> ${email}</li>
+                    </ul>
+                    <p>¡Disfruta de las mejores películas y series!</p>
+                </div>
+            `
+        };
+
+        await transporter.sendMail(mailOptions);
+
+        res.status(201).json(user); 
+    } catch (error) {
+        console.error("Error en registro:", error);
+        res.status(500).json({ error: "No se pudo completar el registro" });
+    }
+});
+
+app.listen(3000, '0.0.0.0', () => {
+    console.log("🚀 Servidor corriendo en http://localhost:3000");
 });

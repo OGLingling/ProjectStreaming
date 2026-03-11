@@ -50,7 +50,12 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
         plan: widget.selectedPlan,
       );
 
-      await ApiService.registerUser(nuevoUsuario, false);
+      await ApiService.registerUser(
+        widget.userEmail,
+        widget.userName,
+        widget.password,
+        widget.selectedPlan,
+      );
 
       // Navegación
       if (!mounted) return;

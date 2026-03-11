@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart'; // Asegúrate de que esta ruta sea correcta
 import 'payment_method_screen.dart';
 
 class PlanSelectionScreen extends StatefulWidget {
@@ -20,8 +22,8 @@ class PlanSelectionScreen extends StatefulWidget {
 
 class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
   int _selectedPlanIndex = 2; // Premium por defecto
+  bool _isLoading = false;
 
-  // Lista de planes actualizada con la cantidad de dispositivos y usuarios
   final List<Map<String, dynamic>> _plans = [
     {
       "name": "Básico",
@@ -52,6 +54,58 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
     },
   ];
 
+  Future<void> _handleNextStep() async {
+    setState(() => _isLoading = true);
+
+    String planSeleccionado = _plans[_selectedPlanIndex]["name"]
+        .toString()
+        .toLowerCase();
+
+    try {
+      // 1. Intentamos registrar al usuario en la base de datos
+      final userData = await ApiService.registerUser(
+        widget.userEmail,
+        widget.userName,
+        widget.password,
+        planSeleccionado,
+      );
+
+      if (userData != null) {
+        // 2. Si el registro es exitoso, guardamos la sesión localmente
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_id', userData['id'].toString());
+        await prefs.setBool('is_logged_in', true);
+
+        if (!mounted) return;
+
+        // 3. Navegamos a la pantalla de pago
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PaymentMethodScreen(
+              userEmail: widget.userEmail,
+              userName: widget.userName,
+              password: widget.password,
+              selectedPlan: planSeleccionado,
+            ),
+          ),
+        );
+      } else {
+        _showSnackBar("Hubo un error al crear tu cuenta. Intenta nuevamente.");
+      }
+    } catch (e) {
+      _showSnackBar("Error de conexión. Verifica que el servidor esté activo.");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -64,7 +118,7 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              "Cerrar sesión",
+              "Atrás",
               style: GoogleFonts.geologica(
                 color: Colors.black,
                 fontWeight: FontWeight.bold,
@@ -103,25 +157,23 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
                 ],
               ),
             ),
-
-            // Carrusel Horizontal de Planes (Evita que se estiren)
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Row(
-                children: List.generate(_plans.length, (index) {
-                  return _buildPlanCard(index);
-                }),
+                children: List.generate(
+                  _plans.length,
+                  (index) => _buildPlanCard(index),
+                ),
               ),
             ),
-
             Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
                   const SizedBox(height: 10),
                   Text(
-                    "La disponibilidad del contenido en HD (720p), Full HD (1080p), Ultra HD (4K) y HDR depende de tu servicio de internet y de las capacidades de tu dispositivo.",
+                    "La disponibilidad del contenido depende de tu servicio de internet y de las capacidades de tu dispositivo.",
                     style: GoogleFonts.geologica(
                       color: Colors.black54,
                       fontSize: 12,
@@ -139,30 +191,25 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
-                      onPressed: () {
-                        String planSeleccionado =
-                            _plans[_selectedPlanIndex]["name"];
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => PaymentMethodScreen(
-                              userEmail: widget.userEmail,
-                              userName: widget.userName,
-                              password: widget.password,
-                              selectedPlan: planSeleccionado,
+                      onPressed: _isLoading ? null : _handleNextStep,
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Text(
+                              "SIGUIENTE",
+                              style: GoogleFonts.geologica(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                letterSpacing: 1.2,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      child: Text(
-                        "SIGUIENTE",
-                        style: GoogleFonts.geologica(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
                     ),
                   ),
                 ],
@@ -182,7 +229,7 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
       onTap: () => setState(() => _selectedPlanIndex = index),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
-        width: 280, // ANCHO FIJO PARA EVITAR ESTIRAMIENTO
+        width: 280,
         margin: const EdgeInsets.only(right: 15),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -202,7 +249,6 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
         ),
         child: Column(
           children: [
-            // Cabecera de la tarjeta con Degradado
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 15),
@@ -237,8 +283,6 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
                 ],
               ),
             ),
-
-            // Detalles internos
             Padding(
               padding: const EdgeInsets.all(15),
               child: Column(
@@ -246,10 +290,7 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
                   _buildCardDetail("Precio mensual", plan["price"]),
                   _buildCardDetail("Calidad de video", plan["quality"]),
                   _buildCardDetail("Resolución", plan["res"]),
-                  _buildCardDetail(
-                    "Uso simultáneo",
-                    plan["screens"],
-                  ), // Nuevo campo mostrado
+                  _buildCardDetail("Uso simultáneo", plan["screens"]),
                   _buildCardDetail("Dispositivos", plan["devices"]),
                   const SizedBox(height: 10),
                   if (isSelected)
