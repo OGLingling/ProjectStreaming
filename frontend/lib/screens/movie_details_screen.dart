@@ -48,7 +48,7 @@ class MovieDetailsScreen extends StatelessWidget {
                       tag: movieData['id'] ?? imageUrl,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(15),
-                        child: Container(
+                        child: SizedBox(
                           height:
                               size.height * 0.5, // Altura fija para el póster
                           child: AspectRatio(

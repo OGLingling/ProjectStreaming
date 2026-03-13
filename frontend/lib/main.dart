@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'screens/auth_screen.dart';
-import 'screens/plan_selection_screen.dart';
 import 'screens/profiles_screen.dart';
 import 'screens/movies_screen.dart';
 

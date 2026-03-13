@@ -157,7 +157,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
         child: Row(
           children: [
             Expanded(child: Text(title, style: const TextStyle(fontSize: 16))),
-            ...icons.map((icon) => Icon(icon, color: Colors.blueGrey)).toList(),
+            ...icons.map((icon) => Icon(icon, color: Colors.blueGrey)),
             const Icon(
               Icons.arrow_forward_ios,
               size: 16,

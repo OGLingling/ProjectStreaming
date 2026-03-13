@@ -46,11 +46,12 @@ class _MoviesScreenState extends State<MoviesScreen>
           .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         List<dynamic> data = jsonDecode(response.body);
-        if (mounted)
+        if (mounted) {
           setState(() {
             movies = data.map((m) => Movie.fromJson(m)).toList();
             isLoading = false;
           });
+        }
       } else {
         _loadMockData();
       }
@@ -344,8 +345,7 @@ class _MoviesScreenState extends State<MoviesScreen>
                   .where(
                     (p) => p['id'] != (widget.user?['activeProfileId'] ?? ""),
                   )
-                  .map((p) => _profileItem(p['name'], p['profilePic']))
-                  .toList(),
+                  .map((p) => _profileItem(p['name'], p['profilePic'])),
               const Divider(color: Colors.white24, height: 20),
               _menuItem(Icons.edit_outlined, "Administrar perfiles"),
               _menuItem(Icons.person_outline, "Cuenta"),
@@ -401,8 +401,9 @@ class _MoviesScreenState extends State<MoviesScreen>
       dense: true,
       onTap: () {
         _profileMenuController.hide();
-        if (text.contains("Cerrar sesión"))
+        if (text.contains("Cerrar sesión")) {
           Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
+        }
       },
     );
   }
