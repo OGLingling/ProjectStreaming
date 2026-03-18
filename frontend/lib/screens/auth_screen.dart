@@ -235,7 +235,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 });
               },
               child: Text(
-                isAtLogin ? "Ayuda" : "Iniciar sesión",
+                isAtLogin ? "Registrate" : "Iniciar sesión",
                 style: GoogleFonts.geologica(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,

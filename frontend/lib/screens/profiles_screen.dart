@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'manage_profiles_screen.dart';
 import 'movies_screen.dart';
 
 class ProfilesScreen extends StatefulWidget {
@@ -19,18 +20,16 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     Map<String, String> profile,
     Map<String, dynamic> userData,
   ) {
-    Navigator.pushAndRemoveUntil(
+    final selectedUserData = {
+      ...userData,
+      'selectedName': profile['name'],
+      'selectedImage': profile['image'],
+    };
+    Navigator.pushNamedAndRemoveUntil(
       context,
-      MaterialPageRoute(
-        builder: (context) => MoviesScreen(
-          user: {
-            ...userData,
-            'selectedName': profile['name'],
-            'selectedImage': profile['image'],
-          },
-        ),
-      ),
-      (route) => false, // Limpia el historial para que no pueda volver atrás
+      '/main',
+      (route) => false,
+      arguments: selectedUserData,
     );
   }
 
@@ -52,8 +51,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             .toString();
 
     final String realProfilePic =
-        (userData['profilePic'] ??
-                "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-qo9h82134t9nv0j0.jpg")
+        (userData['profilePic'] ?? "assets/avatars/usuarioprueba.jpg")
             .toString();
 
     // Determinamos el número de perfiles según el plan
@@ -71,21 +69,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
     final List<Map<String, String>> dynamicProfiles = [
       {"name": realName.toUpperCase(), "image": realProfilePic},
-      {
-        "name": "USUARIO 2",
-        "image":
-            "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-v98z09sh9u527l6y.jpg",
-      },
-      {
-        "name": "USUARIO 3",
-        "image":
-            "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-dy7st87fb36y39bc.jpg",
-      },
-      {
-        "name": "USUARIO 4",
-        "image":
-            "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-2fg93wnp9y929nu9.jpg",
-      },
+      {"name": "USUARIO 2", "image": "assets/avatars/usuario6.webp"},
+      {"name": "USUARIO 3", "image": "assets/avatars/usuario2.jpg"},
+      {"name": "USUARIO 4", "image": "assets/avatars/usuario3.jpg"},
     ];
 
     final visibleProfiles = dynamicProfiles.take(maxProfiles).toList();
@@ -133,6 +119,25 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   );
                 }).toList(),
               ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          ManageProfilesScreen(profileData: visibleProfiles[0]),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  side: const BorderSide(color: Colors.white24),
+                ),
+                child: const Text(
+                  "Administrar perfiles",
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
 
               const SizedBox(height: 60),
 
@@ -171,6 +176,15 @@ class ProfileItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String imagePath = profile['image'] ?? "";
+
+    ImageProvider imageProvider;
+    if (imagePath.startsWith('http')) {
+      imageProvider = NetworkImage(imagePath);
+    } else {
+      // Si no empieza con http, asumimos que es un asset local
+      imageProvider = AssetImage(imagePath);
+    }
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -180,9 +194,13 @@ class ProfileItem extends StatelessWidget {
             height: 100,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(4),
+              color: Colors.grey[900],
               image: DecorationImage(
-                image: NetworkImage(profile['image']!),
+                image: imageProvider,
                 fit: BoxFit.cover,
+                onError: (exception, stackTrace) {
+                  debugPrint("Error cargando imagen: $imagePath");
+                },
               ),
             ),
           ),

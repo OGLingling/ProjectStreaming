@@ -7,6 +7,7 @@ class Movie {
   final String imageUrl;
   final String category;
   final String? type;
+  final String? videoUrl;
 
   Movie({
     this.id,
@@ -17,6 +18,7 @@ class Movie {
     required this.imageUrl,
     required this.category,
     this.type,
+    this.videoUrl,
   });
 
   // Añade esto para convertir de JSON a Objeto Movie
@@ -30,6 +32,7 @@ class Movie {
       imageUrl: json['imageUrl'] ?? '',
       category: json['category'] ?? '',
       type: json['type'],
+      videoUrl: json['videoUrl'],
     );
   }
 
@@ -41,5 +44,6 @@ class Movie {
     "imageUrl": imageUrl,
     "category": category,
     "type": type,
+    "videoUrl": videoUrl,
   };
 }

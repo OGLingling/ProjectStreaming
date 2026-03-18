@@ -26,8 +26,7 @@ class _UserScreenState extends State<UserScreen> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.user['name']);
-    _profileImage =
-        widget.user['profilePic'] ?? "assets/avatars/perfilPrueba.jpg";
+    _profileImage = widget.user['profilePic'] ?? "assets/avatars/usuario6.webp";
     _imageController = TextEditingController(text: _profileImage);
   }
 
@@ -41,7 +40,7 @@ class _UserScreenState extends State<UserScreen> {
   // --- MEJORA 1: MANEJO ROBUSTO DE IMÁGENES ---
   ImageProvider _getProfileImage(String path) {
     if (path.isEmpty) {
-      return const AssetImage("assets/avatars/perfilPrueba.jpg");
+      return const AssetImage("assets/avatars/usuario5.webp");
     }
     if (path.startsWith('assets/')) {
       return AssetImage(path);
@@ -50,7 +49,7 @@ class _UserScreenState extends State<UserScreen> {
       return NetworkImage(path);
     }
     // Fallback por defecto
-    return const AssetImage("assets/avatars/perfilPrueba.jpg");
+    return const AssetImage("assets/avatars/usuario5.webp");
   }
 
   void _logout() {

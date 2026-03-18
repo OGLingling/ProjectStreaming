@@ -17,6 +17,7 @@ model Movie {
   category    String?
   type         String?  @default("hollywood")
   createdAt   DateTime @default(now())
+  videoUrl    String?
 }
 
 enum PlanType {
@@ -29,7 +30,7 @@ model User {
   id        String   @id @default(uuid())
   email     String   @unique
   name      String
-  profilePic String? @default("https://via.placeholder.com/150")
+  profilePic String? @default("assets/avatars/usuario5.webp")
   createdAt DateTime @default(now())
   plan      String @default("basico")
   isVerified Boolean @default(false)
