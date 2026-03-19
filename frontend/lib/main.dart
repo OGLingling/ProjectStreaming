@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 // Asegúrate de que las rutas de importación coincidan con tu estructura de carpetas
 import 'screens/auth_screen.dart';
 import 'screens/profiles_screen.dart';
-import 'screens/movies_screen.dart';
 import 'screens/main_navigation_screen.dart';
-import 'screens/search_screen.dart';
 
 void main() {
   // Garantiza que los servicios de Flutter estén listos antes de ejecutar la app

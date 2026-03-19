@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -11,7 +10,6 @@ import 'novedades_screen.dart';
 import 'manage_profiles_screen.dart';
 import 'search_screen.dart';
 import 'my_list_screen.dart';
-import 'profiles_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   final Map<String, dynamic>? userData;

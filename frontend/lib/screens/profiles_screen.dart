@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'manage_profiles_screen.dart';
-import 'movies_screen.dart';
 
 class ProfilesScreen extends StatefulWidget {
   // Los datos del usuario pueden venir de los argumentos de la ruta o del constructor
