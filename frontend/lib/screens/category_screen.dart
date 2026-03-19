@@ -17,7 +17,7 @@ class CategoryScreen extends StatefulWidget {
   });
 
   @override
-  _CategoryScreenState createState() => _CategoryScreenState();
+  State<CategoryScreen> createState() => _CategoryScreenState();
 }
 
 class _CategoryScreenState extends State<CategoryScreen> {
@@ -47,6 +47,8 @@ class _CategoryScreenState extends State<CategoryScreen> {
           }).toList();
           isLoading = false;
         });
+      } else {
+        setState(() => isLoading = false);
       }
     } catch (e) {
       debugPrint("Error al cargar datos: $e");
@@ -61,6 +63,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
       appBar: AppBar(
         title: Text(widget.title, style: const TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF1A2232),
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: isLoading
@@ -75,7 +78,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                 crossAxisCount: 4,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: 2 / 3,
+                childAspectRatio: 0.7, // Ajustado para posters
               ),
               itemCount: movies.length,
               itemBuilder: (context, index) =>
@@ -86,9 +89,16 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Text(
-        "No hay contenido en ${widget.title}",
-        style: const TextStyle(color: Colors.grey),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.movie_filter, color: Colors.grey, size: 60),
+          const SizedBox(height: 16),
+          Text(
+            "No hay contenido en ${widget.title}",
+            style: const TextStyle(color: Colors.grey, fontSize: 16),
+          ),
+        ],
       ),
     );
   }
@@ -105,38 +115,28 @@ class CategoryMovieCard extends StatefulWidget {
 class _CategoryMovieCardState extends State<CategoryMovieCard> {
   bool _isHovered = false;
 
-  // Lógica de navegación ultra-compatible
   Future<void> _handleNavigation(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
-
-    // IMPORTANTE: Recarga forzada para Flutter Web
     await prefs.reload();
 
-    // Buscamos cualquier rastro de sesión.
-    // Si la app muestra "Alfredo Pers", es porque 'user_name' o 'user' tiene datos.
     final String? sessionValue =
         prefs.getString('user_name') ??
         prefs.getString('user') ??
         prefs.getString('auth_token') ??
         prefs.getString('token');
 
-    // Imprimimos en consola para que veas qué está pasando realmente
-    debugPrint("--- ESTADO DE SESIÓN ---");
-    debugPrint("Nombre/Token detectado: $sessionValue");
-    debugPrint("Todas las llaves: ${prefs.getKeys()}");
-
     if (sessionValue != null && sessionValue.isNotEmpty) {
-      // SI HAY SESIÓN -> Entramos a detalles
       if (!mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) =>
-              MovieDetailsScreen(movieData: widget.movie.toJson()),
+          builder: (context) => MovieDetailsScreen(
+            // Enviamos el JSON que ahora incluye backdropUrl e imageUrl correctos
+            movieData: widget.movie.toJson(),
+          ),
         ),
       );
     } else {
-      // NO HAY SESIÓN -> Bloqueamos con el mensaje rojo
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -150,8 +150,7 @@ class _CategoryMovieCardState extends State<CategoryMovieCard> {
 
   @override
   Widget build(BuildContext context) {
-    // Lógica original de tus Assets
-    final String fileName = widget.movie.imageUrl.split('/').last;
+    final String path = widget.movie.imageUrl ?? '';
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -163,27 +162,42 @@ class _CategoryMovieCardState extends State<CategoryMovieCard> {
           duration: const Duration(milliseconds: 200),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: AspectRatio(
-              aspectRatio: 2 / 3,
-              child: Container(
-                color: const Color(0xFF1A2232),
-                child: Image.asset(
-                  'assets/Images/$fileName',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    color: const Color(0xFF1A2232),
-                    child: const Icon(
-                      Icons.movie,
-                      color: Colors.white10,
-                      size: 40,
-                    ),
-                  ),
-                ),
-              ),
+            child: Container(
+              color: const Color(0xFF1A2232),
+              child: _buildImage(path),
             ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildImage(String path) {
+    if (path.isEmpty) {
+      return const Center(
+        child: Icon(Icons.movie, color: Colors.white10, size: 40),
+      );
+    }
+
+    // Lógica para detectar si es URL de internet o asset local
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) =>
+            const Icon(Icons.error, color: Colors.white10),
+      );
+    } else {
+      // Si el path ya contiene 'assets/', lo usamos tal cual, si no, lo construimos
+      final String assetPath = path.startsWith('assets')
+          ? path
+          : 'assets/Images/${path.split('/').last}';
+      return Image.asset(
+        assetPath,
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) =>
+            const Icon(Icons.movie, color: Colors.white10),
+      );
+    }
   }
 }

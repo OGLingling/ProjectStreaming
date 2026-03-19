@@ -14,6 +14,7 @@ model Movie {
   releaseDate DateTime
   rating      Float    @default(0.0)
   imageUrl    String?
+  backdropUrl String?
   category    String?
   type         String?  @default("hollywood")
   createdAt   DateTime @default(now())

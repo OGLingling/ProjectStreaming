@@ -1,174 +1,190 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'video_player_screen.dart'; // Importación verificada
 
 class MovieDetailsScreen extends StatelessWidget {
   final Map<String, dynamic> movieData;
 
   const MovieDetailsScreen({super.key, required this.movieData});
 
+  // FUNCIÓN PARA REPRODUCIR EL VIDEO DESDE SUPABASE
+  void _playVideo(BuildContext context) {
+    // Extraemos la URL de Supabase desde movieData
+    final String? videoUrl = movieData['videoUrl'];
+
+    if (videoUrl != null && videoUrl.isNotEmpty) {
+      // NAVEGACIÓN ACTIVA: Pasamos la URL a tu pantalla de reproductor
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VideoPlayerScreen(
+            videoUrl: videoUrl,
+            title: movieData['title'] ?? 'Sin título',
+          ),
+        ),
+      );
+    } else {
+      // Feedback visual si no hay link en la base de datos
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Error: No se encontró el link del video en la base de datos.",
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final String imageUrl = movieData['imageUrl'] ?? '';
+    final String coverImg =
+        movieData['backdropUrl'] ?? movieData['imageUrl'] ?? '';
+    final String title = movieData['title'] ?? 'Sin título';
+    final String description = movieData['description'] ?? '';
+    final String category = movieData['category'] ?? '';
+    final double rating = (movieData['rating'] as num?)?.toDouble() ?? 0.0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121826),
+      backgroundColor: const Color(0xFF141414),
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: SingleChildScrollView(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- PARTE SUPERIOR: PÓSTER ALARGADO CON FONDO ---
-            Stack(
-              children: [
-                // 1. Fondo desenfocado (para llenar los lados si la pantalla es ancha)
-                Container(
-                  height: size.height * 0.6,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    image: DecorationImage(
-                      image: imageUrl.startsWith('http')
-                          ? NetworkImage(imageUrl)
-                          : AssetImage('assets/images/$imageUrl')
-                                as ImageProvider,
-                      fit: BoxFit.cover,
-                    ),
+            // ÁREA DEL BANNER (Imagen completa 16:9)
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Stack(
+                children: [
+                  // 1. IMAGEN DE FONDO
+                  Positioned.fill(
+                    child: coverImg.startsWith('http')
+                        ? Image.network(coverImg, fit: BoxFit.cover)
+                        : Image.asset(coverImg, fit: BoxFit.cover),
                   ),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                    child: Container(color: Colors.black.withOpacity(0.5)),
-                  ),
-                ),
 
-                // 2. El Póster central autoajustable (Proporción 2:3)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.only(top: 60, bottom: 20),
-                  child: Center(
-                    child: Hero(
-                      tag: movieData['id'] ?? imageUrl,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(15),
-                        child: SizedBox(
-                          height:
-                              size.height * 0.5, // Altura fija para el póster
-                          child: AspectRatio(
-                            aspectRatio:
-                                2 / 3, // Relación de aspecto de póster real
-                            child: imageUrl.startsWith('http')
-                                ? Image.network(imageUrl, fit: BoxFit.cover)
-                                : Image.asset(
-                                    'assets/images/$imageUrl',
-                                    fit: BoxFit.cover,
-                                  ),
-                          ),
+                  // 2. GRADIENTE DE PROTECCIÓN (Estilo Netflix: Oscuro a la izquierda)
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            Colors.black.withOpacity(0.9),
+                            Colors.black.withOpacity(0.4),
+                            Colors.transparent,
+                          ],
+                          stops: const [0.0, 0.5, 1.0],
                         ),
                       ),
                     ),
                   ),
-                ),
 
-                // 3. Gradiente para fundir con el fondo negro
-                Positioned.fill(
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.transparent,
-                          Color(0xFF121826),
-                        ],
-                      ),
+                  // 3. CAPA DE INFORMACIÓN (Título, Sinopsis, Botón)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 20,
                     ),
-                  ),
-                ),
-
-                // Botón de atrás
-                Positioned(
-                  top: 40,
-                  left: 20,
-                  child: CircleAvatar(
-                    backgroundColor: Colors.black.withOpacity(0.5),
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            // --- SECCIÓN DE INFORMACIÓN ---
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          movieData['title'] ?? 'Sin título',
-                          style: const TextStyle(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Título (Área Azul)
+                        Text(
+                          title.toUpperCase(),
+                          style: GoogleFonts.montserrat(
                             color: Colors.white,
                             fontSize: 28,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.yellow[700],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '${movieData['rating']} ★',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                        const SizedBox(height: 10),
+
+                        // Sinopsis (Área Verde)
+                        SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.45,
+                          child: Text(
+                            description,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              height: 1.3,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    "${movieData['category']} • ${movieData['releaseDate'].toString().substring(0, 4)}",
-                    style: const TextStyle(
-                      color: Colors.redAccent,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                        const SizedBox(height: 10),
+
+                        // Rating y Categoría
+                        Row(
+                          children: [
+                            Text(
+                              "$rating Calificación",
+                              style: const TextStyle(
+                                color: Color(0xFF46D369),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              category,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 15),
+
+                        // BOTÓN DE REPRODUCIR (Área Blanca - Tamaño reducido)
+                        SizedBox(
+                          width: 150,
+                          height: 38,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _playVideo(
+                              context,
+                            ), // <--- CONEXIÓN CON REPRODUCTOR
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black,
+                              elevation: 5,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              padding: EdgeInsets.zero,
+                            ),
+                            icon: const Icon(Icons.play_arrow, size: 24),
+                            label: const Text(
+                              "Reproducir",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 30),
-                  const Text(
-                    "SINOPSIS",
-                    style: TextStyle(
-                      color: Colors.grey,
-                      letterSpacing: 1.5,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    movieData['description'] ??
-                        'No hay descripción disponible.',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 16,
-                      height: 1.6,
-                    ),
-                  ),
-                  const SizedBox(height: 50),
                 ],
               ),
             ),
+
+            // Contenedor para contenido extra debajo si lo necesitas
+            const SizedBox(height: 20),
           ],
         ),
       ),

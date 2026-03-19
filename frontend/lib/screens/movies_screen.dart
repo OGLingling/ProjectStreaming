@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:video_player/video_player.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import '../models/movie_model.dart';
-import '../services/api_service.dart';
+import 'movie_details_screen.dart';
 
 class MoviesScreen extends StatefulWidget {
   final Map<String, dynamic>? user;
@@ -17,101 +15,99 @@ class MoviesScreen extends StatefulWidget {
 class _MoviesScreenState extends State<MoviesScreen> {
   List<Movie> movies = [];
   bool isLoading = true;
-  final ScrollController _scrollController = ScrollController();
-  YoutubePlayerController? _bannerController;
+  bool _showVideo = true;
+
+  VideoPlayerController? _videoController;
+  bool _isVideoInitialized = false;
+
+  final String videoUrlSupabase =
+      "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/DulceHogar.mp4";
 
   @override
   void initState() {
     super.initState();
-    _fetchMovies();
+    _loadData();
+    _initVideoBanner();
   }
 
-  Future<void> _fetchMovies() async {
-    try {
-      final response = await http
-          .get(Uri.parse('${ApiService.baseUrl}/movies'))
-          .timeout(const Duration(seconds: 5));
-      if (response.statusCode == 200) {
-        List<dynamic> data = jsonDecode(response.body);
-        if (mounted) {
-          setState(() {
-            movies = data.map((m) => Movie.fromJson(m)).toList();
-            isLoading = false;
+  void _initVideoBanner() {
+    _videoController =
+        VideoPlayerController.networkUrl(Uri.parse(videoUrlSupabase))
+          ..initialize().then((_) {
+            if (mounted) {
+              setState(() => _isVideoInitialized = true);
+              _videoController?.setLooping(false);
+              _videoController?.setVolume(1.0);
+              _videoController?.play();
+
+              _videoController?.addListener(() {
+                if (_videoController!.value.position >=
+                    _videoController!.value.duration) {
+                  if (_showVideo) setState(() => _showVideo = false);
+                }
+              });
+            }
           });
-          _setupBannerVideo();
-        }
-      } else {
-        _loadMockData();
-      }
-    } catch (e) {
-      _loadMockData();
-    }
   }
 
-  void _loadMockData() {
-    if (!mounted) return;
-    final List<Movie> mockData = [
+  void _loadData() {
+    // Ahora que tu modelo reconoce backdropUrl, podemos usarlos por separado
+    movies = [
       Movie(
         title: "Dulce Hogar",
-        // CORRECCIÓN: Usamos una URL de red como respaldo por si el asset falla
-        imageUrl:
-            "https://images.tmdb.org/t/p/original/69Sdb81InZna6nS876Y9999r7pG.jpg",
-        category: "Terror / Horror.",
+        imageUrl: "assets/Images/sweetHomeCartel.webp", // IMAGEN VERTICAL
+        backdropUrl: "assets/Images/sweetHomeBanner.webp", // IMAGEN HORIZONTAL
         description:
-            "Tras una tragedia familiar, el solitario Cha Hyun-su se muda a un viejo complejo de apartamentos...",
+            "Tras una tragedia familiar, el solitario Cha Hyun-su se muda...",
         rating: 8.7,
         releaseDate: DateTime.now(),
-        videoUrl: "https://www.youtube.com/watch?v=Uhvslx7urEw",
+        category: "Terror / Horror",
+        videoUrl:
+            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/DulceHogar.mp4",
       ),
       Movie(
         title: "Avengers: Civil War",
-        imageUrl:
-            "https://images.tmdb.org/t/p/original/7WsyChvRStvS0kmORasySj9Sxc8.jpg",
-        category: "Acción • Ciencia Ficción",
-        description:
-            "La presión política aumenta para instalar un sistema de responsabilidad...",
-        rating: 7.8,
+        imageUrl: "assets/Images/civilWar.webp", // IMAGEN VERTICAL
+        backdropUrl: "assets/Images/civilWarBanner.webp", // IMAGEN HORIZONTAL
+        description: "El enfrentamiento entre Iron Man y Capitán América.",
+        rating: 8.9,
         releaseDate: DateTime.now(),
-        videoUrl: "https://www.youtube.com/watch?v=s5PVmDAEuro",
+        category: "Acción",
+        videoUrl:
+            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/CivilWar.mp4",
       ),
     ];
-
-    setState(() {
-      movies = mockData;
-      isLoading = false;
-    });
-    _setupBannerVideo();
+    setState(() => isLoading = false);
   }
 
-  void _setupBannerVideo() {
-    if (movies.isNotEmpty && movies[0].videoUrl != null) {
-      final videoId = YoutubePlayer.convertUrlToId(movies[0].videoUrl!);
-      if (videoId != null) {
-        _bannerController = YoutubePlayerController(
-          initialVideoId: videoId,
-          flags: const YoutubePlayerFlags(
-            autoPlay: true,
-            mute: true,
-            loop: true,
-            hideControls: true,
-            disableDragSeek: true,
-          ),
-        );
-        if (mounted) setState(() {});
-      }
+  void _navigateToDetails(Movie movie) {
+    if (_videoController != null && _videoController!.value.isPlaying) {
+      _videoController?.pause();
     }
-  }
 
-  void _playVideo(String url) {
-    final videoId = YoutubePlayer.convertUrlToId(url);
-    if (videoId != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => FullScreenPlayer(videoId: videoId),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MovieDetailsScreen(
+          movieData: {
+            'title': movie.title,
+            'imageUrl': movie.imageUrl,
+            'backdropUrl':
+                movie.backdropUrl, // Se pasa el banner horizontal también
+            'videoUrl': movie.videoUrl,
+            'category': movie.category,
+            'description': movie.description,
+            'rating': movie.rating,
+            'releaseDate': movie.releaseDate,
+            'id': movie.title,
+          },
         ),
-      );
-    }
+      ),
+    ).then((_) {
+      if (_showVideo && _isVideoInitialized) {
+        _videoController?.play();
+      }
+    });
   }
 
   @override
@@ -120,86 +116,107 @@ class _MoviesScreenState extends State<MoviesScreen> {
       backgroundColor: const Color(0xFF141414),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.red))
-          : RefreshIndicator(
-              onRefresh: _fetchMovies,
-              color: Colors.red,
-              child: ListView(
-                controller: _scrollController,
-                padding: EdgeInsets.zero,
-                children: [
-                  _buildBanner(),
-                  _buildSection("Mi lista", movies),
-                  _buildSection("Tendencias", movies.reversed.toList()),
-                  _buildSection("Solo en MovieWind", movies),
-                  const SizedBox(height: 50),
-                ],
-              ),
+          : ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _buildBanner(),
+                const SizedBox(height: 20),
+                _buildSection("Tu Próxima Historia", movies),
+                const SizedBox(height: 50),
+              ],
             ),
     );
   }
 
   Widget _buildBanner() {
     if (movies.isEmpty) return const SizedBox(height: 400);
+    final double bannerHeight = MediaQuery.of(context).size.height * 0.8;
+
+    // Aquí usamos específicamente el backdropUrl (horizontal)
+    final String bannerImg = movies[0].backdropUrl ?? movies[0].imageUrl ?? '';
 
     return Stack(
       children: [
         Container(
-          height: MediaQuery.of(context).size.height * 0.75,
+          height: bannerHeight,
           width: double.infinity,
           color: Colors.black,
-          child: _bannerController != null
-              ? YoutubePlayer(
-                  controller: _bannerController!,
-                  showVideoProgressIndicator: false,
-                  thumbnail: _movieImage(movies[0].imageUrl),
+          child: _showVideo && _isVideoInitialized && _videoController != null
+              ? FittedBox(
+                  fit: BoxFit.cover,
+                  clipBehavior: Clip.hardEdge,
+                  child: SizedBox(
+                    width: _videoController!.value.size.width,
+                    height: _videoController!.value.size.height,
+                    child: VideoPlayer(_videoController!),
+                  ),
                 )
-              : _movieImage(movies[0].imageUrl),
+              : (bannerImg.startsWith('http')
+                    ? Image.network(bannerImg, fit: BoxFit.cover)
+                    : Image.asset(bannerImg, fit: BoxFit.cover)),
         ),
-        // Gradiente decorativo
+        // ... (resto del Stack: Gradientes y Textos)
         Positioned.fill(
           child: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.black45, Colors.transparent, Color(0xFF141414)],
-                stops: [0.0, 0.5, 1.0],
+                colors: [
+                  Colors.black.withOpacity(0.7),
+                  Colors.transparent,
+                  Colors.transparent,
+                  const Color(0xFF141414),
+                ],
+                stops: const [0.0, 0.2, 0.7, 1.0],
               ),
             ),
           ),
         ),
         Positioned(
-          bottom: 60,
-          left: 20, // Ajustado para móviles
-          right: 20,
+          bottom: 40,
+          left: 0,
+          right: 0,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 movies[0].title.toUpperCase(),
+                textAlign: TextAlign.center,
                 style: GoogleFonts.montserrat(
                   color: Colors.white,
-                  fontSize: 32, // Tamaño más realista para móviles
+                  fontSize: 45,
                   fontWeight: FontWeight.w900,
+                  shadows: [
+                    const Shadow(
+                      offset: Offset(2, 2),
+                      blurRadius: 10,
+                      color: Colors.black,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 20),
               Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _btn(
+                  _btnAction(
                     Icons.play_arrow,
                     "Reproducir",
                     Colors.white,
                     Colors.black,
-                    () => _playVideo(movies[0].videoUrl ?? ""),
+                    () {
+                      _navigateToDetails(movies[0]);
+                    },
                   ),
-                  const SizedBox(width: 10),
-                  _btn(
+                  const SizedBox(width: 15),
+                  _btnAction(
                     Icons.info_outline,
-                    "Información",
-                    Colors.grey[800]!.withOpacity(0.8),
+                    "Más información",
+                    Colors.white.withOpacity(0.3),
                     Colors.white,
-                    () {},
+                    () {
+                      _navigateToDetails(movies[0]);
+                    },
                   ),
                 ],
               ),
@@ -210,39 +227,17 @@ class _MoviesScreenState extends State<MoviesScreen> {
     );
   }
 
-  // MÉDORO CORREGIDO: Maneja errores de carga de imagen para que no quede en blanco
-  Widget _movieImage(String url) {
-    if (url.isEmpty) return Container(color: Colors.grey[900]);
-
-    return Image(
-      image:
-          (url.startsWith('http') ? NetworkImage(url) : AssetImage(url))
-              as ImageProvider,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      errorBuilder: (context, error, stackTrace) {
-        // Si la imagen falla (error de assets), muestra un fondo oscuro con un icono
-        return Container(
-          color: Colors.grey[900],
-          child: const Center(
-            child: Icon(Icons.movie, color: Colors.white24, size: 50),
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildSection(String title, List<Movie> list) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 20, top: 25, bottom: 10),
+          padding: const EdgeInsets.only(left: 20, top: 10, bottom: 10),
           child: Text(
             title,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -253,53 +248,60 @@ class _MoviesScreenState extends State<MoviesScreen> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 15),
             itemCount: list.length,
-            itemBuilder: (context, index) => GestureDetector(
-              onTap: () => _playVideo(list[index].videoUrl ?? ""),
-              child: Container(
-                width: 110, // Tamaño estilo poster vertical de Netflix
-                margin: const EdgeInsets.symmetric(horizontal: 5),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: _movieImage(list[index].imageUrl),
+            itemBuilder: (context, index) {
+              // Para la lista usamos imageUrl (Poster Vertical)
+              final String posterImg = list[index].imageUrl ?? '';
+              return GestureDetector(
+                onTap: () => _navigateToDetails(list[index]),
+                child: Container(
+                  width: 110,
+                  margin: const EdgeInsets.symmetric(horizontal: 5),
+                  child: Hero(
+                    tag: list[index].title,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: posterImg.startsWith('http')
+                          ? Image.network(posterImg, fit: BoxFit.cover)
+                          : Image.asset(posterImg, fit: BoxFit.cover),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ],
     );
   }
 
-  Widget _btn(
+  Widget _btnAction(
     IconData icon,
     String label,
     Color bg,
     Color txt,
     VoidCallback onTap,
   ) {
-    return Expanded(
-      child: Material(
-        color: bg,
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(4),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(4),
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: txt, size: 24),
-                const SizedBox(width: 5),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: txt,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
+          child: Row(
+            children: [
+              Icon(icon, color: txt, size: 28),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: txt,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -308,53 +310,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
 
   @override
   void dispose() {
-    _bannerController?.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-}
-
-class FullScreenPlayer extends StatefulWidget {
-  final String videoId;
-  const FullScreenPlayer({super.key, required this.videoId});
-
-  @override
-  State<FullScreenPlayer> createState() => _FullScreenPlayerState();
-}
-
-class _FullScreenPlayerState extends State<FullScreenPlayer> {
-  late YoutubePlayerController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = YoutubePlayerController(
-      initialVideoId: widget.videoId,
-      flags: const YoutubePlayerFlags(autoPlay: true, mute: false),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: Center(
-        child: YoutubePlayer(
-          controller: _controller,
-          showVideoProgressIndicator: true,
-          progressIndicatorColor: Colors.red,
-        ),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
+    _videoController?.dispose();
     super.dispose();
   }
 }

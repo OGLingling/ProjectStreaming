@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'manage_profiles_screen.dart';
 
 class ProfilesScreen extends StatefulWidget {
-  // Los datos del usuario pueden venir de los argumentos de la ruta o del constructor
   final Map<String, dynamic>? user;
 
   const ProfilesScreen({super.key, this.user});
@@ -13,7 +12,7 @@ class ProfilesScreen extends StatefulWidget {
 }
 
 class _ProfilesScreenState extends State<ProfilesScreen> {
-  // FUNCIÓN ACTUALIZADA: Navegación directa sin pedir PIN
+  // Navegación directa al main
   void _navigateToMovies(
     BuildContext context,
     Map<String, String> profile,
@@ -34,7 +33,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Intentamos obtener el usuario del constructor o de los argumentos de navegación
     final Map<String, dynamic> userData =
         widget.user ??
         (ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
@@ -42,7 +40,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
     final String plan = (userData['plan'] ?? 'basico').toString().toLowerCase();
 
-    // Lógica de nombres y fotos de perfil
     final String realName =
         (userData['name'] ??
                 userData['userName'] ??
@@ -53,7 +50,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         (userData['profilePic'] ?? "assets/avatars/usuarioprueba.jpg")
             .toString();
 
-    // Determinamos el número de perfiles según el plan
     int maxProfiles;
     switch (plan) {
       case 'premium':
@@ -104,8 +100,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                 ),
               ),
               const SizedBox(height: 40),
-
-              // Los perfiles se generan dinámicamente según el plan
               Wrap(
                 spacing: 25,
                 runSpacing: 25,
@@ -113,11 +107,11 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                 children: visibleProfiles.map((profile) {
                   return ProfileItem(
                     profile: profile,
-                    // Llamamos a la navegación directa
                     onTap: () => _navigateToMovies(context, profile, userData),
                   );
                 }).toList(),
               ),
+              const SizedBox(height: 50),
               ElevatedButton(
                 onPressed: () {
                   Navigator.push(
@@ -137,10 +131,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   style: TextStyle(color: Colors.grey),
                 ),
               ),
-
               const SizedBox(height: 60),
-
-              // Botón de Plan
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -167,51 +158,72 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
   }
 }
 
-class ProfileItem extends StatelessWidget {
+// --- COMPONENTE CON EFECTO HOVER ---
+class ProfileItem extends StatefulWidget {
   final Map<String, String> profile;
   final VoidCallback onTap;
 
   const ProfileItem({super.key, required this.profile, required this.onTap});
 
   @override
+  State<ProfileItem> createState() => _ProfileItemState();
+}
+
+class _ProfileItemState extends State<ProfileItem> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    String imagePath = profile['image'] ?? "";
+    String imagePath = widget.profile['image'] ?? "";
 
     ImageProvider imageProvider;
     if (imagePath.startsWith('http')) {
       imageProvider = NetworkImage(imagePath);
     } else {
-      // Si no empieza con http, asumimos que es un asset local
       imageProvider = AssetImage(imagePath);
     }
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              color: Colors.grey[900],
-              image: DecorationImage(
-                image: imageProvider,
-                fit: BoxFit.cover,
-                onError: (exception, stackTrace) {
-                  debugPrint("Error cargando imagen: $imagePath");
-                },
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(4),
+                color: Colors.grey[900],
+                // Borde blanco en hover
+                border: Border.all(
+                  color: _isHovered ? Colors.white : Colors.transparent,
+                  width: 3,
+                ),
+                image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
               ),
+              // Efecto de agrandado suave (Scale)
+              transform: _isHovered
+                  ? (Matrix4.identity()..scale(1.08))
+                  : Matrix4.identity(),
+              transformAlignment: Alignment.center,
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            profile['name']!,
-            style: GoogleFonts.geologica(
-              color: Colors.grey.shade400,
-              fontSize: 14,
+            const SizedBox(height: 12),
+            // Cambio de color del texto en hover
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: GoogleFonts.geologica(
+                color: _isHovered ? Colors.white : Colors.grey.shade400,
+                fontSize: 14,
+                fontWeight: _isHovered ? FontWeight.bold : FontWeight.normal,
+              ),
+              child: Text(widget.profile['name']!),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
