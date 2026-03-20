@@ -76,6 +76,18 @@ class _MoviesScreenState extends State<MoviesScreen> {
         videoUrl:
             "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/CivilWar.mp4",
       ),
+      Movie(
+        title: "Estamos Muertos",
+        imageUrl: "assets/Images/EstamosMuertosCart.webp", // IMAGEN VERTICAL
+        backdropUrl:
+            "assets/Images/EstamosMuertosPost.webp", // IMAGEN HORIZONTAL
+        description: "relleno relleno relleno relleno.......",
+        rating: 8.9,
+        releaseDate: DateTime.now(),
+        category: "Acción",
+        videoUrl:
+            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/Estamos%20muertos.mp4",
+      ),
     ];
     setState(() => isLoading = false);
   }
