@@ -86,7 +86,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
         releaseDate: DateTime.now(),
         category: "Acción",
         videoUrl:
-            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/Estamos%20muertos.mp4",
+            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/estamos%20Muertos.mp4",
       ),
     ];
     setState(() => isLoading = false);
