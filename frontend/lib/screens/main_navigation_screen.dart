@@ -29,20 +29,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
-    // Inicializamos con el perfil que vino por argumentos (normalmente el principal)
     _currentProfile = widget.userData ?? {};
   }
 
   void _switchProfile(Map<String, dynamic> newProfile) {
     _tooltipController.hide();
     setState(() {
-      // Actualizamos el perfil activo manteniendo la base de userData (plan, id, etc)
       _currentProfile = {
         ...widget.userData!,
         'selectedName': newProfile['name'],
         'selectedImage': newProfile['image'],
       };
-      _selectedIndex = 0; // Regresamos a la pestaña de Inicio al cambiar perfil
+      _selectedIndex = 0;
     });
   }
 
@@ -74,14 +72,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     final visibleProfiles = allProfiles.take(maxProfiles).toList();
 
-    // 2. Definición de pantallas principales (Navegación por pestañas)
+    // 2. Definición de pantallas principales (CORREGIDO: Pasando isActive)
     final List<Widget> screens = [
       MoviesScreen(user: _currentProfile), // 0: Inicio
-      const SeriesScreen(), // 1: Series
-      const PeliculasScreen(), // 2: Películas
+      SeriesScreen(
+        isActive: _selectedIndex == 1,
+      ), // 1: Series (Detecta si está activa)
+      PeliculasScreen(
+        isActive: _selectedIndex == 2,
+      ), // 2: Películas (Detecta si está activa)
       const GamesScreen(), // 3: Juegos
       const NovedadesScreen(), // 4: Novedades
-      MyListScreen(favoriteMovies: []), // 5: Mi lista
+      MyListScreen(favoriteMovies: const []), // 5: Mi lista
       const SearchScreen(), // 6: Búsqueda
     ];
 
@@ -92,7 +94,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         elevation: 0,
         title: Row(
           children: [
-            // Logo
             Text(
               "MOVIEWIND",
               style: GoogleFonts.montserrat(
@@ -102,12 +103,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
             ),
             const SizedBox(width: 40),
-            // Navbar Items
             _navItem("Inicio", 0),
             _navItem("Series", 1),
             _navItem("Películas", 2),
             _navItem("Juegos", 3),
-            _navItem("Novedades populares", 4),
+            _navItem("Novedades", 4),
             _navItem("Mi lista", 5),
           ],
         ),
@@ -117,7 +117,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             onPressed: () => _onItemTapped(6),
           ),
           const SizedBox(width: 15),
-          // Menú de Perfil
           CompositedTransformTarget(
             link: _linkLayer,
             child: OverlayPortal(
@@ -149,12 +148,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
         ],
       ),
+      // IndexedStack mantiene el estado de las páginas, por eso isActive es clave.
       body: IndexedStack(index: _selectedIndex, children: screens),
     );
   }
 
+  // --- Widgets de Soporte ---
+
   Widget _buildDropdownMenu(List<Map<String, String>> availableProfiles) {
-    // Filtrar para no mostrar el perfil que se está usando actualmente
     final String currentActiveName =
         (_currentProfile['selectedName'] ??
                 widget.userData?['name'] ??
@@ -181,7 +182,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 10),
-              // Otros perfiles
               ...otherProfiles.map(
                 (profile) => _profileDropdownItem(
                   profile['name']!,
@@ -190,7 +190,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ),
               ),
               const Divider(color: Colors.white24, height: 1),
-              // Botón Administrar (Navegación corregida con Navigator.push)
               _dropdownItem(Icons.edit_outlined, "Administrar perfiles", () {
                 _tooltipController.hide();
                 Navigator.push(
@@ -206,7 +205,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               _dropdownItem(Icons.help_outline, "Centro de ayuda", () {}),
               const Divider(color: Colors.white24, height: 1),
               _dropdownItem(null, "Cerrar sesión en MovieWind", () {
-                Navigator.pushReplacementNamed(context, '/login');
+                Navigator.pushReplacementNamed(context, '/auth');
               }, isBold: true),
             ],
           ),

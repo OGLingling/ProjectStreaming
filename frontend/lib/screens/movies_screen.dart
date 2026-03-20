@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import '../models/movie_model.dart';
 import 'movie_details_screen.dart';
 
@@ -12,7 +13,8 @@ class MoviesScreen extends StatefulWidget {
   State<MoviesScreen> createState() => _MoviesScreenState();
 }
 
-class _MoviesScreenState extends State<MoviesScreen> {
+class _MoviesScreenState extends State<MoviesScreen>
+    with WidgetsBindingObserver {
   List<Movie> movies = [];
   bool isLoading = true;
   bool _showVideo = true;
@@ -26,8 +28,31 @@ class _MoviesScreenState extends State<MoviesScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadData();
     _initVideoBanner();
+  }
+
+  @override
+  void deactivate() {
+    _videoController?.pause();
+    super.deactivate();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _videoController?.pause();
+    _videoController?.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_videoController == null || !_isVideoInitialized) return;
+    if (state == AppLifecycleState.paused) {
+      _videoController?.pause();
+    }
   }
 
   void _initVideoBanner() {
@@ -50,13 +75,26 @@ class _MoviesScreenState extends State<MoviesScreen> {
           });
   }
 
+  // Corregido: Ahora recibe los datos directamente como Map
+  void _navigateToDetails(Map<String, dynamic> movieData) async {
+    _videoController?.pause();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MovieDetailsScreen(movieData: movieData),
+      ),
+    );
+    if (mounted && _showVideo && _isVideoInitialized) {
+      _videoController?.play();
+    }
+  }
+
   void _loadData() {
-    // Ahora que tu modelo reconoce backdropUrl, podemos usarlos por separado
     movies = [
       Movie(
         title: "Dulce Hogar",
-        imageUrl: "assets/Images/sweetHomeCartel.webp", // IMAGEN VERTICAL
-        backdropUrl: "assets/Images/sweetHomeBanner.webp", // IMAGEN HORIZONTAL
+        imageUrl: "assets/Images/sweetHomeCartel.webp",
+        backdropUrl: "assets/Images/sweetHomeBanner.webp",
         description:
             "Tras una tragedia familiar, el solitario Cha Hyun-su se muda...",
         rating: 8.7,
@@ -67,8 +105,8 @@ class _MoviesScreenState extends State<MoviesScreen> {
       ),
       Movie(
         title: "Avengers: Civil War",
-        imageUrl: "assets/Images/civilWar.webp", // IMAGEN VERTICAL
-        backdropUrl: "assets/Images/civilWarBanner.webp", // IMAGEN HORIZONTAL
+        imageUrl: "assets/Images/civilWar.webp",
+        backdropUrl: "assets/Images/civilWarBanner.webp",
         description: "El enfrentamiento entre Iron Man y Capitán América.",
         rating: 8.2,
         releaseDate: DateTime.now(),
@@ -78,9 +116,8 @@ class _MoviesScreenState extends State<MoviesScreen> {
       ),
       Movie(
         title: "Estamos Muertos",
-        imageUrl: "assets/Images/EstamosMuertosCart.webp", // IMAGEN VERTICAL
-        backdropUrl:
-            "assets/Images/EstamosMuertosPost.webp", // IMAGEN HORIZONTAL
+        imageUrl: "assets/Images/EstamosMuertosCart.webp",
+        backdropUrl: "assets/Images/EstamosMuertosPost.webp",
         description: "Virus zombi en un instituto.",
         rating: 8.5,
         releaseDate: DateTime.now(),
@@ -90,8 +127,8 @@ class _MoviesScreenState extends State<MoviesScreen> {
       ),
       Movie(
         title: "The Batman",
-        imageUrl: "assets/Images/TheBatmanCart.webp", // IMAGEN VERTICAL
-        backdropUrl: "assets/Images/TheBatmanPost.webp", // IMAGEN HORIZONTAL
+        imageUrl: "assets/Images/TheBatmanCart.webp",
+        backdropUrl: "assets/Images/TheBatmanPost.webp",
         description: "Batman descubre la corrupción en Gotham City.",
         rating: 8.5,
         releaseDate: DateTime.now(),
@@ -101,9 +138,8 @@ class _MoviesScreenState extends State<MoviesScreen> {
       ),
       Movie(
         title: "Stranger Things",
-        imageUrl: "assets/Images/StrangerThingsCart.webp", // IMAGEN VERTICAL
-        backdropUrl:
-            "assets/Images/StrangerThingsPost.webp", // IMAGEN HORIZONTAL
+        imageUrl: "assets/Images/StrangerThingsCart.webp",
+        backdropUrl: "assets/Images/StrangerThingsPost.webp",
         description: "Un misterio que involucra experimentos secretos.",
         rating: 8.5,
         releaseDate: DateTime.now(),
@@ -115,50 +151,34 @@ class _MoviesScreenState extends State<MoviesScreen> {
     setState(() => isLoading = false);
   }
 
-  void _navigateToDetails(Movie movie) {
-    if (_videoController != null && _videoController!.value.isPlaying) {
-      _videoController?.pause();
-    }
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => MovieDetailsScreen(
-          movieData: {
-            'title': movie.title,
-            'imageUrl': movie.imageUrl,
-            'backdropUrl':
-                movie.backdropUrl, // Se pasa el banner horizontal también
-            'videoUrl': movie.videoUrl,
-            'category': movie.category,
-            'description': movie.description,
-            'rating': movie.rating,
-            'releaseDate': movie.releaseDate,
-            'id': movie.title,
-          },
-        ),
-      ),
-    ).then((_) {
-      if (_showVideo && _isVideoInitialized) {
-        _videoController?.play();
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.red))
-          : ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                _buildBanner(),
-                const SizedBox(height: 20),
-                _buildSection("Tu Próxima Historia", movies),
-                const SizedBox(height: 50),
-              ],
+          : VisibilityDetector(
+              key: const Key('movies-main-unique-key'),
+              onVisibilityChanged: (info) {
+                if (!mounted ||
+                    _videoController == null ||
+                    !_isVideoInitialized)
+                  return;
+                if (info.visibleFraction > 0.9) {
+                  if (_showVideo) _videoController?.play();
+                } else {
+                  _videoController?.pause();
+                }
+              },
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  _buildBanner(),
+                  const SizedBox(height: 20),
+                  _buildSection("Tu Próxima Historia", movies),
+                  const SizedBox(height: 50),
+                ],
+              ),
             ),
     );
   }
@@ -166,9 +186,8 @@ class _MoviesScreenState extends State<MoviesScreen> {
   Widget _buildBanner() {
     if (movies.isEmpty) return const SizedBox(height: 400);
     final double bannerHeight = MediaQuery.of(context).size.height * 0.8;
-
-    // Aquí usamos específicamente el backdropUrl (horizontal)
-    final String bannerImg = movies[0].backdropUrl ?? movies[0].imageUrl ?? '';
+    final Movie mainMovie = movies[0];
+    final String bannerImg = mainMovie.backdropUrl ?? mainMovie.imageUrl ?? '';
 
     return Stack(
       children: [
@@ -179,6 +198,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
           child: _showVideo && _isVideoInitialized && _videoController != null
               ? FittedBox(
                   fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
                   clipBehavior: Clip.hardEdge,
                   child: SizedBox(
                     width: _videoController!.value.size.width,
@@ -187,10 +207,17 @@ class _MoviesScreenState extends State<MoviesScreen> {
                   ),
                 )
               : (bannerImg.startsWith('http')
-                    ? Image.network(bannerImg, fit: BoxFit.cover)
-                    : Image.asset(bannerImg, fit: BoxFit.cover)),
+                    ? Image.network(
+                        bannerImg,
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                      )
+                    : Image.asset(
+                        bannerImg,
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                      )),
         ),
-        // ... (resto del Stack: Gradientes y Textos)
         Positioned.fill(
           child: Container(
             decoration: BoxDecoration(
@@ -198,7 +225,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black.withOpacity(0.7),
+                  Colors.black.withOpacity(0.5),
                   Colors.transparent,
                   Colors.transparent,
                   const Color(0xFF141414),
@@ -215,16 +242,16 @@ class _MoviesScreenState extends State<MoviesScreen> {
           child: Column(
             children: [
               Text(
-                movies[0].title.toUpperCase(),
+                mainMovie.title.toUpperCase(),
                 textAlign: TextAlign.center,
                 style: GoogleFonts.montserrat(
                   color: Colors.white,
-                  fontSize: 45,
+                  fontSize: 40,
                   fontWeight: FontWeight.w900,
                   shadows: [
                     const Shadow(
                       offset: Offset(2, 2),
-                      blurRadius: 10,
+                      blurRadius: 15,
                       color: Colors.black,
                     ),
                   ],
@@ -235,23 +262,19 @@ class _MoviesScreenState extends State<MoviesScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   _btnAction(
-                    Icons.play_arrow,
+                    Icons.play_arrow_rounded,
                     "Reproducir",
                     Colors.white,
                     Colors.black,
-                    () {
-                      _navigateToDetails(movies[0]);
-                    },
+                    () => _navigateToDetails(mainMovie.toJson()),
                   ),
                   const SizedBox(width: 15),
                   _btnAction(
-                    Icons.info_outline,
+                    Icons.info_outline_rounded,
                     "Más información",
-                    Colors.white.withOpacity(0.3),
+                    Colors.white.withOpacity(0.2),
                     Colors.white,
-                    () {
-                      _navigateToDetails(movies[0]);
-                    },
+                    () => _navigateToDetails(mainMovie.toJson()),
                   ),
                 ],
               ),
@@ -277,34 +300,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
             ),
           ),
         ),
-        SizedBox(
-          height: 160,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 15),
-            itemCount: list.length,
-            itemBuilder: (context, index) {
-              // Para la lista usamos imageUrl (Poster Vertical)
-              final String posterImg = list[index].imageUrl ?? '';
-              return GestureDetector(
-                onTap: () => _navigateToDetails(list[index]),
-                child: Container(
-                  width: 110,
-                  margin: const EdgeInsets.symmetric(horizontal: 5),
-                  child: Hero(
-                    tag: list[index].title,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: posterImg.startsWith('http')
-                          ? Image.network(posterImg, fit: BoxFit.cover)
-                          : Image.asset(posterImg, fit: BoxFit.cover),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+        SChildList(list: list, onSelect: (data) => _navigateToDetails(data)),
       ],
     );
   }
@@ -342,10 +338,41 @@ class _MoviesScreenState extends State<MoviesScreen> {
       ),
     );
   }
+}
+
+class SChildList extends StatelessWidget {
+  final List<Movie> list;
+  final Function(Map<String, dynamic>) onSelect;
+  const SChildList({super.key, required this.list, required this.onSelect});
 
   @override
-  void dispose() {
-    _videoController?.dispose();
-    super.dispose();
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 180,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 15),
+        itemCount: list.length,
+        itemBuilder: (context, index) {
+          final movie = list[index];
+          return GestureDetector(
+            onTap: () => onSelect(movie.toJson()),
+            child: Container(
+              width: 120,
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              child: Hero(
+                tag: movie.title,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: movie.imageUrl!.startsWith('http')
+                      ? Image.network(movie.imageUrl!, fit: BoxFit.cover)
+                      : Image.asset(movie.imageUrl!, fit: BoxFit.cover),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }
