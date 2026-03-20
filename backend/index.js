@@ -89,12 +89,20 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 // --- RUTAS DE PELÍCULAS ---
 
 app.get('/api/movies', async (req, res) => {
-    try {
-        const movies = await prisma.movie.findMany();
-        res.json(movies);
-    } catch (error) {
-        res.status(500).json({ error: "Error al obtener películas" });
-    }
+  const { type } = req.query; 
+
+  try {
+    const content = await prisma.movie.findMany({
+      where: type ? { type: String(type) } : {},
+      orderBy: { releaseDate: 'desc' } // Las más nuevas primero
+    });
+
+    console.log(`📡 Enviando ${content.length} resultados de tipo: ${type || 'todos'}`);
+    res.json(content);
+  } catch (error) {
+    console.error("❌ Error en la base de datos:", error);
+    res.status(500).json({ error: "No se pudo conectar con la base de datos" });
+  }
 });
 
 app.post("/api/movies", async (req, res) => {

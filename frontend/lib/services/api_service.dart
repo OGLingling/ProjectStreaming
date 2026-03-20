@@ -6,6 +6,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   static const String baseUrl = "http://localhost:3000/api";
 
+  // --- OBTENER PELÍCULAS Y SERIES (NUEVO) ---
+  static Future<List<dynamic>> getMoviesByType(String type) async {
+    try {
+      // type debe ser 'movie' o 'Serie'
+      final response = await http.get(
+        Uri.parse("$baseUrl/movies?type=$type"),
+        headers: {"Content-Type": "application/json"},
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as List<dynamic>;
+      }
+      return [];
+    } catch (e) {
+      debugPrint("❌ Error obteniendo contenido ($type): $e");
+      return [];
+    }
+  }
+
   // --- REGISTRO ---
   static Future<Map<String, dynamic>?> registerUser(
     String email,
@@ -86,7 +105,6 @@ class ApiService {
   }
 
   // --- OBTENER DATOS DEL USUARIO ---
-  // Este método devuelve un Map genérico para evitar errores si el modelo User no existe aún
   static Future<Map<String, dynamic>?> getUserDataByEmail(String email) async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/users?email=$email'));
@@ -105,11 +123,10 @@ class ApiService {
   static Future<void> logout(BuildContext context) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.clear(); // Borra token, email e ID
+      await prefs.clear();
 
       if (!context.mounted) return;
 
-      // Limpia la navegación y vuelve al inicio
       Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
     } catch (e) {
       debugPrint("❌ Error en logout: $e");

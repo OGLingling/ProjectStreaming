@@ -70,7 +70,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
         imageUrl: "assets/Images/civilWar.webp", // IMAGEN VERTICAL
         backdropUrl: "assets/Images/civilWarBanner.webp", // IMAGEN HORIZONTAL
         description: "El enfrentamiento entre Iron Man y Capitán América.",
-        rating: 8.9,
+        rating: 8.2,
         releaseDate: DateTime.now(),
         category: "Acción",
         videoUrl:
@@ -81,12 +81,35 @@ class _MoviesScreenState extends State<MoviesScreen> {
         imageUrl: "assets/Images/EstamosMuertosCart.webp", // IMAGEN VERTICAL
         backdropUrl:
             "assets/Images/EstamosMuertosPost.webp", // IMAGEN HORIZONTAL
-        description: "relleno relleno relleno relleno.......",
-        rating: 8.9,
+        description: "Virus zombi en un instituto.",
+        rating: 8.5,
         releaseDate: DateTime.now(),
-        category: "Acción",
+        category: "Terror / Horror",
         videoUrl:
-            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/estamos%20Muertos.mp4",
+            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/EstamosMuertos.mp4",
+      ),
+      Movie(
+        title: "The Batman",
+        imageUrl: "assets/Images/TheBatmanCart.webp", // IMAGEN VERTICAL
+        backdropUrl: "assets/Images/TheBatmanPost.webp", // IMAGEN HORIZONTAL
+        description: "Batman descubre la corrupción en Gotham City.",
+        rating: 8.5,
+        releaseDate: DateTime.now(),
+        category: "Suspenso",
+        videoUrl:
+            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/TheBatman.mp4",
+      ),
+      Movie(
+        title: "Stranger Things",
+        imageUrl: "assets/Images/StrangerThingsCart.webp", // IMAGEN VERTICAL
+        backdropUrl:
+            "assets/Images/StrangerThingsPost.webp", // IMAGEN HORIZONTAL
+        description: "Un misterio que involucra experimentos secretos.",
+        rating: 8.5,
+        releaseDate: DateTime.now(),
+        category: "Terror / Horror",
+        videoUrl:
+            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/stranger%20Things.mp4",
       ),
     ];
     setState(() => isLoading = false);

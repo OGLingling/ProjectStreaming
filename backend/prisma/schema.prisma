@@ -16,7 +16,7 @@ model Movie {
   imageUrl    String?
   backdropUrl String?
   category    String?
-  type         String?  @default("hollywood")
+  type        String
   createdAt   DateTime @default(now())
   videoUrl    String?
 }
