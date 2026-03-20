@@ -2,7 +2,7 @@ name: Deploy Flutter Web
 on:
   push:
     branches:
-      - main # O master, según tu rama
+      - main # Si tu rama es 'master', cambia 'main' por 'master'
 
 permissions:
   contents: write
@@ -18,7 +18,7 @@ jobs:
           channel: 'stable'
           
       - name: Build Web
-        # REEMPLAZA 'tu-carpeta' con el nombre real (ej. frontend)
+        # Entramos a la carpeta frontend para compilar
         run: flutter build web --base-href "/ProjectStreaming/"
         working-directory: frontend 
 
@@ -26,5 +26,5 @@ jobs:
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # REEMPLAZA 'tu-carpeta' aquí también
+          # Apuntamos a la carpeta de salida dentro de frontend
           publish_dir: ./frontend/build/web
