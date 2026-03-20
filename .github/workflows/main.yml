@@ -1,0 +1,27 @@
+name: Deploy Flutter Web
+on:
+  push:
+    branches:
+      - main # Cambia a 'master' si ese es el nombre de tu rama principal
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          
+      - name: Build Web
+        run: flutter build web --base-href "/ProjectStreaming/"
+
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
