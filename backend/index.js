@@ -9,8 +9,9 @@ const prisma = new PrismaClient();
 // ✅ CORS CONFIGURADO PARA FLUTTER WEB
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true
 }));
 
 app.use(express.json());
