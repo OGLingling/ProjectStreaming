@@ -29274,7 +29274,7 @@ var $async$KF=A.D(function(b,c){if(b===1){o.push(c)
 s=p}for(;;)switch(s){case 0:p=4
 l=t.N
 s=7
-return A.F(A.aNe(A.e1("http://localhost:3000/api/movies?type="+a,0,null),A.a2(["Content-Type","application/json"],l,l)),$async$KF)
+return A.F(A.aNe(A.e1("https://projectstreaming-production.up.railway.app/movies?type="+a,0,null),A.a2(["Content-Type","application/json"],l,l)),$async$KF)
 case 7:n=c
 if(n.b===200){l=n
 l=t.j.a(B.bi.Bz(A.a1o(A.a1a(l.e)).el(l.w),null))
@@ -29304,7 +29304,7 @@ a2f(a,b,c,d){return A.aRm(a,b,c,d)},
 aRm(a,b,c,d){var s=0,r=A.C(t.nA),q,p=2,o=[],n,m,l,k,j,i,h
 var $async$a2f=A.D(function(e,f){if(e===1){o.push(f)
 s=p}for(;;)switch(s){case 0:p=4
-l=A.e1("http://localhost:3000/api/auth/register",0,null)
+l=A.e1("https://projectstreaming-production.up.railway.app/auth/register",0,null)
 k=t.N
 j=A.a2(["Content-Type","application/json"],k,k)
 s=7
@@ -29340,7 +29340,7 @@ KG(a){return A.aRn(a)},
 aRn(a){var s=0,r=A.C(t.y),q,p=2,o=[],n,m,l,k,j,i,h
 var $async$KG=A.D(function(b,c){if(b===1){o.push(c)
 s=p}for(;;)switch(s){case 0:p=4
-l=A.e1("http://localhost:3000/api/auth/send-otp",0,null)
+l=A.e1("https://projectstreaming-production.up.railway.app/auth/send-otp",0,null)
 k=t.N
 j=A.a2(["Content-Type","application/json"],k,k)
 s=7
@@ -29371,7 +29371,7 @@ a2g(a,b){return A.aRo(a,b)},
 aRo(a,b){var s=0,r=A.C(t.nA),q,p=2,o=[],n,m,l,k,j,i,h
 var $async$a2g=A.D(function(c,d){if(c===1){o.push(d)
 s=p}for(;;)switch(s){case 0:p=4
-l=A.e1("http://localhost:3000/api/auth/verify-otp",0,null)
+l=A.e1("https://projectstreaming-production.up.railway.app/auth/verify-otp",0,null)
 k=t.N
 j=A.a2(["Content-Type","application/json"],k,k)
 s=7
@@ -29843,7 +29843,7 @@ $S:2}
 A.aAs.prototype={
 $1(a){var s=A.dr().b
 s=s==null?null:s.canvasKitBaseUrl
-return(s==null?"https://www.gstatic.com/flutter-canvaskit/052f31d115eceda8cbff1b3481fcde4330c4ae12/":s)+a},
+return(s==null?"https://www.gstatic.com/flutter-canvaskit/425cfb54d01a9472b3e81d9e76fd63a4a44cfbcb/":s)+a},
 $S:58}
 A.Oa.prototype={
 gB(a){var s=this.a
