@@ -8,10 +8,9 @@ const prisma = new PrismaClient();
 
 // ✅ CORS CONFIGURADO PARA FLUTTER WEB
 app.use(cors({
-    origin: 'https://moviewind.netlify.app',
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json());
