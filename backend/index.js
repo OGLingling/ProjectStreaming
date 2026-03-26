@@ -6,16 +6,17 @@ const nodemailer = require('nodemailer');
 const app = express();
 const prisma = new PrismaClient();
 
+// ✅ CORS CONFIGURADO PARA FLUTTER WEB
 app.use(cors({
     origin: 'https://moviewind.netlify.app',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
 }));
+
 app.use(express.json());
 
 // --- CONFIGURACIÓN DE NODEMAILER ---
-// Importante: Genera una "Contraseña de aplicación" en tu cuenta de Google
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -32,7 +33,6 @@ app.post('/api/auth/send-otp', async (req, res) => {
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
 
     try {
-        // Buscamos si el usuario existe, si no, lo creamos (Upsert)
         await prisma.user.upsert({
             where: { email },
             update: { 
@@ -48,23 +48,21 @@ app.post('/api/auth/send-otp', async (req, res) => {
         });
 
         await transporter.sendMail({
-            from: '"MovieWind" <tu-correo@gmail.com>',
+            from: '"MovieWind" <moviewindsupport@gmail.com>',
             to: email,
             subject: "Tu código de acceso - MovieWind",
             html: `
                 <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-                    <h2>Bienvenido de vuelta a MovieWind</h2>
-                    <p>Tu código de acceso a MovieWind es: <strong style="font-size: 24px; color: #E50914;">${otp}</strong></p>
-                    <p>Tu código expirará en 15 min.</p>
+                    <h2>Bienvenido a MovieWind</h2>
+                    <p>Tu código de acceso es: <strong style="font-size: 24px; color: #E50914;">${otp}</strong></p>
+                    <p>Expira en 15 min.</p>
                 </div>
-            `,
-            text: `Bienvenido de vuelta a MovieWind, Tu código de acceso a MovieWind es ${otp}, tu código expirará en 15 min.`
+            `
         });
 
-        console.log(`✅ OTP enviado a ${email}`);
         res.json({ success: true });
     } catch (error) {
-        console.error(error);
+        console.error("❌ Error en send-otp:", error);
         res.status(500).json({ error: "Error al enviar el código" });
     }
 });
@@ -72,17 +70,15 @@ app.post('/api/auth/send-otp', async (req, res) => {
 // 2. Verificar código
 app.post('/api/auth/verify-otp', async (req, res) => {
     const { email, code } = req.body;
-
     try {
         const user = await prisma.user.findUnique({ where: { email } });
 
         if (user && user.pin === code && new Date() < user.pinExpiresAt) {
-            // Limpiamos el PIN después de usarlo
-            await prisma.user.update({
+            const updatedUser = await prisma.user.update({
                 where: { email },
                 data: { pin: null, pinExpiresAt: null, isVerified: true }
             });
-            res.json(user); // Enviamos los datos del usuario a Flutter
+            res.json(updatedUser);
         } else {
             res.status(401).json({ error: "Código incorrecto o expirado" });
         }
@@ -91,45 +87,24 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     }
 });
 
-// --- RUTAS DE PELÍCULAS ---
+// --- RUTAS DE USUARIO ---
 
-app.get('/api/movies', async (req, res) => {
-  const { type } = req.query; 
-
-  try {
-    const content = await prisma.movie.findMany({
-      where: type ? { type: String(type) } : {},
-      orderBy: { releaseDate: 'desc' } // Las más nuevas primero
-    });
-
-    console.log(`📡 Enviando ${content.length} resultados de tipo: ${type || 'todos'}`);
-    res.json(content);
-  } catch (error) {
-    console.error("❌ Error en la base de datos:", error);
-    res.status(500).json({ error: "No se pudo conectar con la base de datos" });
-  }
-});
-
-app.post("/api/movies", async (req, res) => {
+// ✅ RUTA NUEVA: Obtener usuario por email (Necesaria para tu ApiService de Flutter)
+app.get('/api/users', async (req, res) => {
+    const { email } = req.query;
     try {
-        const { title, description, releaseDate, rating, imageUrl, category } = req.body;
-        const nuevaPelicula = await prisma.movie.create({
-            data: {
-                title,
-                description,
-                releaseDate: new Date(releaseDate),
-                rating: parseFloat(rating),
-                imageUrl,
-                category
-            }
+        const user = await prisma.user.findUnique({
+            where: { email: String(email) }
         });
-        res.status(201).json(nuevaPelicula);
+        if (user) {
+            res.json(user);
+        } else {
+            res.status(404).json({ error: "Usuario no encontrado" });
+        }
     } catch (error) {
-        res.status(500).json({ error: "Error al guardar película" });
+        res.status(500).json({ error: "Error al buscar usuario" });
     }
 });
-
-// --- RUTAS DE USUARIO ---
 
 app.put("/api/users/:id", async (req, res) => {
     const { id } = req.params;
@@ -146,56 +121,32 @@ app.put("/api/users/:id", async (req, res) => {
 });
 
 app.post('/api/auth/register', async (req, res) => {
-    // Ahora recibimos también 'plan' y 'password' desde el body
     const { email, name, password, plan } = req.body; 
 
-    // Normalizar el plan para que coincida con el Enum de Prisma (sin acentos)
     let planNormalizado = "basico";
     if (plan) {
-        planNormalizado = plan.toLowerCase()
-            .replace('á', 'a')
-            .replace('é', 'e')
-            .replace('í', 'i')
-            .replace('ó', 'o')
-            .replace('ú', 'u');
+        planNormalizado = plan.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     }
 
     try {
         const user = await prisma.user.upsert({
             where: { email },
-            update: { 
-                name,
-                plan: planNormalizado, // Actualiza el plan si el usuario ya existe
-            }, 
+            update: { name, plan: planNormalizado }, 
             create: {
                 email,
                 name,
-                password: password || "123456", // Usar default si viene vacío
+                password: password || "123456",
                 plan: planNormalizado,
                 isVerified: true, 
             }
         });
 
-        // Configuración del correo de bienvenida con datos dinámicos
-        const mailOptions = {
-            from: '"MovieWind" <tu-correo@gmail.com>', // Usa tu variable de entorno aquí
+        await transporter.sendMail({
+            from: '"MovieWind" <moviewindsupport@gmail.com>',
             to: email,
             subject: "¡Bienvenido a MovieWind!",
-            html: `
-                <div style="font-family: sans-serif; border: 1px solid #e50914; padding: 20px;">
-                    <h1 style="color: #e50914;">¡Hola, ${name}!</h1>
-                    <p>Tu cuenta en <b>MovieWind</b> ha sido creada con éxito.</p>
-                    <p>Detalles de tu suscripción:</p>
-                    <ul>
-                        <li><b>Plan seleccionado:</b> ${plan.toUpperCase()}</li>
-                        <li><b>Email:</b> ${email}</li>
-                    </ul>
-                    <p>¡Disfruta de las mejores películas y series!</p>
-                </div>
-            `
-        };
-
-        await transporter.sendMail(mailOptions);
+            html: `<h1>¡Hola, ${name}!</h1><p>Tu cuenta ha sido creada con el plan: ${planNormalizado.toUpperCase()}</p>`
+        });
 
         res.status(201).json(user); 
     } catch (error) {
@@ -204,8 +155,22 @@ app.post('/api/auth/register', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3000;
+// --- RUTAS DE PELÍCULAS ---
 
+app.get('/api/movies', async (req, res) => {
+    const { type } = req.query; 
+    try {
+        const content = await prisma.movie.findMany({
+            where: type ? { type: String(type) } : {},
+            orderBy: { releaseDate: 'desc' }
+        });
+        res.json(content);
+    } catch (error) {
+        res.status(500).json({ error: "Error en la base de datos" });
+    }
+});
+
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor corriendo en el puerto ${PORT}`);
 });
