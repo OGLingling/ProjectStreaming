@@ -13,7 +13,7 @@ class ApiService {
     try {
       // type debe ser 'movie' o 'Serie'
       final response = await http.get(
-        Uri.parse("$baseUrl/movies?type=$type"),
+        Uri.parse("$baseUrl/api/movies?type=$type"),
         headers: {"Content-Type": "application/json"},
       );
 
@@ -36,7 +36,7 @@ class ApiService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse("$baseUrl/auth/register"),
+        Uri.parse("$baseUrl/api/auth/register"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "email": email,
@@ -65,7 +65,7 @@ class ApiService {
   static Future<bool> sendOTP(String email) async {
     try {
       final response = await http.post(
-        Uri.parse("$baseUrl/auth/send-otp"),
+        Uri.parse("$baseUrl/api/auth/send-otp"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"email": email}),
       );
@@ -82,7 +82,7 @@ class ApiService {
   ) async {
     try {
       final response = await http.post(
-        Uri.parse("$baseUrl/auth/verify-otp"),
+        Uri.parse("$baseUrl/api/auth/verify-otp"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"email": email, "code": code}),
       );
@@ -100,7 +100,7 @@ class ApiService {
   ) async {
     try {
       final response = await http.put(
-        Uri.parse("$baseUrl/users/$userId"),
+        Uri.parse("$baseUrl/api/users/$userId"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode(data),
       );
@@ -114,7 +114,9 @@ class ApiService {
   // --- OBTENER DATOS DEL USUARIO ---
   static Future<Map<String, dynamic>?> getUserDataByEmail(String email) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/users?email=$email'));
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/users?email=$email'),
+      );
       if (response.statusCode == 200) {
         final dynamic decoded = jsonDecode(response.body);
         // Si el backend devuelve una lista, tomamos el primer elemento
