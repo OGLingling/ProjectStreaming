@@ -27,8 +27,10 @@ class _SearchScreenState extends State<SearchScreen> {
   // 1. FUNCIÓN PARA LLAMAR A TU BACKEND (Que está conectado a Neon)
   Future<void> _fetchMoviesFromNeon() async {
     try {
-      // Reemplaza con la URL de tu API (ej: http://localhost:3000/movies)
-      final response = await http.get(Uri.parse('TU_URL_DE_API_NODEJS/movies'));
+      // Reemplaza con la URL de tu API (ej: )
+      final response = await http.get(
+        Uri.parse('http://localhost:3000/movies'),
+      );
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
