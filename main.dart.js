@@ -93799,7 +93799,7 @@ z_(){var s=0,r=A.C(t.H),q=1,p=[],o=this,n,m,l,k,j,i
 var $async$z_=A.D(function(a,b){if(a===1){p.push(b)
 s=q}for(;;)switch(s){case 0:q=3
 s=6
-return A.F(A.aNe(A.e1("TU_URL_DE_API_NODEJS/movies",0,null),null),$async$z_)
+return A.F(A.aNe(A.e1("http://localhost:3000/movies",0,null),null),$async$z_)
 case 6:n=b
 if(n.b===200){k=n
 m=B.bi.el(A.a1o(A.a1a(k.e)).el(k.w))
