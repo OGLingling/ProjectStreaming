@@ -5,7 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Asegúrate de que esta URL sea accesible desde tu navegador si usas Flutter Web
-  static const String baseUrl = "http://localhost:3000/api";
+  static const String baseUrl =
+      "https://projectstreaming-production.up.railway.app";
 
   // --- OBTENER PELÍCULAS Y SERIES ---
   static Future<List<dynamic>> getMoviesByType(String type) async {

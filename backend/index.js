@@ -8,6 +8,9 @@ const prisma = new PrismaClient();
 
 app.use(cors({
     origin: 'https://moviewind.netlify.app',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
 }));
 app.use(express.json());
 
