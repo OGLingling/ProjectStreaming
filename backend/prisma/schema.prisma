@@ -30,11 +30,17 @@ enum PlanType {
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
+  password  String   @default("123456")
   name      String
   profilePic String? @default("assets/avatars/usuario5.webp")
   createdAt DateTime @default(now())
-  plan      String @default("basico")
+  plan      PlanType @default(basico)
   isVerified Boolean @default(false)
   pin          String?
   pinExpiresAt DateTime?
+  language          String  @default("es")
+  parentalPin       String?
+  maturityLevel     String  @default("18+")
+  subtitleSize      String  @default("medium")
+  autoPlay          Boolean @default(true)
 }

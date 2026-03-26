@@ -187,7 +187,9 @@ class _MoviesScreenState extends State<MoviesScreen>
     if (movies.isEmpty) return const SizedBox(height: 400);
     final double bannerHeight = MediaQuery.of(context).size.height * 0.8;
     final Movie mainMovie = movies[0];
-    final String bannerImg = mainMovie.backdropUrl ?? mainMovie.imageUrl ?? '';
+    final String bannerImg = (mainMovie.backdropUrl ?? mainMovie.imageUrl ?? '').trim();
+    final bool hasValidBannerImg =
+        bannerImg.isNotEmpty && bannerImg.toLowerCase() != 'null';
 
     return Stack(
       children: [
@@ -206,17 +208,21 @@ class _MoviesScreenState extends State<MoviesScreen>
                     child: VideoPlayer(_videoController!),
                   ),
                 )
-              : (bannerImg.startsWith('http')
-                    ? Image.network(
-                        bannerImg,
-                        fit: BoxFit.cover,
-                        alignment: Alignment.topCenter,
-                      )
-                    : Image.asset(
-                        bannerImg,
-                        fit: BoxFit.cover,
-                        alignment: Alignment.topCenter,
-                      )),
+              : (!hasValidBannerImg
+                    ? const SizedBox.expand()
+                    : (bannerImg.startsWith('http')
+                        ? Image.network(
+                            bannerImg,
+                            fit: BoxFit.cover,
+                            alignment: Alignment.topCenter,
+                          )
+                        : (bannerImg.startsWith('assets/')
+                            ? Image.asset(
+                                bannerImg,
+                                fit: BoxFit.cover,
+                                alignment: Alignment.topCenter,
+                              )
+                            : const SizedBox.expand()))),
         ),
         Positioned.fill(
           child: Container(
@@ -355,6 +361,8 @@ class SChildList extends StatelessWidget {
         itemCount: list.length,
         itemBuilder: (context, index) {
           final movie = list[index];
+          final img = (movie.imageUrl ?? '').trim();
+          final hasValidImg = img.isNotEmpty && img.toLowerCase() != 'null';
           return GestureDetector(
             onTap: () => onSelect(movie.toJson()),
             child: Container(
@@ -364,9 +372,13 @@ class SChildList extends StatelessWidget {
                 tag: movie.title,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: movie.imageUrl!.startsWith('http')
-                      ? Image.network(movie.imageUrl!, fit: BoxFit.cover)
-                      : Image.asset(movie.imageUrl!, fit: BoxFit.cover),
+                  child: !hasValidImg
+                      ? Container(color: Colors.black)
+                      : (img.startsWith('http')
+                          ? Image.network(img, fit: BoxFit.cover)
+                          : (img.startsWith('assets/')
+                              ? Image.asset(img, fit: BoxFit.cover)
+                              : Container(color: Colors.black))),
                 ),
               ),
             ),

@@ -173,25 +173,26 @@ class _CategoryMovieCardState extends State<CategoryMovieCard> {
   }
 
   Widget _buildImage(String path) {
-    if (path.isEmpty) {
+    final normalized = path.trim();
+    if (normalized.isEmpty || normalized.toLowerCase() == 'null') {
       return const Center(
         child: Icon(Icons.movie, color: Colors.white10, size: 40),
       );
     }
 
     // Lógica para detectar si es URL de internet o asset local
-    if (path.startsWith('http')) {
+    if (normalized.startsWith('http')) {
       return Image.network(
-        path,
+        normalized,
         fit: BoxFit.cover,
         errorBuilder: (c, e, s) =>
             const Icon(Icons.error, color: Colors.white10),
       );
     } else {
       // Si el path ya contiene 'assets/', lo usamos tal cual, si no, lo construimos
-      final String assetPath = path.startsWith('assets')
-          ? path
-          : 'assets/Images/${path.split('/').last}';
+      final String assetPath = normalized.startsWith('assets')
+          ? normalized
+          : 'assets/Images/${normalized.split('/').last}';
       return Image.asset(
         assetPath,
         fit: BoxFit.cover,

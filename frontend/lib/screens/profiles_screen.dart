@@ -46,9 +46,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                 (userData['email']?.toString().split('@')[0] ?? "Usuario"))
             .toString();
 
-    final String realProfilePic =
-        (userData['profilePic'] ?? "assets/avatars/usuarioprueba.jpg")
-            .toString();
+    final String realProfilePic = _normalizeImagePath(userData['profilePic']);
 
     int maxProfiles;
     switch (plan) {
@@ -156,6 +154,14 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
       ),
     );
   }
+
+  String _normalizeImagePath(dynamic value) {
+    final path = value?.toString().trim();
+    if (path == null || path.isEmpty || path.toLowerCase() == 'null') {
+      return "assets/avatars/usuario5.webp";
+    }
+    return path;
+  }
 }
 
 // --- COMPONENTE CON EFECTO HOVER ---
@@ -174,13 +180,18 @@ class _ProfileItemState extends State<ProfileItem> {
 
   @override
   Widget build(BuildContext context) {
-    String imagePath = widget.profile['image'] ?? "";
+    String imagePath = (widget.profile['image'] ?? "").trim();
+    if (imagePath.isEmpty || imagePath.toLowerCase() == 'null') {
+      imagePath = "assets/avatars/usuario5.webp";
+    }
 
     ImageProvider imageProvider;
     if (imagePath.startsWith('http')) {
       imageProvider = NetworkImage(imagePath);
     } else {
-      imageProvider = AssetImage(imagePath);
+      imageProvider = imagePath.startsWith('assets/')
+          ? AssetImage(imagePath)
+          : const AssetImage("assets/avatars/usuario5.webp");
     }
 
     return MouseRegion(

@@ -4,9 +4,10 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
+  // Asegúrate de que esta URL sea accesible desde tu navegador si usas Flutter Web
   static const String baseUrl = "http://localhost:3000/api";
 
-  // --- OBTENER PELÍCULAS Y SERIES (NUEVO) ---
+  // --- OBTENER PELÍCULAS Y SERIES ---
   static Future<List<dynamic>> getMoviesByType(String type) async {
     try {
       // type debe ser 'movie' o 'Serie'
@@ -25,13 +26,13 @@ class ApiService {
     }
   }
 
-  // --- REGISTRO ---
-  static Future<Map<String, dynamic>?> registerUser(
-    String email,
-    String name,
-    String password,
-    String plan,
-  ) async {
+  // --- REGISTRO (CORREGIDO: SIN PASSWORD PARA PRISMA) ---
+  static Future<Map<String, dynamic>?> registerUser({
+    required String email,
+    required String name,
+    required String plan,
+    required String password,
+  }) async {
     try {
       final response = await http.post(
         Uri.parse("$baseUrl/auth/register"),
@@ -39,14 +40,19 @@ class ApiService {
         body: jsonEncode({
           "email": email,
           "name": name,
-          "password": password,
           "plan": plan,
+          "password": password, // Enviar contraseña para Prisma
+          // Ya no enviamos password porque usamos OTP
         }),
       );
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 201 || response.statusCode == 200) {
         return jsonDecode(response.body);
       }
+
+      debugPrint(
+        "⚠️ Registro fallido: ${response.statusCode} - ${response.body}",
+      );
       return null;
     } catch (e) {
       debugPrint("❌ Error en registro: $e");
@@ -109,8 +115,15 @@ class ApiService {
     try {
       final response = await http.get(Uri.parse('$baseUrl/users?email=$email'));
       if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        if (data.isNotEmpty) return data[0] as Map<String, dynamic>;
+        final dynamic decoded = jsonDecode(response.body);
+        // Si el backend devuelve una lista, tomamos el primer elemento
+        if (decoded is List && decoded.isNotEmpty) {
+          return decoded[0] as Map<String, dynamic>;
+        }
+        // Si el backend devuelve el objeto directo
+        if (decoded is Map) {
+          return decoded as Map<String, dynamic>;
+        }
       }
       return null;
     } catch (e) {
@@ -127,6 +140,7 @@ class ApiService {
 
       if (!context.mounted) return;
 
+      // Asegúrate de tener esta ruta definida en tu main.dart
       Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
     } catch (e) {
       debugPrint("❌ Error en logout: $e");

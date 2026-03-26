@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// Tus imports de pantallas
+// Tus imports de pantallas - Asegúrate de que los nombres coincidan con tus archivos
 import 'movies_screen.dart';
 import 'peliculas_screen.dart';
 import 'series_screen.dart';
@@ -10,6 +10,7 @@ import 'novedades_screen.dart';
 import 'manage_profiles_screen.dart';
 import 'search_screen.dart';
 import 'my_list_screen.dart';
+import 'account_screen.dart'; // <--- IMPORTANTE: Importar la pantalla de cuenta
 
 class MainNavigationScreen extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -72,19 +73,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     final visibleProfiles = allProfiles.take(maxProfiles).toList();
 
-    // 2. Definición de pantallas principales (CORREGIDO: Pasando isActive)
+    // 2. Definición de pantallas principales
     final List<Widget> screens = [
-      MoviesScreen(user: _currentProfile), // 0: Inicio
-      SeriesScreen(
-        isActive: _selectedIndex == 1,
-      ), // 1: Series (Detecta si está activa)
-      PeliculasScreen(
-        isActive: _selectedIndex == 2,
-      ), // 2: Películas (Detecta si está activa)
-      const GamesScreen(), // 3: Juegos
-      const NovedadesScreen(), // 4: Novedades
-      MyListScreen(favoriteMovies: const []), // 5: Mi lista
-      const SearchScreen(), // 6: Búsqueda
+      MoviesScreen(user: _currentProfile),
+      SeriesScreen(isActive: _selectedIndex == 1),
+      PeliculasScreen(isActive: _selectedIndex == 2),
+      const GamesScreen(),
+      const NovedadesScreen(),
+      MyListScreen(favoriteMovies: const []),
+      const SearchScreen(),
     ];
 
     return Scaffold(
@@ -148,7 +145,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
         ],
       ),
-      // IndexedStack mantiene el estado de las páginas, por eso isActive es clave.
       body: IndexedStack(index: _selectedIndex, children: screens),
     );
   }
@@ -201,7 +197,19 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 );
               }),
               _dropdownItem(Icons.swap_horiz, "Transferir perfil", () {}),
-              _dropdownItem(Icons.account_circle_outlined, "Cuenta", () {}),
+
+              // SECCIÓN DE CUENTA ACTUALIZADA
+              _dropdownItem(Icons.account_circle_outlined, "Cuenta", () {
+                _tooltipController.hide(); // Cerramos el menú
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        const AccountScreen(), // Navegamos a Cuenta
+                  ),
+                );
+              }),
+
               _dropdownItem(Icons.help_outline, "Centro de ayuda", () {}),
               const Divider(color: Colors.white24, height: 1),
               _dropdownItem(null, "Cerrar sesión en MovieWind", () {
@@ -248,9 +256,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   ImageProvider _getImageProvider(dynamic path) {
-    String imagePath = path.toString();
+    final imagePath = path?.toString().trim();
+    if (imagePath == null ||
+        imagePath.isEmpty ||
+        imagePath.toLowerCase() == 'null') {
+      return const AssetImage("assets/avatars/usuario5.webp");
+    }
     if (imagePath.startsWith('http')) return NetworkImage(imagePath);
-    return AssetImage(imagePath);
+    if (imagePath.startsWith('assets/')) return AssetImage(imagePath);
+    return const AssetImage("assets/avatars/usuario5.webp");
   }
 
   Widget _dropdownItem(

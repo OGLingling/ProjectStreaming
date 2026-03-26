@@ -39,14 +39,15 @@ class _UserScreenState extends State<UserScreen> {
 
   // --- MEJORA 1: MANEJO ROBUSTO DE IMÁGENES ---
   ImageProvider _getProfileImage(String path) {
-    if (path.isEmpty) {
+    final normalized = path.trim();
+    if (normalized.isEmpty || normalized.toLowerCase() == 'null') {
       return const AssetImage("assets/avatars/usuario5.webp");
     }
-    if (path.startsWith('assets/')) {
-      return AssetImage(path);
+    if (normalized.startsWith('assets/')) {
+      return AssetImage(normalized);
     }
-    if (path.startsWith('http') || path.startsWith('https')) {
-      return NetworkImage(path);
+    if (normalized.startsWith('http') || normalized.startsWith('https')) {
+      return NetworkImage(normalized);
     }
     // Fallback por defecto
     return const AssetImage("assets/avatars/usuario5.webp");

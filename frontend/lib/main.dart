@@ -1,13 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 // Asegúrate de que estas rutas sean las correctas en tu proyecto
 import 'screens/auth_screen.dart';
 import 'screens/profiles_screen.dart';
 import 'screens/main_navigation_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Inicialización de Firebase (Opcional si usas Supabase, pero la app lo importa)
+  try {
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: "AIzaSyBdewxBXXdjSPGLaXqcPJ5wTaarfCny19Q",
+        authDomain: "moviewind-app.firebaseapp.com",
+        projectId: "moviewind-app",
+        storageBucket: "moviewind-app.firebasestorage.app",
+        messagingSenderId: "1009904700256",
+        appId: "1:1009904700256:web:ccab301b7eaf38451a6c05",
+      ),
+    );
+  } catch (e) {
+    debugPrint("Firebase ya estaba inicializado o error: $e");
+  }
+
   runApp(const MyApp());
 }
 

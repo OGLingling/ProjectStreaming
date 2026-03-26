@@ -39,11 +39,15 @@ class MovieDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String coverImg =
-        movieData['backdropUrl'] ?? movieData['imageUrl'] ?? '';
+        (movieData['backdropUrl'] ?? movieData['imageUrl'] ?? '')
+            .toString()
+            .trim();
     final String title = movieData['title'] ?? 'Sin título';
     final String description = movieData['description'] ?? '';
     final String category = movieData['category'] ?? '';
     final double rating = (movieData['rating'] as num?)?.toDouble() ?? 0.0;
+    final bool hasValidCoverImg =
+        coverImg.isNotEmpty && coverImg.toLowerCase() != 'null';
 
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
@@ -66,9 +70,13 @@ class MovieDetailsScreen extends StatelessWidget {
                 children: [
                   // 1. IMAGEN DE FONDO
                   Positioned.fill(
-                    child: coverImg.startsWith('http')
-                        ? Image.network(coverImg, fit: BoxFit.cover)
-                        : Image.asset(coverImg, fit: BoxFit.cover),
+                    child: !hasValidCoverImg
+                        ? const SizedBox.expand()
+                        : (coverImg.startsWith('http')
+                              ? Image.network(coverImg, fit: BoxFit.cover)
+                              : (coverImg.startsWith('assets/')
+                                    ? Image.asset(coverImg, fit: BoxFit.cover)
+                                    : const SizedBox.expand())),
                   ),
 
                   // 2. GRADIENTE DE PROTECCIÓN (Estilo Netflix: Oscuro a la izquierda)

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'movie_details_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -10,48 +12,86 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
-  bool _isSearching = false;
 
-  // Datos de prueba para "Búsquedas populares"
-  final List<Map<String, String>> _popularSearches = [
-    {
-      "title": "Stranger Things",
-      "image":
-          "https://image.tmdb.org/t/p/w500/x2LSRm21uTEx2Pq2SUTUu8vubMg.jpg",
-    },
-    {
-      "title": "The Witcher",
-      "image":
-          "https://image.tmdb.org/t/p/w500/7vjaCdSjLkdmvkI9EkyTzY9t3Q6.jpg",
-    },
-    {
-      "title": "Merlina",
-      "style":
-          "https://image.tmdb.org/t/p/w500/9PFonB9t9S36bdG96db06vsmM9R.jpg",
-    },
-    {
-      "title": "La Casa de Papel",
-      "image":
-          "https://image.tmdb.org/t/p/w500/reEMDx9m9Xsn09a996Y9AnmD06U.jpg",
-    },
-  ];
+  List<Map<String, dynamic>> _allMovies = [];
+  List<Map<String, dynamic>> _filteredResults = [];
+  bool _isSearching = false;
+  bool _isLoading = true;
 
   @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black,
-      child: Column(
-        children: [
-          _buildAppBar(),
-          Expanded(
-            child: _isSearching
-                ? _buildSearchResults()
-                : _buildPopularSearches(),
-          ),
-        ],
+  void initState() {
+    super.initState();
+    _fetchMoviesFromNeon();
+  }
+
+  // 1. FUNCIÓN PARA LLAMAR A TU BACKEND (Que está conectado a Neon)
+  Future<void> _fetchMoviesFromNeon() async {
+    try {
+      // Reemplaza con la URL de tu API (ej: http://localhost:3000/movies)
+      final response = await http.get(Uri.parse('TU_URL_DE_API_NODEJS/movies'));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        setState(() {
+          _allMovies = data.cast<Map<String, dynamic>>();
+          _isLoading = false;
+        });
+      } else {
+        throw Exception('Error al cargar datos de Neon');
+      }
+    } catch (e) {
+      print("Error: $e");
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _isSearching = false;
+        _filteredResults = [];
+      } else {
+        _isSearching = true;
+        _filteredResults = _allMovies
+            .where(
+              (movie) => movie['title'].toString().toLowerCase().contains(
+                query.toLowerCase(),
+              ),
+            )
+            .toList();
+      }
+    });
+  }
+
+  void _openMovie(Map<String, dynamic> movie) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MovieDetailsScreen(movieData: movie),
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: Colors.red))
+          : Column(
+              children: [
+                _buildAppBar(),
+                Expanded(
+                  child: _isSearching
+                      ? _buildGridResults()
+                      : _buildPopularList(),
+                ),
+              ],
+            ),
+    );
+  }
+
+  // --- LOS WIDGETS DE LA INTERFAZ ---
 
   Widget _buildAppBar() {
     return Container(
@@ -71,34 +111,16 @@ class _SearchScreenState extends State<SearchScreen> {
           child: TextField(
             controller: _searchController,
             style: const TextStyle(color: Colors.white),
-            onChanged: (value) {
-              setState(() {
-                _isSearching = value.isNotEmpty;
-              });
-            },
+            onChanged: _onSearchChanged,
             decoration: InputDecoration(
-              hintText: "Busca una película, serie...",
+              hintText: "Buscar en Neon...",
               hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
               prefixIcon: const Icon(
                 Icons.search,
                 color: Colors.grey,
                 size: 20,
               ),
-              suffixIcon: _isSearching
-                  ? IconButton(
-                      icon: const Icon(
-                        Icons.cancel,
-                        color: Colors.grey,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _isSearching = false);
-                      },
-                    )
-                  : const Icon(Icons.mic, color: Colors.grey, size: 20),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
             ),
           ),
         ),
@@ -106,113 +128,48 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // --- VISTA 1: BÚSQUEDAS POPULARES ---
-  Widget _buildPopularSearches() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(15.0),
-          child: Text(
-            "Búsquedas populares",
-            style: GoogleFonts.geologica(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+  Widget _buildGridResults() {
+    return GridView.builder(
+      padding: const EdgeInsets.all(10),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 0.7,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+      ),
+      itemCount: _filteredResults.length,
+      itemBuilder: (context, index) {
+        final movie = _filteredResults[index];
+        return GestureDetector(
+          onTap: () => _openMovie(movie),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Image.network(movie['imageUrl'] ?? '', fit: BoxFit.cover),
           ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            itemCount: _popularSearches.length,
-            itemBuilder: (context, index) {
-              final item = _popularSearches[index];
-              return Container(
-                margin: const EdgeInsets.symmetric(vertical: 2),
-                color: Colors.grey[900]!.withOpacity(0.3),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 140,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: NetworkImage(
-                            item['image'] ??
-                                "https://via.placeholder.com/140x80",
-                          ),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 15),
-                    Expanded(
-                      child: Text(
-                        item['title']!,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    const Icon(
-                      Icons.play_circle_outline,
-                      color: Colors.white,
-                      size: 30,
-                    ),
-                    const SizedBox(width: 15),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 
-  // --- VISTA 2: RESULTADOS DE BÚSQUEDA (GRID) ---
-  Widget _buildSearchResults() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.all(15.0),
-          child: Text(
-            "Películas y TV",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+  Widget _buildPopularList() {
+    return ListView.builder(
+      itemCount: _allMovies.length,
+      itemBuilder: (context, index) {
+        final movie = _allMovies[index];
+        return ListTile(
+          onTap: () => _openMovie(movie),
+          leading: Image.network(
+            movie['imageUrl'] ?? '',
+            width: 100,
+            fit: BoxFit.cover,
           ),
-        ),
-        Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 2 / 3,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemCount: 9, // Simulación de resultados
-            itemBuilder: (context, index) {
-              return Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(4),
-                  image: const DecorationImage(
-                    image: NetworkImage(
-                      "https://image.tmdb.org/t/p/w500/uxt9XQ9pZzpzp.jpg",
-                    ),
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              );
-            },
+          title: Text(
+            movie['title'] ?? '',
+            style: const TextStyle(color: Colors.white),
           ),
-        ),
-      ],
+          trailing: const Icon(Icons.play_arrow, color: Colors.white),
+        );
+      },
     );
   }
 }

@@ -2,24 +2,57 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'edit_profile.dart';
 
-class ManageProfilesScreen extends StatelessWidget {
+// Imports de la carpeta settings
+import 'settings/configuracion_lenguaje.dart';
+import 'settings/control_parental.dart';
+import 'settings/configuracion_subtitulos.dart';
+
+class ManageProfilesScreen extends StatefulWidget {
   final Map<String, dynamic> profileData;
 
   const ManageProfilesScreen({super.key, required this.profileData});
 
   @override
+  State<ManageProfilesScreen> createState() => _ManageProfilesScreenState();
+}
+
+class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
+  late String currentName;
+  late String currentImg;
+
+  @override
+  void initState() {
+    super.initState();
+    currentName = _normalizeText(
+      widget.profileData['selectedName'] ?? widget.profileData['name'],
+    );
+    currentImg = _normalizeImagePath(
+      widget.profileData['selectedImage'] ?? widget.profileData['profilePic'],
+    );
+  }
+
+  Future<void> _openEditProfile() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            EditProfileScreen(name: currentName, image: currentImg),
+      ),
+    );
+
+    if (!mounted) return;
+    if (result is Map) {
+      final nextName = _normalizeText(result['name']);
+      final nextImg = _normalizeImagePath(result['image']);
+      setState(() {
+        currentName = nextName;
+        currentImg = nextImg;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Lógica dinámica: detecta quién es el usuario actual
-    final String currentName =
-        (profileData['selectedName'] ?? profileData['name'] ?? "Usuario")
-            .toString();
-
-    final String currentImg =
-        (profileData['selectedImage'] ??
-                profileData['profilePic'] ??
-                "assets/avatars/usuario5.webp")
-            .toString();
-
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       appBar: AppBar(
@@ -48,24 +81,12 @@ class ManageProfilesScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 30),
 
-                // SECCIÓN 1: Info de Perfil (DINÁMICO)
                 _buildWhiteCard([
                   _buildListTile(
                     leading: _buildProfileImage(currentImg),
                     title: currentName.toUpperCase(),
                     subtitle: "Editar información personal y de contacto",
-                    onTap: () {
-                      // Navega a la pantalla de edición (la del lápiz)
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => EditProfileScreen(
-                            name: currentName,
-                            image: currentImg,
-                          ),
-                        ),
-                      );
-                    },
+                    onTap: _openEditProfile,
                   ),
                   const Divider(color: Colors.black12, height: 1),
                   _buildListTile(
@@ -76,7 +97,12 @@ class ManageProfilesScreen extends StatelessWidget {
                     ),
                     title: "Bloqueo de perfil",
                     subtitle: "Solicita un PIN para acceder a este perfil",
-                    onTap: () {},
+                    onTap: () => _navigateTo(
+                      context,
+                      const Scaffold(
+                        body: Center(child: Text("Pantalla de PIN")),
+                      ),
+                    ),
                   ),
                 ]),
 
@@ -89,7 +115,7 @@ class ManageProfilesScreen extends StatelessWidget {
                     leading: const Icon(Icons.translate, color: Colors.black),
                     title: "Idiomas",
                     subtitle: "Configura los idiomas de visualización y audio",
-                    onTap: () {},
+                    onTap: () => _openLanguageSettings(context),
                   ),
                   const Divider(color: Colors.black12, height: 1),
                   _buildListTile(
@@ -100,7 +126,7 @@ class ManageProfilesScreen extends StatelessWidget {
                     title: "Ajustar controles parentales",
                     subtitle:
                         "Edita las clasificaciones por edad y restricciones",
-                    onTap: () {},
+                    onTap: () => _openParentalControls(context),
                   ),
                   const Divider(color: Colors.black12, height: 1),
                   _buildListTile(
@@ -110,13 +136,11 @@ class ManageProfilesScreen extends StatelessWidget {
                     ),
                     title: "Aspecto de los subtítulos",
                     subtitle: "Personaliza el aspecto de los subtítulos",
-                    onTap: () {},
+                    onTap: () => _openSubtitleSettings(context),
                   ),
                 ]),
 
                 const SizedBox(height: 20),
-
-                // SECCIÓN 3: Reproducción e Historial
                 _buildWhiteCard([
                   _buildListTile(
                     leading: const Icon(
@@ -144,62 +168,27 @@ class ManageProfilesScreen extends StatelessWidget {
                     subtitle: "Administra el historial y las calificaciones",
                     onTap: () {},
                   ),
-                  const Divider(color: Colors.black12, height: 1),
-                  _buildListTile(
-                    leading: const Icon(Icons.security, color: Colors.black),
-                    title: "Configuración de datos y privacidad",
-                    subtitle: "Administra el uso de tu información personal",
-                    onTap: () {},
-                  ),
-                ]),
-
-                const SizedBox(height: 20),
-
-                // SECCIÓN 4: Transferencia
-                _buildWhiteCard([
-                  _buildListTile(
-                    leading: const Icon(Icons.swap_horiz, color: Colors.black),
-                    title: "Transferencia de perfiles",
-                    subtitle: "Copia este perfil a otra cuenta",
-                    onTap: () {},
-                  ),
                 ]),
 
                 const SizedBox(height: 40),
-
-                // BOTÓN ELIMINAR PERFIL
                 Center(
-                  child: Column(
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          // Lógica para eliminar perfil
-                        },
-                        icon: const Icon(
-                          Icons.delete_outline,
-                          color: Colors.grey,
-                        ),
-                        label: const Text(
-                          "Eliminar perfil",
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Colors.grey),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 40,
-                            vertical: 15,
-                          ),
-                        ),
+                  child: OutlinedButton.icon(
+                    onPressed: () => _confirmDeleteProfile(context),
+                    icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                    label: const Text(
+                      "Eliminar perfil",
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontWeight: FontWeight.bold,
                       ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        "El perfil principal no se puede eliminar.",
-                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.grey),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 40,
+                        vertical: 15,
                       ),
-                    ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 60),
@@ -211,59 +200,114 @@ class ManageProfilesScreen extends StatelessWidget {
     );
   }
 
-  // --- WIDGETS DE APOYO ---
+  // --- MÉTODOS DE APOYO (Normalización y Navegación) ---
 
-  Widget _sectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10, left: 5),
-      child: Text(
-        title,
-        style: GoogleFonts.montserrat(color: Colors.grey, fontSize: 18),
+  void _navigateTo(BuildContext context, Widget screen) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => screen));
+  }
+
+  void _openLanguageSettings(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ConfiguracionLenguajeScreen(),
       ),
     );
   }
 
-  Widget _buildWhiteCard(List<Widget> children) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(children: children),
+  void _openParentalControls(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const ControlParentalScreen()),
     );
   }
+
+  void _openSubtitleSettings(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ConfiguracionSubtitulosScreen(),
+      ),
+    );
+  }
+
+  void _confirmDeleteProfile(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("¿Eliminar perfil?"),
+        content: const Text("Esta acción no se puede deshacer."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("CANCELAR"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("ELIMINAR", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String title) => Padding(
+    padding: const EdgeInsets.only(bottom: 10, left: 5),
+    child: Text(
+      title,
+      style: GoogleFonts.montserrat(color: Colors.grey, fontSize: 18),
+    ),
+  );
+  Widget _buildWhiteCard(List<Widget> children) => Container(
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Column(children: children),
+  );
 
   Widget _buildListTile({
     required Widget leading,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
-  }) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      leading: leading,
-      title: Text(
-        title,
-        style: const TextStyle(
-          color: Colors.black,
-          fontWeight: FontWeight.bold,
-          fontSize: 16,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(color: Colors.black54, fontSize: 13),
-      ),
-      trailing: const Icon(
-        Icons.arrow_forward_ios,
+  }) => ListTile(
+    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+    leading: leading,
+    title: Text(
+      title,
+      style: const TextStyle(
         color: Colors.black,
-        size: 16,
+        fontWeight: FontWeight.bold,
+        fontSize: 16,
       ),
-      onTap: onTap,
-    );
-  }
+    ),
+    subtitle: Text(
+      subtitle,
+      style: const TextStyle(color: Colors.black54, fontSize: 13),
+    ),
+    trailing: const Icon(
+      Icons.arrow_forward_ios,
+      color: Colors.black,
+      size: 16,
+    ),
+    onTap: onTap,
+  );
 
   Widget _buildProfileImage(String path) {
+    final normalized = path.trim();
+    if (normalized.isEmpty || normalized.toLowerCase() == 'null') {
+      return Container(
+        width: 45,
+        height: 45,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(4),
+          color: Colors.grey[300],
+        ),
+        child: const Icon(Icons.person, color: Colors.black54),
+      );
+    }
+
     return Container(
       width: 45,
       height: 45,
@@ -273,19 +317,34 @@ class ManageProfilesScreen extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(4),
-        child: path.startsWith('http')
+        child: normalized.startsWith('http')
             ? Image.network(
-                path,
+                normalized,
                 fit: BoxFit.cover,
                 errorBuilder: (c, e, s) => const Icon(Icons.person),
               )
-            : Image.asset(
-                path,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) =>
-                    const Icon(Icons.person, color: Colors.black54),
-              ),
+            : (normalized.startsWith('assets/')
+                  ? Image.asset(
+                      normalized,
+                      fit: BoxFit.cover,
+                      errorBuilder: (c, e, s) => const Icon(Icons.person),
+                    )
+                  : const Icon(Icons.person)),
       ),
     );
+  }
+
+  String _normalizeText(dynamic value) {
+    final text = value?.toString().trim();
+    return (text == null || text.isEmpty || text.toLowerCase() == 'null')
+        ? "Usuario"
+        : text;
+  }
+
+  String _normalizeImagePath(dynamic value) {
+    final path = value?.toString().trim();
+    return (path == null || path.isEmpty || path.toLowerCase() == 'null')
+        ? "assets/avatars/usuario5.webp"
+        : path;
   }
 }

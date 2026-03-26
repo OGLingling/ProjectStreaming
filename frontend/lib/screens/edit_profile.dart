@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'avatar_picker_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final String name;
@@ -13,11 +14,33 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _nameController;
+  late String _selectedImage;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.name);
+    _selectedImage = widget.image;
+  }
+
+  Future<void> _openAvatarPicker() async {
+    final nameForPicker = _nameController.text.trim().isEmpty
+        ? "Usuario"
+        : _nameController.text.trim();
+    final String? selectedPath = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AvatarPickerScreen(
+          profileName: nameForPicker,
+          currentAvatar: _selectedImage,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    if (selectedPath != null && selectedPath.trim().isNotEmpty) {
+      setState(() => _selectedImage = selectedPath);
+    }
   }
 
   @override
@@ -44,8 +67,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              // Aquí iría la lógica para persistir el cambio de nombre
-              Navigator.pop(context);
+              Navigator.pop(context, {
+                'name': _nameController.text.trim(),
+                'image': _selectedImage,
+              });
             },
             child: const Text(
               "GUARDAR",
@@ -80,37 +105,43 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Avatar con el Lápiz de edición
-                    Stack(
-                      children: [
-                        Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            image: DecorationImage(
-                              image: _getImage(widget.image),
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          left: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
+                    GestureDetector(
+                      onTap: _openAvatarPicker,
+                      child: Stack(
+                        children: [
+                          Container(
+                            width: 100,
+                            height: 100,
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.7),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 1),
-                            ),
-                            child: const Icon(
-                              Icons.edit,
-                              color: Colors.white,
-                              size: 18,
+                              borderRadius: BorderRadius.circular(8),
+                              image: DecorationImage(
+                                image: _getImage(_selectedImage),
+                                fit: BoxFit.cover,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.7),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 1,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.edit,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(width: 20),
                     // Input del nombre
@@ -217,7 +248,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   ImageProvider _getImage(String path) {
-    if (path.startsWith('http')) return NetworkImage(path);
-    return AssetImage(path);
+    final normalized = path.trim();
+    if (normalized.isEmpty || normalized.toLowerCase() == 'null') {
+      return const AssetImage("assets/avatars/usuario5.webp");
+    }
+    if (normalized.startsWith('http')) return NetworkImage(normalized);
+    if (normalized.startsWith('assets/')) return AssetImage(normalized);
+    return const AssetImage("assets/avatars/usuario5.webp");
   }
 }

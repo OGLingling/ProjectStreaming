@@ -144,18 +144,29 @@ app.post('/api/auth/register', async (req, res) => {
     // Ahora recibimos también 'plan' y 'password' desde el body
     const { email, name, password, plan } = req.body; 
 
+    // Normalizar el plan para que coincida con el Enum de Prisma (sin acentos)
+    let planNormalizado = "basico";
+    if (plan) {
+        planNormalizado = plan.toLowerCase()
+            .replace('á', 'a')
+            .replace('é', 'e')
+            .replace('í', 'i')
+            .replace('ó', 'o')
+            .replace('ú', 'u');
+    }
+
     try {
         const user = await prisma.user.upsert({
             where: { email },
             update: { 
                 name,
-                plan: plan || "basico", // Actualiza el plan si el usuario ya existe
+                plan: planNormalizado, // Actualiza el plan si el usuario ya existe
             }, 
             create: {
                 email,
                 name,
-                password, // Asegúrate de tener este campo en tu schema.prisma
-                plan: plan || "basico",
+                password: password || "123456", // Usar default si viene vacío
+                plan: planNormalizado,
                 isVerified: true, 
             }
         });

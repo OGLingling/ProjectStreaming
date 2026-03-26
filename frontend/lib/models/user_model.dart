@@ -1,7 +1,6 @@
 class User {
   final String id;
   final String email;
-  final String password;
   final String name;
   final bool isVerified;
   final DateTime? createdAt;
@@ -11,7 +10,7 @@ class User {
   User({
     required this.id, // Ahora es requerido porque viene de Firebase
     required this.email,
-    required this.password,
+
     required this.name,
     this.isVerified = false, // Valor por defecto
     this.createdAt,
@@ -23,8 +22,6 @@ class User {
   factory User.fromJson(Map<String, dynamic> json) => User(
     id: json["id"].toString(), // Aseguramos que sea String
     email: json["email"],
-    password:
-        json["password"] ?? "", // Evitamos nulos si el backend no la envía
     name: json["name"],
     isVerified: json["isVerified"] ?? false,
     createdAt: json["createdAt"] != null
@@ -38,7 +35,6 @@ class User {
   Map<String, dynamic> toJson() => {
     "id": id,
     "email": email,
-    "password": password,
     "name": name,
     "isVerified": isVerified,
     "profilePic": profilePic,
