@@ -6,7 +6,9 @@ const nodemailer = require('nodemailer');
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors());
+app.use(cors({
+    origin: 'https://moviewind.netlify.app',
+}));
 app.use(express.json());
 
 // --- CONFIGURACIÓN DE NODEMAILER ---
