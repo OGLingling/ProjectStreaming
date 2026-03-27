@@ -72,13 +72,31 @@ app.post('/api/auth/send-otp', async (req, res) => {
             normalizedEmail,
             "Tu codigo de acceso - MovieWind",
             `
-                <div style="font-family: Arial, sans-serif; border: 1px solid #ddd; padding: 20px; border-radius: 10px;">
-                    <h2 style="color: #E50914;">Bienvenido a MovieWind</h2>
-                    <p>Usa el siguiente codigo para ingresar a tu cuenta:</p>
-                    <div style="background: #f4f4f4; padding: 15px; text-align: center; font-size: 30px; font-weight: bold; letter-spacing: 5px;">
-                        ${otp}
+                <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 500px; margin: 0 auto; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 16px; overflow: hidden;">
+                    <!-- Header -->
+                    <div style="background: linear-gradient(90deg, #E50914 0%, #ff6b6b 100%); padding: 30px; text-align: center;">
+                        <h1 style="color: white; margin: 0; font-size: 32px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">MovieWind</h1>
+                        <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0 0; font-size: 14px;">Tu portal de entretenimiento</p>
                     </div>
-                    <p style="color: #777; font-size: 12px;">Este codigo expira en 15 minutos.</p>
+                    
+                    <!-- Body -->
+                    <div style="padding: 40px 30px; text-align: center;">
+                        <h2 style="color: #ffffff; margin: 0 0 10px 0; font-size: 22px;">Codigo de verificacion</h2>
+                        <p style="color: #a0a0a0; margin: 0 0 30px 0; font-size: 14px;">Ingresa este codigo para acceder a tu cuenta</p>
+                        
+                        <!-- Codigo OTP -->
+                        <div style="background: linear-gradient(135deg, #E50914 0%, #b81d24 100%); padding: 25px 40px; border-radius: 12px; display: inline-block; box-shadow: 0 8px 25px rgba(229, 9, 20, 0.4);">
+                            <span style="color: white; font-size: 42px; font-weight: bold; letter-spacing: 12px; font-family: 'Courier New', monospace;">${otp}</span>
+                        </div>
+                        
+                        <p style="color: #888; font-size: 13px; margin-top: 30px;">Este codigo expira en <strong style="color: #E50914;">15 minutos</strong></p>
+                    </div>
+                    
+                    <!-- Footer -->
+                    <div style="background: rgba(0,0,0,0.3); padding: 20px; text-align: center; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <p style="color: #666; font-size: 12px; margin: 0;">Si no solicitaste este codigo, ignora este mensaje.</p>
+                        <p style="color: #555; font-size: 11px; margin: 10px 0 0 0;">© 2026 MovieWind. Todos los derechos reservados.</p>
+                    </div>
                 </div>
             `
         );
@@ -156,7 +174,33 @@ app.post('/api/auth/register', async (req, res) => {
         await sendEmail(
             normalizedEmail,
             "Bienvenido a MovieWind!",
-            `<h1>Hola, ${name}!</h1><p>Tu cuenta ha sido activada con el plan: <strong>${planNormalizado.toUpperCase()}</strong></p>`
+            `
+                <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 500px; margin: 0 auto; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 16px; overflow: hidden;">
+                    <!-- Header -->
+                    <div style="background: linear-gradient(90deg, #E50914 0%, #ff6b6b 100%); padding: 30px; text-align: center;">
+                        <h1 style="color: white; margin: 0; font-size: 32px; font-weight: bold;">MovieWind</h1>
+                    </div>
+                    
+                    <!-- Body -->
+                    <div style="padding: 40px 30px; text-align: center;">
+                        <h2 style="color: #ffffff; margin: 0 0 20px 0; font-size: 26px;">Bienvenido, ${name}!</h2>
+                        <p style="color: #a0a0a0; margin: 0 0 30px 0; font-size: 16px;">Tu cuenta ha sido creada exitosamente</p>
+                        
+                        <!-- Plan -->
+                        <div style="background: rgba(229, 9, 20, 0.15); border: 2px solid #E50914; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                            <p style="color: #888; margin: 0 0 5px 0; font-size: 12px; text-transform: uppercase;">Tu plan actual</p>
+                            <p style="color: #E50914; margin: 0; font-size: 28px; font-weight: bold; text-transform: uppercase;">${planNormalizado}</p>
+                        </div>
+                        
+                        <p style="color: #a0a0a0; font-size: 14px; line-height: 1.6;">Ya puedes disfrutar de miles de peliculas y series. Abre la app y comienza a explorar!</p>
+                    </div>
+                    
+                    <!-- Footer -->
+                    <div style="background: rgba(0,0,0,0.3); padding: 20px; text-align: center; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <p style="color: #555; font-size: 11px; margin: 0;">© 2026 MovieWind. Todos los derechos reservados.</p>
+                    </div>
+                </div>
+            `
         );
 
         res.status(201).json(user);
