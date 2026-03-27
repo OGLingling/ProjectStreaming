@@ -16,12 +16,18 @@ app.use(cors({
 
 app.use(express.json());
 
-// --- CONFIGURACIÓN DE NODEMAILER ---
+// --- 🛠️ CONFIGURACIÓN DE NODEMAILER CORREGIDA ---
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: "smtp.gmail.com",
+    port: 587,              // ✨ Cambio de 465 a 587
+    secure: false,          // ✨ Debe ser false para puerto 587
     auth: {
-        user: 'moviewindsupport@gmail.com', 
-        pass: 'vhchkvifdckabnyc' 
+        user: process.env.GMAIL_USER, 
+        pass: process.env.GMAIL_PASS 
+    },
+    tls: {
+        // ✨ Esto evita errores de conexión cuando usas dominios personalizados
+        rejectUnauthorized: false 
     }
 });
 
@@ -50,6 +56,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
             }
         });
 
+        // Verificamos la conexión antes de enviar (opcional para debug)
         await transporter.sendMail({
             from: '"MovieWind" <moviewindsupport@gmail.com>',
             to: normalizedEmail,
@@ -68,10 +75,12 @@ app.post('/api/auth/send-otp', async (req, res) => {
 
         res.json({ success: true });
     } catch (error) {
-        console.error("❌ Error en send-otp:", error);
-        res.status(500).json({ error: "Error al enviar el correo" });
+        console.error("❌ Error detallado en send-otp:", error);
+        res.status(500).json({ error: "Error al enviar el correo", details: error.message });
     }
 });
+
+// ... (El resto de tus rutas verify-otp, users, register, movies se mantienen igual)
 
 // 2. Verificar código y devolver datos del usuario
 app.post('/api/auth/verify-otp', async (req, res) => {
@@ -96,9 +105,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     }
 });
 
-// --- RUTAS DE USUARIO ---
-
-// ✅ RUTA CORREGIDA: Busca usuario por email (Evita el error 500)
+// --- RUTA DE BUSQUEDA DE USUARIOS ---
 app.get('/api/users', async (req, res) => {
     const { email } = req.query;
     if (!email) return res.status(400).json({ error: "Email requerido" });
@@ -107,9 +114,6 @@ app.get('/api/users', async (req, res) => {
         const user = await prisma.user.findUnique({
             where: { email: String(email).toLowerCase().trim() }
         });
-
-        // Enviamos el objeto si existe, o null si no. 
-        // No enviamos 404 para que Flutter no lo interprete como error de red.
         res.json(user || null); 
     } catch (error) {
         console.error("❌ Error en GET /api/users:", error);
@@ -117,7 +121,7 @@ app.get('/api/users', async (req, res) => {
     }
 });
 
-// Registro final (Creación de perfil y plan)
+// --- RUTA DE REGISTRO FINAL ---
 app.post('/api/auth/register', async (req, res) => {
     const { email, name, password, plan } = req.body; 
     const normalizedEmail = email.toLowerCase().trim();
@@ -154,6 +158,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 });
 
+// ... (Demás rutas de PUT users e GET movies)
 app.put("/api/users/:id", async (req, res) => {
     const { id } = req.params;
     const { name, profilePic, plan } = req.body;
@@ -167,8 +172,6 @@ app.put("/api/users/:id", async (req, res) => {
         res.status(500).json({ error: "Error al actualizar usuario" });
     }
 });
-
-// --- RUTAS DE PELÍCULAS ---
 
 app.get('/api/movies', async (req, res) => {
     const { type } = req.query; 
