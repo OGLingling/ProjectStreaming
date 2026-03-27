@@ -8,17 +8,31 @@ datasource db {
 }
 
 model Movie {
-  id          Int      @id @default(autoincrement())
-  title       String
-  description String?
-  releaseDate DateTime
-  rating      Float    @default(0.0)
-  imageUrl    String?
-  backdropUrl String?
-  category    String?
-  type        String
-  createdAt   DateTime @default(now())
-  videoUrl    String?
+  id           Int      @id @default(autoincrement())
+  externalId   String?  @unique // Aquí guardarías el ID del addon (ej: "tt12345")
+  title        String
+  description  String?
+  releaseDate  DateTime
+  rating       Float    @default(0.0)
+  imageUrl     String?
+  backdropUrl  String?
+  category     String?
+  type         String   @default("movie")
+  videoUrl     String?  // El link directo si es tuyo
+  
+  // RELACIÓN CON EL ADDON
+  addonId      Int?     // Si la peli viene de un addon, guardamos cuál es
+  addon        Addon?   @relation(fields: [addonId], references: [id])
+  
+  createdAt    DateTime @default(now())
+}
+
+model Addon {
+  id        Int      @id @default(autoincrement())
+  name      String
+  baseUrl   String   @unique
+  movies    Movie[]  // Relación: Un addon puede tener muchas pelis guardadas
+  createdAt DateTime @default(now())
 }
 
 enum PlanType {
@@ -30,7 +44,7 @@ enum PlanType {
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
-  password  String   @default("123456")
+  password  String?   @default("123456")
   name      String
   profilePic String? @default("assets/avatars/usuario5.webp")
   createdAt DateTime @default(now())

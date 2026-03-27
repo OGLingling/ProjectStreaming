@@ -1,35 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'video_player_screen.dart'; // Importación verificada
+import '../models/movie_model.dart';
+import 'video_player_screen.dart';
 
 class MovieDetailsScreen extends StatelessWidget {
   final Map<String, dynamic> movieData;
 
   const MovieDetailsScreen({super.key, required this.movieData});
 
-  // FUNCIÓN PARA REPRODUCIR EL VIDEO DESDE SUPABASE
-  void _playVideo(BuildContext context) {
-    // Extraemos la URL de Supabase desde movieData
-    final String? videoUrl = movieData['videoUrl'];
-
-    if (videoUrl != null && videoUrl.isNotEmpty) {
-      // NAVEGACIÓN ACTIVA: Pasamos la URL a tu pantalla de reproductor
+  // FUNCIÓN ACTUALIZADA: Maneja videoUrl directo y Streams de Addons
+  void _playVideo(BuildContext context, String url, String title) {
+    if (url.isNotEmpty) {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => VideoPlayerScreen(
-            videoUrl: videoUrl,
-            title: movieData['title'] ?? 'Sin título',
-          ),
+          builder: (context) => VideoPlayerScreen(videoUrl: url, title: title),
         ),
       );
     } else {
-      // Feedback visual si no hay link en la base de datos
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            "Error: No se encontró el link del video en la base de datos.",
-          ),
+          content: Text("Error: El link del video no es válido."),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -38,16 +29,19 @@ class MovieDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String coverImg =
-        (movieData['backdropUrl'] ?? movieData['imageUrl'] ?? '')
-            .toString()
-            .trim();
-    final String title = movieData['title'] ?? 'Sin título';
-    final String description = movieData['description'] ?? '';
-    final String category = movieData['category'] ?? '';
-    final double rating = (movieData['rating'] as num?)?.toDouble() ?? 0.0;
+    // Convertimos movieData al modelo Movie para mayor seguridad
+    final movie = Movie.fromJson(movieData);
+
+    final String coverImg = (movie.backdropUrl ?? movie.imageUrl ?? '').trim();
     final bool hasValidCoverImg =
         coverImg.isNotEmpty && coverImg.toLowerCase() != 'null';
+
+    // Prioridad de URL: 1. videoUrl directo, 2. Primer Stream del Addon
+    final String? primaryVideoUrl =
+        movie.videoUrl ??
+        (movie.streams != null && movie.streams!.isNotEmpty
+            ? movie.streams![0].url
+            : null);
 
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
@@ -62,24 +56,20 @@ class MovieDetailsScreen extends StatelessWidget {
       ),
       body: SingleChildScrollView(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ÁREA DEL BANNER (Imagen completa 16:9)
+            // ÁREA DEL BANNER
             AspectRatio(
               aspectRatio: 16 / 9,
               child: Stack(
                 children: [
-                  // 1. IMAGEN DE FONDO
                   Positioned.fill(
                     child: !hasValidCoverImg
-                        ? const SizedBox.expand()
+                        ? Container(color: Colors.grey[900])
                         : (coverImg.startsWith('http')
                               ? Image.network(coverImg, fit: BoxFit.cover)
-                              : (coverImg.startsWith('assets/')
-                                    ? Image.asset(coverImg, fit: BoxFit.cover)
-                                    : const SizedBox.expand())),
+                              : Image.asset(coverImg, fit: BoxFit.cover)),
                   ),
-
-                  // 2. GRADIENTE DE PROTECCIÓN (Estilo Netflix: Oscuro a la izquierda)
                   Positioned.fill(
                     child: Container(
                       decoration: BoxDecoration(
@@ -96,8 +86,6 @@ class MovieDetailsScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-
-                  // 3. CAPA DE INFORMACIÓN (Título, Sinopsis, Botón)
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 40,
@@ -107,9 +95,8 @@ class MovieDetailsScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Título (Área Azul)
                         Text(
-                          title.toUpperCase(),
+                          movie.title.toUpperCase(),
                           style: GoogleFonts.montserrat(
                             color: Colors.white,
                             fontSize: 28,
@@ -117,12 +104,10 @@ class MovieDetailsScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 10),
-
-                        // Sinopsis (Área Verde)
                         SizedBox(
                           width: MediaQuery.of(context).size.width * 0.45,
                           child: Text(
-                            description,
+                            movie.description ?? 'Sin descripción disponible.',
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -133,12 +118,10 @@ class MovieDetailsScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 10),
-
-                        // Rating y Categoría
                         Row(
                           children: [
                             Text(
-                              "$rating Calificación",
+                              "${movie.rating} Calificación",
                               style: const TextStyle(
                                 color: Color(0xFF46D369),
                                 fontWeight: FontWeight.bold,
@@ -147,7 +130,7 @@ class MovieDetailsScreen extends StatelessWidget {
                             ),
                             const SizedBox(width: 10),
                             Text(
-                              category,
+                              movie.category ?? '',
                               style: const TextStyle(
                                 color: Colors.white70,
                                 fontSize: 12,
@@ -156,34 +139,34 @@ class MovieDetailsScreen extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 15),
-
-                        // BOTÓN DE REPRODUCIR (Área Blanca - Tamaño reducido)
-                        SizedBox(
-                          width: 150,
-                          height: 38,
-                          child: ElevatedButton.icon(
-                            onPressed: () => _playVideo(
-                              context,
-                            ), // <--- CONEXIÓN CON REPRODUCTOR
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.black,
-                              elevation: 5,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4),
+                        if (primaryVideoUrl != null)
+                          SizedBox(
+                            width: 150,
+                            height: 38,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _playVideo(
+                                context,
+                                primaryVideoUrl,
+                                movie.title,
                               ),
-                              padding: EdgeInsets.zero,
-                            ),
-                            icon: const Icon(Icons.play_arrow, size: 24),
-                            label: const Text(
-                              "Reproducir",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.black,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                padding: EdgeInsets.zero,
+                              ),
+                              icon: const Icon(Icons.play_arrow, size: 24),
+                              label: const Text(
+                                "Reproducir",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -191,8 +174,44 @@ class MovieDetailsScreen extends StatelessWidget {
               ),
             ),
 
-            // Contenedor para contenido extra debajo si lo necesitas
-            const SizedBox(height: 20),
+            // SECCIÓN DE STREAMS / OPCIONES (Si es de un Addon)
+            if (movie.streams != null && movie.streams!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 20,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Opciones de Calidad",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 10,
+                      children: movie.streams!.map((stream) {
+                        return ChoiceChip(
+                          label: Text(stream.quality),
+                          selected: false,
+                          onSelected: (_) =>
+                              _playVideo(context, stream.url, movie.title),
+                          backgroundColor: Colors.grey[800],
+                          labelStyle: const TextStyle(color: Colors.white),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Espacio inferior
+            const SizedBox(height: 50),
           ],
         ),
       ),

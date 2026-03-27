@@ -6,12 +6,12 @@ const nodemailer = require('nodemailer');
 const app = express();
 const prisma = new PrismaClient();
 
-// ✅ CORS CONFIGURADO PARA FLUTTER WEB
+// ✅ CONFIGURACIÓN DE CORS PARA FLUTTER (WEB Y MÓVIL)
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  credentials: true
+    credentials: true
 }));
 
 app.use(express.json());
@@ -27,20 +27,23 @@ const transporter = nodemailer.createTransport({
 
 // --- RUTAS DE AUTENTICACIÓN (OTP) ---
 
-// 1. Enviar código de 4 dígitos
+// 1. Enviar código de 4 dígitos (Login/Registro inicial)
 app.post('/api/auth/send-otp', async (req, res) => {
     const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email requerido" });
+
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const normalizedEmail = email.toLowerCase().trim();
 
     try {
         await prisma.user.upsert({
-            where: { email },
+            where: { email: normalizedEmail },
             update: { 
                 pin: otp, 
                 pinExpiresAt: new Date(Date.now() + 15 * 60000) 
             },
             create: { 
-                email, 
+                email: normalizedEmail, 
                 pin: otp, 
                 pinExpiresAt: new Date(Date.now() + 15 * 60000),
                 name: "Usuario Nuevo"
@@ -49,13 +52,16 @@ app.post('/api/auth/send-otp', async (req, res) => {
 
         await transporter.sendMail({
             from: '"MovieWind" <moviewindsupport@gmail.com>',
-            to: email,
+            to: normalizedEmail,
             subject: "Tu código de acceso - MovieWind",
             html: `
-                <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-                    <h2>Bienvenido a MovieWind</h2>
-                    <p>Tu código de acceso es: <strong style="font-size: 24px; color: #E50914;">${otp}</strong></p>
-                    <p>Expira en 15 min.</p>
+                <div style="font-family: Arial, sans-serif; border: 1px solid #ddd; padding: 20px; border-radius: 10px;">
+                    <h2 style="color: #E50914;">Bienvenido a MovieWind</h2>
+                    <p>Usa el siguiente código para ingresar a tu cuenta:</p>
+                    <div style="background: #f4f4f4; padding: 15px; text-align: center; font-size: 30px; font-weight: bold; letter-spacing: 5px;">
+                        ${otp}
+                    </div>
+                    <p style="color: #777; font-size: 12px;">Este código expira en 15 minutos.</p>
                 </div>
             `
         });
@@ -63,19 +69,21 @@ app.post('/api/auth/send-otp', async (req, res) => {
         res.json({ success: true });
     } catch (error) {
         console.error("❌ Error en send-otp:", error);
-        res.status(500).json({ error: "Error al enviar el código" });
+        res.status(500).json({ error: "Error al enviar el correo" });
     }
 });
 
-// 2. Verificar código
+// 2. Verificar código y devolver datos del usuario
 app.post('/api/auth/verify-otp', async (req, res) => {
     const { email, code } = req.body;
+    const normalizedEmail = email.toLowerCase().trim();
+
     try {
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
         if (user && user.pin === code && new Date() < user.pinExpiresAt) {
             const updatedUser = await prisma.user.update({
-                where: { email },
+                where: { email: normalizedEmail },
                 data: { pin: null, pinExpiresAt: null, isVerified: true }
             });
             res.json(updatedUser);
@@ -83,26 +91,66 @@ app.post('/api/auth/verify-otp', async (req, res) => {
             res.status(401).json({ error: "Código incorrecto o expirado" });
         }
     } catch (error) {
-        res.status(500).json({ error: "Error al verificar" });
+        console.error("❌ Error en verify-otp:", error);
+        res.status(500).json({ error: "Error al verificar código" });
     }
 });
 
 // --- RUTAS DE USUARIO ---
 
-// ✅ RUTA NUEVA: Obtener usuario por email (Necesaria para tu ApiService de Flutter)
+// ✅ RUTA CORREGIDA: Busca usuario por email (Evita el error 500)
 app.get('/api/users', async (req, res) => {
     const { email } = req.query;
+    if (!email) return res.status(400).json({ error: "Email requerido" });
+
     try {
         const user = await prisma.user.findUnique({
-            where: { email: String(email) }
+            where: { email: String(email).toLowerCase().trim() }
         });
-        if (user) {
-            res.json(user);
-        } else {
-            res.status(404).json({ error: "Usuario no encontrado" });
-        }
+
+        // Enviamos el objeto si existe, o null si no. 
+        // No enviamos 404 para que Flutter no lo interprete como error de red.
+        res.json(user || null); 
     } catch (error) {
-        res.status(500).json({ error: "Error al buscar usuario" });
+        console.error("❌ Error en GET /api/users:", error);
+        res.status(500).json({ error: "Error interno al buscar usuario" });
+    }
+});
+
+// Registro final (Creación de perfil y plan)
+app.post('/api/auth/register', async (req, res) => {
+    const { email, name, password, plan } = req.body; 
+    const normalizedEmail = email.toLowerCase().trim();
+
+    let planNormalizado = "basico";
+    if (plan) {
+        planNormalizado = plan.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    }
+
+    try {
+        const user = await prisma.user.upsert({
+            where: { email: normalizedEmail },
+            update: { name, plan: planNormalizado }, 
+            create: {
+                email: normalizedEmail,
+                name,
+                password: password || "123456",
+                plan: planNormalizado,
+                isVerified: true, 
+            }
+        });
+
+        await transporter.sendMail({
+            from: '"MovieWind" <moviewindsupport@gmail.com>',
+            to: normalizedEmail,
+            subject: "¡Bienvenido a MovieWind!",
+            html: `<h1>¡Hola, ${name}!</h1><p>Tu cuenta ha sido activada con el plan: <strong>${planNormalizado.toUpperCase()}</strong></p>`
+        });
+
+        res.status(201).json(user); 
+    } catch (error) {
+        console.error("❌ Error en registro:", error);
+        res.status(500).json({ error: "No se pudo completar el registro" });
     }
 });
 
@@ -120,41 +168,6 @@ app.put("/api/users/:id", async (req, res) => {
     }
 });
 
-app.post('/api/auth/register', async (req, res) => {
-    const { email, name, password, plan } = req.body; 
-
-    let planNormalizado = "basico";
-    if (plan) {
-        planNormalizado = plan.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    }
-
-    try {
-        const user = await prisma.user.upsert({
-            where: { email },
-            update: { name, plan: planNormalizado }, 
-            create: {
-                email,
-                name,
-                password: password || "123456",
-                plan: planNormalizado,
-                isVerified: true, 
-            }
-        });
-
-        await transporter.sendMail({
-            from: '"MovieWind" <moviewindsupport@gmail.com>',
-            to: email,
-            subject: "¡Bienvenido a MovieWind!",
-            html: `<h1>¡Hola, ${name}!</h1><p>Tu cuenta ha sido creada con el plan: ${planNormalizado.toUpperCase()}</p>`
-        });
-
-        res.status(201).json(user); 
-    } catch (error) {
-        console.error("Error en registro:", error);
-        res.status(500).json({ error: "No se pudo completar el registro" });
-    }
-});
-
 // --- RUTAS DE PELÍCULAS ---
 
 app.get('/api/movies', async (req, res) => {
@@ -166,7 +179,7 @@ app.get('/api/movies', async (req, res) => {
         });
         res.json(content);
     } catch (error) {
-        res.status(500).json({ error: "Error en la base de datos" });
+        res.status(500).json({ error: "Error al cargar contenido" });
     }
 });
 

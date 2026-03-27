@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:flutter/services.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
   final String videoUrl;
@@ -25,16 +26,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
+
+    // 1. CONFIGURACIÓN DE PANTALLA (Modo Cine)
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
     _controller =
         VideoPlayerController.networkUrl(
             Uri.parse(widget.videoUrl),
             videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
           )
           ..initialize().then((_) {
-            setState(() {});
-            _controller.play();
-            _startHideTimer();
+            if (mounted) {
+              setState(() {});
+              _controller.play();
+              _startHideTimer();
+              // Listener para actualizar el tiempo mientras se reproduce
+              _controller.addListener(() => setState(() {}));
+            }
           });
+  }
+
+  // Función útil para formatear la duración (00:00)
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
+    if (duration.inHours > 0) {
+      return "${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
+    }
+    return "$twoDigitMinutes:$twoDigitSeconds";
   }
 
   void _startHideTimer() {
@@ -56,7 +80,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       body: MouseRegion(
         onHover: (_) => _onMouseMove(),
         onEnter: (_) => _onMouseMove(),
-        // Ocultar el cursor cuando no hay controles
         cursor: _showControls
             ? SystemMouseCursors.basic
             : SystemMouseCursors.none,
@@ -64,26 +87,35 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           onTap: _onMouseMove,
           child: Stack(
             children: [
-              // 1. EL VIDEO (Capa base)
+              // 1. EL VIDEO
               Center(
                 child: _controller.value.isInitialized
                     ? AspectRatio(
                         aspectRatio: _controller.value.aspectRatio,
-                        child: FittedBox(
-                          fit: BoxFit.contain,
-                          child: SizedBox(
-                            width: _controller.value.size.width,
-                            height: _controller.value.size.height,
-                            child: VideoPlayer(_controller),
-                          ),
-                        ),
+                        child: VideoPlayer(_controller),
                       )
                     : const CircularProgressIndicator(color: Colors.red),
               ),
 
-              // 2. BOTÓN ATRÁS (Arriba a la izquierda)
+              // 2. CAPA NEGRA SUPERIOR (Para que el botón de atrás se vea bien)
+              AnimatedOpacity(
+                opacity: _showControls ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                child: Container(
+                  height: 80,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black87, Colors.transparent],
+                    ),
+                  ),
+                ),
+              ),
+
+              // 3. BOTÓN ATRÁS
               Positioned(
-                top: 40,
+                top: 20,
                 left: 20,
                 child: AnimatedOpacity(
                   opacity: _showControls ? 1.0 : 0.0,
@@ -101,7 +133,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
 
-              // 3. CONTROLES INFERIORES
+              // 4. CONTROLES INFERIORES
               Positioned(
                 bottom: 0,
                 left: 0,
@@ -110,7 +142,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   opacity: _showControls ? 1.0 : 0.0,
                   duration: const Duration(milliseconds: 300),
                   child: Container(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.bottomCenter,
@@ -121,14 +156,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        VideoProgressIndicator(
-                          _controller,
-                          allowScrubbing: true,
-                          colors: const VideoProgressColors(
-                            playedColor: Colors.red,
-                            bufferedColor: Colors.white24,
-                            backgroundColor: Colors.white10,
-                          ),
+                        // Barra de progreso con tiempo actual y total
+                        Row(
+                          children: [
+                            Text(
+                              _formatDuration(_controller.value.position),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            Expanded(
+                              child: VideoProgressIndicator(
+                                _controller,
+                                allowScrubbing: true,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                colors: const VideoProgressColors(
+                                  playedColor: Colors.red,
+                                  bufferedColor: Colors.white24,
+                                  backgroundColor: Colors.white10,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              _formatDuration(_controller.value.duration),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
                         ),
                         Row(
                           children: [
@@ -158,18 +218,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 16,
+                                  fontWeight: FontWeight.bold,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            // --- CONTROL DE VOLUMEN ---
-                            Icon(
-                              _volume == 0 ? Icons.volume_off : Icons.volume_up,
+                            // Volumen
+                            const Icon(
+                              Icons.volume_up,
                               color: Colors.white,
                               size: 20,
                             ),
                             SizedBox(
-                              width: 120,
+                              width: 100,
                               child: Slider(
                                 value: _volume,
                                 activeColor: Colors.red,
@@ -199,6 +260,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
+    // 2. RESTABLECER PANTALLA AL SALIR
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
     _hideTimer?.cancel();
     _controller.dispose();
     super.dispose();

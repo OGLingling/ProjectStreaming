@@ -30,14 +30,15 @@ class _AuthScreenState extends State<AuthScreen> {
   final String _bgPosters =
       "https://wallpapers.com/images/hd/netflix-background-gs7hjuwvv2g0e9fj.jpg";
 
-  // ─── LÓGICA PRINCIPAL CORREGIDA ─────────────────────────────────────────────
+  // ─── LÓGICA DE NAVEGACIÓN Y AUTENTICACIÓN ──────────────────────────────────
 
   Future<void> _handleAction() async {
     if (_isLoading) return;
 
-    final email = _emailController.text.trim();
+    // Normalizamos el email para evitar errores de mayúsculas en Neon
+    final email = _emailController.text.trim().toLowerCase();
 
-    // Validación básica de email
+    // Validación de formato
     if ((_currentStep == AuthStep.registerLanding ||
             _currentStep == AuthStep.loginEmail) &&
         (!email.contains('@') || !email.contains('.'))) {
@@ -50,55 +51,62 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       if (_currentStep == AuthStep.registerLanding ||
           _currentStep == AuthStep.loginEmail) {
-        // ✅ MEJORA: Verificar si el usuario existe antes de decidir el camino
+        // 1. Buscamos al usuario en la base de datos Neon
         final userData = await ApiService.getUserDataByEmail(email);
 
-        if (userData != null) {
-          // El usuario EXISTE -> Flujo de Login (Enviar OTP)
+        if (userData != null && userData.isNotEmpty) {
+          // ✅ EL USUARIO EXISTE -> Flujo de Login (Enviar código)
           await _solicitarOTP();
         } else {
-          // El usuario NO existe -> Flujo de Registro
+          // ❌ NO EXISTE -> Flujo de Registro
           final prefs = await SharedPreferences.getInstance();
           await prefs.clear();
-          setState(() => _currentStep = AuthStep.registerPassword);
+          setState(() {
+            _currentStep = AuthStep.registerPassword;
+          });
         }
       } else if (_currentStep == AuthStep.registerPassword) {
-        final nombre = _nameController.text.trim();
-        final password = _passwordController.text.trim();
-
-        if (nombre.isEmpty) {
-          _showErrorSnackBar("Por favor ingresa tu nombre");
-          return;
-        }
-        if (password.length < 6) {
-          _showErrorSnackBar("La contraseña debe tener al menos 6 caracteres");
-          return;
-        }
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PlanSelectionScreen(
-              userEmail: email,
-              userName: nombre,
-              password: password,
-            ),
-          ),
-        );
+        _procederAlRegistro(email);
       } else if (_currentStep == AuthStep.loginCode) {
         await _verificarOTPyEntrar();
       }
     } catch (e) {
+      debugPrint("Error en Auth: $e");
       _showErrorSnackBar("Error de conexión con el servidor");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ─── LÓGICA DE LOGIN ─────────────────────────────────────────────────────────
+  void _procederAlRegistro(String email) {
+    final nombre = _nameController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (nombre.isEmpty) {
+      _showErrorSnackBar("Por favor ingresa tu nombre");
+      return;
+    }
+    if (password.length < 6) {
+      _showErrorSnackBar("La contraseña debe tener al menos 6 caracteres");
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PlanSelectionScreen(
+          userEmail: email,
+          userName: nombre,
+          password: password,
+        ),
+      ),
+    );
+  }
+
+  // ─── LÓGICA DE OTP (LOGIN) ─────────────────────────────────────────────────
 
   Future<void> _solicitarOTP() async {
-    final email = _emailController.text.trim();
+    final email = _emailController.text.trim().toLowerCase();
     final success = await ApiService.sendOTP(email);
 
     if (!mounted) return;
@@ -115,13 +123,13 @@ class _AuthScreenState extends State<AuthScreen> {
     final String code = _codeControllers.map((e) => e.text).join();
 
     if (code.length < 4) {
-      _showErrorSnackBar("Por favor, ingresa el código de 4 dígitos");
+      _showErrorSnackBar("Ingresa el código completo");
       return;
     }
 
     try {
       final userData = await ApiService.verifyOTP(
-        _emailController.text.trim(),
+        _emailController.text.trim().toLowerCase(),
         code,
       );
 
@@ -139,6 +147,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _guardarSesionYNavegar(Map<String, dynamic> userData) async {
     final prefs = await SharedPreferences.getInstance();
+    // Guardamos ID como String para evitar errores de tipo
     await prefs.setString('user_id', userData['id'].toString());
     await prefs.setString(
       'user_email',
@@ -156,7 +165,7 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  // ─── UI ──────────────────────────────────────────────────────────────────────
+  // ─── UI BUILDING ───────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -164,8 +173,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
     return Scaffold(
       backgroundColor: isDarkBg ? Colors.black : Colors.white,
-      resizeToAvoidBottomInset:
-          true, // Cambiado a true para que el teclado no tape inputs
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           if (isDarkBg) _buildModernBackground(),
@@ -405,7 +413,7 @@ class _AuthScreenState extends State<AuthScreen> {
         const SizedBox(height: 16),
         TextButton(
           onPressed: _isLoading ? null : _solicitarOTP,
-          child: Text(
+          child: const Text(
             "¿No recibiste el código? Reenviar",
             style: TextStyle(
               color: Colors.white60,
@@ -416,6 +424,8 @@ class _AuthScreenState extends State<AuthScreen> {
       ],
     );
   }
+
+  // ─── COMPONENTES REUTILIZABLES ─────────────────────────────────────────────
 
   Widget _buildNetflixTextField(
     TextEditingController controller,
@@ -503,7 +513,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        duration: const Duration(seconds: 3),
+      ),
     );
   }
 

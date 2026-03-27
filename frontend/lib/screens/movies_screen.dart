@@ -22,6 +22,7 @@ class _MoviesScreenState extends State<MoviesScreen>
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
 
+  // URL de respaldo para el banner
   final String videoUrlSupabase =
       "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/DulceHogar.mp4";
 
@@ -75,7 +76,6 @@ class _MoviesScreenState extends State<MoviesScreen>
           });
   }
 
-  // Corregido: Ahora recibe los datos directamente como Map
   void _navigateToDetails(Map<String, dynamic> movieData) async {
     _videoController?.pause();
     await Navigator.push(
@@ -89,21 +89,24 @@ class _MoviesScreenState extends State<MoviesScreen>
     }
   }
 
+  // Carga de datos adaptada al modelo Movie que definimos para Addons y Prisma
   void _loadData() {
     movies = [
       Movie(
+        id: "1", // Si en tu modelo es Int?, usamos el número. Si es String, pon "1"
         title: "Dulce Hogar",
         imageUrl: "assets/Images/sweetHomeCartel.webp",
         backdropUrl: "assets/Images/sweetHomeBanner.webp",
         description:
-            "Tras una tragedia familiar, el solitario Cha Hyun-su se muda...",
+            "Tras una tragedy familiar, el solitario Cha Hyun-su se muda...",
         rating: 8.7,
         releaseDate: DateTime.now(),
         category: "Terror / Horror",
-        videoUrl:
-            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/DulceHogar.mp4",
+        type: "series",
+        videoUrl: videoUrlSupabase,
       ),
       Movie(
+        id: "2",
         title: "Avengers: Civil War",
         imageUrl: "assets/Images/civilWar.webp",
         backdropUrl: "assets/Images/civilWarBanner.webp",
@@ -111,10 +114,12 @@ class _MoviesScreenState extends State<MoviesScreen>
         rating: 8.2,
         releaseDate: DateTime.now(),
         category: "Acción",
+        type: "movie",
         videoUrl:
             "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/CivilWar.mp4",
       ),
       Movie(
+        id: "3",
         title: "Estamos Muertos",
         imageUrl: "assets/Images/EstamosMuertosCart.webp",
         backdropUrl: "assets/Images/EstamosMuertosPost.webp",
@@ -122,10 +127,12 @@ class _MoviesScreenState extends State<MoviesScreen>
         rating: 8.5,
         releaseDate: DateTime.now(),
         category: "Terror / Horror",
+        type: "series",
         videoUrl:
             "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/EstamosMuertos.mp4",
       ),
       Movie(
+        id: "4",
         title: "The Batman",
         imageUrl: "assets/Images/TheBatmanCart.webp",
         backdropUrl: "assets/Images/TheBatmanPost.webp",
@@ -133,19 +140,9 @@ class _MoviesScreenState extends State<MoviesScreen>
         rating: 8.5,
         releaseDate: DateTime.now(),
         category: "Suspenso",
+        type: "movie",
         videoUrl:
             "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/TheBatman.mp4",
-      ),
-      Movie(
-        title: "Stranger Things",
-        imageUrl: "assets/Images/StrangerThingsCart.webp",
-        backdropUrl: "assets/Images/StrangerThingsPost.webp",
-        description: "Un misterio que involucra experimentos secretos.",
-        rating: 8.5,
-        releaseDate: DateTime.now(),
-        category: "Terror / Horror",
-        videoUrl:
-            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/stranger%20Things.mp4",
       ),
     ];
     setState(() => isLoading = false);
@@ -187,9 +184,8 @@ class _MoviesScreenState extends State<MoviesScreen>
     if (movies.isEmpty) return const SizedBox(height: 400);
     final double bannerHeight = MediaQuery.of(context).size.height * 0.8;
     final Movie mainMovie = movies[0];
-    final String bannerImg = (mainMovie.backdropUrl ?? mainMovie.imageUrl ?? '').trim();
-    final bool hasValidBannerImg =
-        bannerImg.isNotEmpty && bannerImg.toLowerCase() != 'null';
+    final String bannerImg = (mainMovie.backdropUrl ?? mainMovie.imageUrl ?? '')
+        .trim();
 
     return Stack(
       children: [
@@ -208,21 +204,7 @@ class _MoviesScreenState extends State<MoviesScreen>
                     child: VideoPlayer(_videoController!),
                   ),
                 )
-              : (!hasValidBannerImg
-                    ? const SizedBox.expand()
-                    : (bannerImg.startsWith('http')
-                        ? Image.network(
-                            bannerImg,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                          )
-                        : (bannerImg.startsWith('assets/')
-                            ? Image.asset(
-                                bannerImg,
-                                fit: BoxFit.cover,
-                                alignment: Alignment.topCenter,
-                              )
-                            : const SizedBox.expand()))),
+              : _buildImage(bannerImg, bannerHeight),
         ),
         Positioned.fill(
           child: Container(
@@ -311,6 +293,20 @@ class _MoviesScreenState extends State<MoviesScreen>
     );
   }
 
+  Widget _buildImage(String path, double height) {
+    if (path.isEmpty || path.toLowerCase() == 'null') {
+      return Container(color: Colors.grey[900]);
+    }
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+      );
+    }
+    return Image.asset(path, fit: BoxFit.cover, alignment: Alignment.topCenter);
+  }
+
   Widget _btnAction(
     IconData icon,
     String label,
@@ -362,7 +358,7 @@ class SChildList extends StatelessWidget {
         itemBuilder: (context, index) {
           final movie = list[index];
           final img = (movie.imageUrl ?? '').trim();
-          final hasValidImg = img.isNotEmpty && img.toLowerCase() != 'null';
+
           return GestureDetector(
             onTap: () => onSelect(movie.toJson()),
             child: Container(
@@ -372,13 +368,7 @@ class SChildList extends StatelessWidget {
                 tag: movie.title,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: !hasValidImg
-                      ? Container(color: Colors.black)
-                      : (img.startsWith('http')
-                          ? Image.network(img, fit: BoxFit.cover)
-                          : (img.startsWith('assets/')
-                              ? Image.asset(img, fit: BoxFit.cover)
-                              : Container(color: Colors.black))),
+                  child: _buildItemImage(img),
                 ),
               ),
             ),
@@ -386,5 +376,12 @@ class SChildList extends StatelessWidget {
         },
       ),
     );
+  }
+
+  Widget _buildItemImage(String path) {
+    if (path.isEmpty || path.toLowerCase() == 'null')
+      return Container(color: Colors.black);
+    if (path.startsWith('http')) return Image.network(path, fit: BoxFit.cover);
+    return Image.asset(path, fit: BoxFit.cover);
   }
 }
