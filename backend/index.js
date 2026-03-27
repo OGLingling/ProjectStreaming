@@ -1,11 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const prisma = new PrismaClient();
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ✅ CONFIGURACIÓN DE CORS PARA FLUTTER (WEB Y MÓVIL)
 app.use(cors({
@@ -16,6 +15,17 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// --- CONFIGURACIÓN DE NODEMAILER CON BREVO ---
+const transporter = nodemailer.createTransport({
+    host: "smtp-relay.brevo.com",
+    port: 587,
+    secure: false,
+    auth: {
+        user: process.env.BREVO_USER,
+        pass: process.env.BREVO_PASS
+    }
+});
 
 // --- RUTAS DE AUTENTICACIÓN (OTP) ---
 
@@ -42,8 +52,8 @@ app.post('/api/auth/send-otp', async (req, res) => {
             }
         });
 
-        await resend.emails.send({
-            from: 'MovieWind <onboarding@resend.dev>',
+        await transporter.sendMail({
+            from: '"MovieWind" <moviewindsupport@gmail.com>',
             to: normalizedEmail,
             subject: "Tu código de acceso - MovieWind",
             html: `
@@ -127,8 +137,8 @@ app.post('/api/auth/register', async (req, res) => {
             }
         });
 
-        await resend.emails.send({
-            from: 'MovieWind <onboarding@resend.dev>',
+        await transporter.sendMail({
+            from: '"MovieWind" <moviewindsupport@gmail.com>',
             to: normalizedEmail,
             subject: "¡Bienvenido a MovieWind!",
             html: `<h1>¡Hola, ${name}!</h1><p>Tu cuenta ha sido activada con el plan: <strong>${planNormalizado.toUpperCase()}</strong></p>`
