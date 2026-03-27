@@ -1,10 +1,11 @@
 const express = require('express');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 const app = express();
 const prisma = new PrismaClient();
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ✅ CONFIGURACIÓN DE CORS PARA FLUTTER (WEB Y MÓVIL)
 app.use(cors({
@@ -15,21 +16,6 @@ app.use(cors({
 }));
 
 app.use(express.json());
-
-// --- 🛠️ CONFIGURACIÓN DE NODEMAILER CORREGIDA ---
-const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,              // ✨ Cambio de 465 a 587
-    secure: false,          // ✨ Debe ser false para puerto 587
-    auth: {
-        user: process.env.GMAIL_USER, 
-        pass: process.env.GMAIL_PASS 
-    },
-    tls: {
-        // ✨ Esto evita errores de conexión cuando usas dominios personalizados
-        rejectUnauthorized: false 
-    }
-});
 
 // --- RUTAS DE AUTENTICACIÓN (OTP) ---
 
@@ -44,21 +30,20 @@ app.post('/api/auth/send-otp', async (req, res) => {
     try {
         await prisma.user.upsert({
             where: { email: normalizedEmail },
-            update: { 
-                pin: otp, 
-                pinExpiresAt: new Date(Date.now() + 15 * 60000) 
+            update: {
+                pin: otp,
+                pinExpiresAt: new Date(Date.now() + 15 * 60000)
             },
-            create: { 
-                email: normalizedEmail, 
-                pin: otp, 
+            create: {
+                email: normalizedEmail,
+                pin: otp,
                 pinExpiresAt: new Date(Date.now() + 15 * 60000),
                 name: "Usuario Nuevo"
             }
         });
 
-        // Verificamos la conexión antes de enviar (opcional para debug)
-        await transporter.sendMail({
-            from: '"MovieWind" <moviewindsupport@gmail.com>',
+        await resend.emails.send({
+            from: 'MovieWind <onboarding@resend.dev>',
             to: normalizedEmail,
             subject: "Tu código de acceso - MovieWind",
             html: `
@@ -79,8 +64,6 @@ app.post('/api/auth/send-otp', async (req, res) => {
         res.status(500).json({ error: "Error al enviar el correo", details: error.message });
     }
 });
-
-// ... (El resto de tus rutas verify-otp, users, register, movies se mantienen igual)
 
 // 2. Verificar código y devolver datos del usuario
 app.post('/api/auth/verify-otp', async (req, res) => {
@@ -105,7 +88,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     }
 });
 
-// --- RUTA DE BUSQUEDA DE USUARIOS ---
+// --- RUTA DE BÚSQUEDA DE USUARIOS ---
 app.get('/api/users', async (req, res) => {
     const { email } = req.query;
     if (!email) return res.status(400).json({ error: "Email requerido" });
@@ -114,7 +97,7 @@ app.get('/api/users', async (req, res) => {
         const user = await prisma.user.findUnique({
             where: { email: String(email).toLowerCase().trim() }
         });
-        res.json(user || null); 
+        res.json(user || null);
     } catch (error) {
         console.error("❌ Error en GET /api/users:", error);
         res.status(500).json({ error: "Error interno al buscar usuario" });
@@ -123,7 +106,7 @@ app.get('/api/users', async (req, res) => {
 
 // --- RUTA DE REGISTRO FINAL ---
 app.post('/api/auth/register', async (req, res) => {
-    const { email, name, password, plan } = req.body; 
+    const { email, name, password, plan } = req.body;
     const normalizedEmail = email.toLowerCase().trim();
 
     let planNormalizado = "basico";
@@ -134,31 +117,31 @@ app.post('/api/auth/register', async (req, res) => {
     try {
         const user = await prisma.user.upsert({
             where: { email: normalizedEmail },
-            update: { name, plan: planNormalizado }, 
+            update: { name, plan: planNormalizado },
             create: {
                 email: normalizedEmail,
                 name,
                 password: password || "123456",
                 plan: planNormalizado,
-                isVerified: true, 
+                isVerified: true,
             }
         });
 
-        await transporter.sendMail({
-            from: '"MovieWind" <moviewindsupport@gmail.com>',
+        await resend.emails.send({
+            from: 'MovieWind <onboarding@resend.dev>',
             to: normalizedEmail,
             subject: "¡Bienvenido a MovieWind!",
             html: `<h1>¡Hola, ${name}!</h1><p>Tu cuenta ha sido activada con el plan: <strong>${planNormalizado.toUpperCase()}</strong></p>`
         });
 
-        res.status(201).json(user); 
+        res.status(201).json(user);
     } catch (error) {
         console.error("❌ Error en registro:", error);
         res.status(500).json({ error: "No se pudo completar el registro" });
     }
 });
 
-// ... (Demás rutas de PUT users e GET movies)
+// --- ACTUALIZAR USUARIO ---
 app.put("/api/users/:id", async (req, res) => {
     const { id } = req.params;
     const { name, profilePic, plan } = req.body;
@@ -173,8 +156,9 @@ app.put("/api/users/:id", async (req, res) => {
     }
 });
 
+// --- OBTENER PELÍCULAS ---
 app.get('/api/movies', async (req, res) => {
-    const { type } = req.query; 
+    const { type } = req.query;
     try {
         const content = await prisma.movie.findMany({
             where: type ? { type: String(type) } : {},
