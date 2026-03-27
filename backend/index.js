@@ -1,12 +1,11 @@
 const express = require('express');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
-const nodemailer = require('nodemailer');
 
 const app = express();
 const prisma = new PrismaClient();
 
-// ✅ CONFIGURACIÓN DE CORS PARA FLUTTER (WEB Y MÓVIL)
+// CONFIGURACION DE CORS PARA FLUTTER (WEB Y MOVIL)
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -16,20 +15,37 @@ app.use(cors({
 
 app.use(express.json());
 
-// --- CONFIGURACIÓN DE NODEMAILER CON BREVO ---
-const transporter = nodemailer.createTransport({
-    host: "smtp-relay.brevo.com",
-    port: 587,
-    secure: false,
-    auth: {
-        user: process.env.BREVO_USER,
-        pass: process.env.BREVO_PASS
+// --- FUNCION PARA ENVIAR EMAIL CON BREVO API (NO SMTP) ---
+async function sendEmail(to, subject, htmlContent) {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+            'accept': 'application/json',
+            'api-key': process.env.BREVO_API_KEY,
+            'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+            sender: {
+                name: 'MovieWind',
+                email: 'moviewindsupport@gmail.com'
+            },
+            to: [{ email: to }],
+            subject: subject,
+            htmlContent: htmlContent
+        })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error al enviar email');
     }
-});
 
-// --- RUTAS DE AUTENTICACIÓN (OTP) ---
+    return response.json();
+}
 
-// 1. Enviar código de 4 dígitos (Login/Registro inicial)
+// --- RUTAS DE AUTENTICACION (OTP) ---
+
+// 1. Enviar codigo de 4 digitos (Login/Registro inicial)
 app.post('/api/auth/send-otp', async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: "Email requerido" });
@@ -52,30 +68,30 @@ app.post('/api/auth/send-otp', async (req, res) => {
             }
         });
 
-        await transporter.sendMail({
-            from: '"MovieWind" <moviewindsupport@gmail.com>',
-            to: normalizedEmail,
-            subject: "Tu código de acceso - MovieWind",
-            html: `
+        await sendEmail(
+            normalizedEmail,
+            "Tu codigo de acceso - MovieWind",
+            `
                 <div style="font-family: Arial, sans-serif; border: 1px solid #ddd; padding: 20px; border-radius: 10px;">
                     <h2 style="color: #E50914;">Bienvenido a MovieWind</h2>
-                    <p>Usa el siguiente código para ingresar a tu cuenta:</p>
+                    <p>Usa el siguiente codigo para ingresar a tu cuenta:</p>
                     <div style="background: #f4f4f4; padding: 15px; text-align: center; font-size: 30px; font-weight: bold; letter-spacing: 5px;">
                         ${otp}
                     </div>
-                    <p style="color: #777; font-size: 12px;">Este código expira en 15 minutos.</p>
+                    <p style="color: #777; font-size: 12px;">Este codigo expira en 15 minutos.</p>
                 </div>
             `
-        });
+        );
 
+        console.log("Email OTP enviado a:", normalizedEmail);
         res.json({ success: true });
     } catch (error) {
-        console.error("❌ Error detallado en send-otp:", error);
+        console.error("Error detallado en send-otp:", error);
         res.status(500).json({ error: "Error al enviar el correo", details: error.message });
     }
 });
 
-// 2. Verificar código y devolver datos del usuario
+// 2. Verificar codigo y devolver datos del usuario
 app.post('/api/auth/verify-otp', async (req, res) => {
     const { email, code } = req.body;
     const normalizedEmail = email.toLowerCase().trim();
@@ -90,15 +106,15 @@ app.post('/api/auth/verify-otp', async (req, res) => {
             });
             res.json(updatedUser);
         } else {
-            res.status(401).json({ error: "Código incorrecto o expirado" });
+            res.status(401).json({ error: "Codigo incorrecto o expirado" });
         }
     } catch (error) {
-        console.error("❌ Error en verify-otp:", error);
-        res.status(500).json({ error: "Error al verificar código" });
+        console.error("Error en verify-otp:", error);
+        res.status(500).json({ error: "Error al verificar codigo" });
     }
 });
 
-// --- RUTA DE BÚSQUEDA DE USUARIOS ---
+// --- RUTA DE BUSQUEDA DE USUARIOS ---
 app.get('/api/users', async (req, res) => {
     const { email } = req.query;
     if (!email) return res.status(400).json({ error: "Email requerido" });
@@ -109,7 +125,7 @@ app.get('/api/users', async (req, res) => {
         });
         res.json(user || null);
     } catch (error) {
-        console.error("❌ Error en GET /api/users:", error);
+        console.error("Error en GET /api/users:", error);
         res.status(500).json({ error: "Error interno al buscar usuario" });
     }
 });
@@ -137,16 +153,15 @@ app.post('/api/auth/register', async (req, res) => {
             }
         });
 
-        await transporter.sendMail({
-            from: '"MovieWind" <moviewindsupport@gmail.com>',
-            to: normalizedEmail,
-            subject: "¡Bienvenido a MovieWind!",
-            html: `<h1>¡Hola, ${name}!</h1><p>Tu cuenta ha sido activada con el plan: <strong>${planNormalizado.toUpperCase()}</strong></p>`
-        });
+        await sendEmail(
+            normalizedEmail,
+            "Bienvenido a MovieWind!",
+            `<h1>Hola, ${name}!</h1><p>Tu cuenta ha sido activada con el plan: <strong>${planNormalizado.toUpperCase()}</strong></p>`
+        );
 
         res.status(201).json(user);
     } catch (error) {
-        console.error("❌ Error en registro:", error);
+        console.error("Error en registro:", error);
         res.status(500).json({ error: "No se pudo completar el registro" });
     }
 });
@@ -166,7 +181,7 @@ app.put("/api/users/:id", async (req, res) => {
     }
 });
 
-// --- OBTENER PELÍCULAS ---
+// --- OBTENER PELICULAS ---
 app.get('/api/movies', async (req, res) => {
     const { type } = req.query;
     try {
@@ -182,5 +197,5 @@ app.get('/api/movies', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor corriendo en el puerto ${PORT}`);
+    console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
