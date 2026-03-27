@@ -1,4 +1,4 @@
-import 'dart:convert';
+//import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
@@ -35,10 +35,8 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _handleAction() async {
     if (_isLoading) return;
 
-    // Normalizamos el email para evitar errores de mayúsculas en Neon
     final email = _emailController.text.trim().toLowerCase();
 
-    // Validación de formato
     if ((_currentStep == AuthStep.registerLanding ||
             _currentStep == AuthStep.loginEmail) &&
         (!email.contains('@') || !email.contains('.'))) {
@@ -51,14 +49,14 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       if (_currentStep == AuthStep.registerLanding ||
           _currentStep == AuthStep.loginEmail) {
-        // 1. Buscamos al usuario en la base de datos Neon
+        // 1. Buscamos al usuario
         final userData = await ApiService.getUserDataByEmail(email);
 
         if (userData != null && userData.isNotEmpty) {
-          // ✅ EL USUARIO EXISTE -> Flujo de Login (Enviar código)
+          // ✅ EXISTE: Solicitar OTP y cambiar a pantalla de código
           await _solicitarOTP();
         } else {
-          // ❌ NO EXISTE -> Flujo de Registro
+          // ❌ NO EXISTE: Ir a registro
           final prefs = await SharedPreferences.getInstance();
           await prefs.clear();
           setState(() {
@@ -107,12 +105,16 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _solicitarOTP() async {
     final email = _emailController.text.trim().toLowerCase();
+
+    // Trigger para que el backend genere el PIN y envíe el correo
     final success = await ApiService.sendOTP(email);
 
     if (!mounted) return;
 
     if (success) {
-      setState(() => _currentStep = AuthStep.loginCode);
+      setState(() {
+        _currentStep = AuthStep.loginCode; // Cambia la UI a los 4 cuadros
+      });
       _showSuccessSnackBar("Código enviado a $email");
     } else {
       _showErrorSnackBar("No se pudo enviar el código. Reintenta.");
@@ -147,7 +149,6 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _guardarSesionYNavegar(Map<String, dynamic> userData) async {
     final prefs = await SharedPreferences.getInstance();
-    // Guardamos ID como String para evitar errores de tipo
     await prefs.setString('user_id', userData['id'].toString());
     await prefs.setString(
       'user_email',
@@ -513,11 +514,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.redAccent,
-        duration: const Duration(seconds: 3),
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
     );
   }
 
