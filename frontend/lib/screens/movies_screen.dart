@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -18,62 +20,53 @@ class _MoviesScreenState extends State<MoviesScreen>
   List<Movie> movies = [];
   bool isLoading = true;
   bool _showVideo = true;
-
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
 
-  // URL de respaldo para el banner
-  final String videoUrlSupabase =
-      "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/DulceHogar.mp4";
+  // Cambia esto por tu URL de Railway
+  final String apiBaseUrl = "https://tu-proyecto.railway.app/api/movies";
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadData();
-    _initVideoBanner();
   }
 
-  @override
-  void deactivate() {
-    _videoController?.pause();
-    super.deactivate();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _videoController?.pause();
-    _videoController?.dispose();
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_videoController == null || !_isVideoInitialized) return;
-    if (state == AppLifecycleState.paused) {
-      _videoController?.pause();
+  Future<void> _loadData() async {
+    try {
+      final response = await http.get(Uri.parse(apiBaseUrl));
+      if (response.statusCode == 200) {
+        List<dynamic> data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            movies = data.map((m) => Movie.fromJson(m)).toList();
+            isLoading = false;
+          });
+          if (movies.isNotEmpty) _initVideoBanner();
+        }
+      }
+    } catch (e) {
+      debugPrint("Error: $e");
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
   void _initVideoBanner() {
-    _videoController =
-        VideoPlayerController.networkUrl(Uri.parse(videoUrlSupabase))
-          ..initialize().then((_) {
-            if (mounted) {
-              setState(() => _isVideoInitialized = true);
-              _videoController?.setLooping(false);
-              _videoController?.setVolume(1.0);
-              _videoController?.play();
+    // Usamos el videoUrl de la primera película o uno por defecto
+    String? url =
+        movies[0].videoUrl ??
+        "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/DulceHogar.mp4";
 
-              _videoController?.addListener(() {
-                if (_videoController!.value.position >=
-                    _videoController!.value.duration) {
-                  if (_showVideo) setState(() => _showVideo = false);
-                }
-              });
-            }
-          });
+    _videoController = VideoPlayerController.networkUrl(Uri.parse(url))
+      ..initialize().then((_) {
+        if (mounted) {
+          setState(() => _isVideoInitialized = true);
+          _videoController?.setVolume(0.0); // Banner silencioso es mejor
+          _videoController?.play();
+          _videoController?.setLooping(true);
+        }
+      });
   }
 
   void _navigateToDetails(Map<String, dynamic> movieData) async {
@@ -84,68 +77,7 @@ class _MoviesScreenState extends State<MoviesScreen>
         builder: (context) => MovieDetailsScreen(movieData: movieData),
       ),
     );
-    if (mounted && _showVideo && _isVideoInitialized) {
-      _videoController?.play();
-    }
-  }
-
-  // Carga de datos adaptada al modelo Movie que definimos para Addons y Prisma
-  void _loadData() {
-    movies = [
-      Movie(
-        id: "1", // Si en tu modelo es Int?, usamos el número. Si es String, pon "1"
-        title: "Dulce Hogar",
-        imageUrl: "assets/Images/sweetHomeCartel.webp",
-        backdropUrl: "assets/Images/sweetHomeBanner.webp",
-        description:
-            "Tras una tragedy familiar, el solitario Cha Hyun-su se muda...",
-        rating: 8.7,
-        releaseDate: DateTime.now(),
-        category: "Terror / Horror",
-        type: "series",
-        videoUrl: videoUrlSupabase,
-      ),
-      Movie(
-        id: "2",
-        title: "Avengers: Civil War",
-        imageUrl: "assets/Images/civilWar.webp",
-        backdropUrl: "assets/Images/civilWarBanner.webp",
-        description: "El enfrentamiento entre Iron Man y Capitán América.",
-        rating: 8.2,
-        releaseDate: DateTime.now(),
-        category: "Acción",
-        type: "movie",
-        videoUrl:
-            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/CivilWar.mp4",
-      ),
-      Movie(
-        id: "3",
-        title: "Estamos Muertos",
-        imageUrl: "assets/Images/EstamosMuertosCart.webp",
-        backdropUrl: "assets/Images/EstamosMuertosPost.webp",
-        description: "Virus zombi en un instituto.",
-        rating: 8.5,
-        releaseDate: DateTime.now(),
-        category: "Terror / Horror",
-        type: "series",
-        videoUrl:
-            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/EstamosMuertos.mp4",
-      ),
-      Movie(
-        id: "4",
-        title: "The Batman",
-        imageUrl: "assets/Images/TheBatmanCart.webp",
-        backdropUrl: "assets/Images/TheBatmanPost.webp",
-        description: "Batman descubre la corrupción en Gotham City.",
-        rating: 8.5,
-        releaseDate: DateTime.now(),
-        category: "Suspenso",
-        type: "movie",
-        videoUrl:
-            "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/TheBatman.mp4",
-      ),
-    ];
-    setState(() => isLoading = false);
+    if (mounted && _showVideo && _isVideoInitialized) _videoController?.play();
   }
 
   @override
@@ -154,18 +86,20 @@ class _MoviesScreenState extends State<MoviesScreen>
       backgroundColor: const Color(0xFF141414),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.red))
+          : movies.isEmpty
+          ? const Center(
+              child: Text(
+                "No hay películas",
+                style: TextStyle(color: Colors.white),
+              ),
+            )
           : VisibilityDetector(
-              key: const Key('movies-main-unique-key'),
+              key: const Key('movies-main-key'),
               onVisibilityChanged: (info) {
-                if (!mounted ||
-                    _videoController == null ||
-                    !_isVideoInitialized)
-                  return;
-                if (info.visibleFraction > 0.9) {
-                  if (_showVideo) _videoController?.play();
-                } else {
+                if (info.visibleFraction > 0.8)
+                  _videoController?.play();
+                else
                   _videoController?.pause();
-                }
               },
               child: ListView(
                 padding: EdgeInsets.zero,
@@ -181,30 +115,17 @@ class _MoviesScreenState extends State<MoviesScreen>
   }
 
   Widget _buildBanner() {
-    if (movies.isEmpty) return const SizedBox(height: 400);
-    final double bannerHeight = MediaQuery.of(context).size.height * 0.8;
     final Movie mainMovie = movies[0];
-    final String bannerImg = (mainMovie.backdropUrl ?? mainMovie.imageUrl ?? '')
-        .trim();
+    final String bannerImg = (mainMovie.backdropUrl ?? '').trim();
 
     return Stack(
       children: [
-        Container(
-          height: bannerHeight,
+        SizedBox(
+          height: MediaQuery.of(context).size.height * 0.7,
           width: double.infinity,
-          color: Colors.black,
-          child: _showVideo && _isVideoInitialized && _videoController != null
-              ? FittedBox(
-                  fit: BoxFit.cover,
-                  alignment: Alignment.topCenter,
-                  clipBehavior: Clip.hardEdge,
-                  child: SizedBox(
-                    width: _videoController!.value.size.width,
-                    height: _videoController!.value.size.height,
-                    child: VideoPlayer(_videoController!),
-                  ),
-                )
-              : _buildImage(bannerImg, bannerHeight),
+          child: _showVideo && _isVideoInitialized
+              ? VideoPlayer(_videoController!)
+              : Image.network(bannerImg, fit: BoxFit.cover),
         ),
         Positioned.fill(
           child: Container(
@@ -212,13 +133,7 @@ class _MoviesScreenState extends State<MoviesScreen>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withOpacity(0.5),
-                  Colors.transparent,
-                  Colors.transparent,
-                  const Color(0xFF141414),
-                ],
-                stops: const [0.0, 0.2, 0.7, 1.0],
+                colors: [Colors.transparent, const Color(0xFF141414)],
               ),
             ),
           ),
@@ -234,35 +149,18 @@ class _MoviesScreenState extends State<MoviesScreen>
                 textAlign: TextAlign.center,
                 style: GoogleFonts.montserrat(
                   color: Colors.white,
-                  fontSize: 40,
+                  fontSize: 32,
                   fontWeight: FontWeight.w900,
-                  shadows: [
-                    const Shadow(
-                      offset: Offset(2, 2),
-                      blurRadius: 15,
-                      color: Colors.black,
-                    ),
-                  ],
                 ),
               ),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _btnAction(
-                    Icons.play_arrow_rounded,
-                    "Reproducir",
-                    Colors.white,
-                    Colors.black,
-                    () => _navigateToDetails(mainMovie.toJson()),
-                  ),
-                  const SizedBox(width: 15),
-                  _btnAction(
-                    Icons.info_outline_rounded,
-                    "Más información",
-                    Colors.white.withOpacity(0.2),
-                    Colors.white,
-                    () => _navigateToDetails(mainMovie.toJson()),
+                  ElevatedButton.icon(
+                    onPressed: () => _navigateToDetails(mainMovie.toJson()),
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text("Reproducir"),
                   ),
                 ],
               ),
@@ -278,110 +176,44 @@ class _MoviesScreenState extends State<MoviesScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 20, top: 10, bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           child: Text(
             title,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
-        SChildList(list: list, onSelect: (data) => _navigateToDetails(data)),
+        SizedBox(
+          height: 200,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: list.length,
+            itemBuilder: (context, i) => GestureDetector(
+              onTap: () => _navigateToDetails(list[i].toJson()),
+              child: Container(
+                width: 130,
+                margin: const EdgeInsets.only(left: 20),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    list[i].imageUrl ?? '',
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildImage(String path, double height) {
-    if (path.isEmpty || path.toLowerCase() == 'null') {
-      return Container(color: Colors.grey[900]);
-    }
-    if (path.startsWith('http')) {
-      return Image.network(
-        path,
-        fit: BoxFit.cover,
-        alignment: Alignment.topCenter,
-      );
-    }
-    return Image.asset(path, fit: BoxFit.cover, alignment: Alignment.topCenter);
-  }
-
-  Widget _btnAction(
-    IconData icon,
-    String label,
-    Color bg,
-    Color txt,
-    VoidCallback onTap,
-  ) {
-    return Material(
-      color: bg,
-      borderRadius: BorderRadius.circular(4),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(4),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
-          child: Row(
-            children: [
-              Icon(icon, color: txt, size: 28),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: txt,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class SChildList extends StatelessWidget {
-  final List<Movie> list;
-  final Function(Map<String, dynamic>) onSelect;
-  const SChildList({super.key, required this.list, required this.onSelect});
-
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 180,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 15),
-        itemCount: list.length,
-        itemBuilder: (context, index) {
-          final movie = list[index];
-          final img = (movie.imageUrl ?? '').trim();
-
-          return GestureDetector(
-            onTap: () => onSelect(movie.toJson()),
-            child: Container(
-              width: 120,
-              margin: const EdgeInsets.symmetric(horizontal: 6),
-              child: Hero(
-                tag: movie.title,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: _buildItemImage(img),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildItemImage(String path) {
-    if (path.isEmpty || path.toLowerCase() == 'null')
-      return Container(color: Colors.black);
-    if (path.startsWith('http')) return Image.network(path, fit: BoxFit.cover);
-    return Image.asset(path, fit: BoxFit.cover);
+  void dispose() {
+    _videoController?.dispose();
+    super.dispose();
   }
 }

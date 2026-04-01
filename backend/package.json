@@ -14,6 +14,7 @@
   "dependencies": {
     "@consumet/extensions": "^1.8.8",
     "@prisma/client": "^6.19.2",
+    "axios": "^1.14.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "nodemailer": "^8.0.2",
