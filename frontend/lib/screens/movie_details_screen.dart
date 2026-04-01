@@ -35,7 +35,6 @@ class MovieDetailsScreen extends StatelessWidget {
     final movie = Movie.fromJson(movieData);
     final String? movieId = movie.imdbId;
 
-    // Priorizamos backdropUrl para el banner estilo Netflix
     final String coverImg = (movie.backdropUrl ?? movie.imageUrl ?? '').trim();
     final bool hasValidCoverImg =
         coverImg.isNotEmpty && coverImg.toLowerCase() != 'null';
@@ -52,83 +51,190 @@ class MovieDetailsScreen extends StatelessWidget {
         ),
       ),
       body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            // ÁREA DEL BANNER ESTILO NETFLIX
-            Stack(
-              children: [
-                // 1. Imagen de Fondo
-                AspectRatio(
-                  aspectRatio:
-                      16 / 11, // Un poco más alto para mejor impacto visual
-                  child: !hasValidCoverImg
-                      ? Container(color: Colors.grey[900])
-                      : (coverImg.startsWith('http')
-                            ? Image.network(coverImg, fit: BoxFit.cover)
-                            : Image.asset(coverImg, fit: BoxFit.cover)),
-                ),
-                // 2. Gradiente Vertical (El secreto del look Netflix)
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        stops: const [0.0, 0.4, 0.7, 1.0],
-                        colors: [
-                          Colors.black.withOpacity(
-                            0.5,
-                          ), // Sombra suave arriba para el botón back
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.8),
-                          const Color(
-                            0xFF141414,
-                          ), // Negro sólido que funde con el body
-                        ],
-                      ),
-                    ),
+            // --- 1. BACKDROP A PANTALLA COMPLETA ---
+            SizedBox(
+              width: double.infinity,
+              height: MediaQuery.of(context).size.height * 0.75,
+              child: !hasValidCoverImg
+                  ? Container(color: Colors.grey[900])
+                  : (coverImg.startsWith('http')
+                        ? Image.network(
+                            coverImg,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                          )
+                        : Image.asset(
+                            coverImg,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                          )),
+            ),
+
+            // --- 2. GRADIENTES SOBRE LA IMAGEN ---
+            SizedBox(
+              width: double.infinity,
+              height: MediaQuery.of(context).size.height * 0.75,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Colors.black.withOpacity(0.85), // Oscuro a la izquierda
+                      Colors.transparent, // Transparente a la derecha
+                    ],
                   ),
                 ),
-                // 3. Contenido sobre el banner (Título y Play)
-                Positioned(
-                  bottom: 20,
-                  left: 20,
-                  right: 20,
+              ),
+            ),
+            // Gradiente inferior para transición suave al negro
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: MediaQuery.of(context).size.height * 0.35,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, const Color(0xFF141414)],
+                  ),
+                ),
+              ),
+            ),
+
+            // --- 3. CONTENIDO SUPERPUESTO SOBRE LA IMAGEN ---
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.75,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(30, 0, 40, 30),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      // TÍTULO
                       Text(
                         movie.title.toUpperCase(),
                         style: GoogleFonts.montserrat(
                           color: Colors.white,
                           fontSize: 32,
                           fontWeight: FontWeight.w900,
-                          letterSpacing: -1,
+                          letterSpacing: -0.5,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withOpacity(0.5),
+                              blurRadius: 8,
+                              offset: const Offset(2, 2),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      // BOTÓN REPRODUCIR ANCHO (Full Width Estilo Móvil)
+                      const SizedBox(height: 14),
+
+                      // METADATOS
+                      Row(
+                        children: [
+                          Text(
+                            "98% para ti",
+                            style: const TextStyle(
+                              color: Color(0xFF46D369),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Text(
+                            movie.releaseDate.toString().substring(0, 4),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.white60),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                            child: const Text(
+                              "16+",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Text(
+                            movie.category ?? 'Terror / Horror',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // DESCRIPCIÓN (limitada para no tapar la imagen)
                       SizedBox(
-                        width: double.infinity,
-                        height: 45,
+                        width: MediaQuery.of(context).size.width * 0.52,
+                        child: Text(
+                          movie.description ?? 'Sin descripción disponible.',
+                          maxLines: 4,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // GÉNEROS
+                      if (movie.category != null)
+                        Text(
+                          "Géneros: ${movie.category}",
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
+                        ),
+                      const SizedBox(height: 18),
+
+                      // BOTÓN REPRODUCIR
+                      SizedBox(
+                        width: 200,
+                        height: 42,
                         child: ElevatedButton.icon(
                           onPressed: () =>
                               _playVideo(context, movieId ?? '', movie.title),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.white,
                             foregroundColor: Colors.black,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(4),
-                            ),
                             elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(3),
+                            ),
                           ),
-                          icon: const Icon(Icons.play_arrow, size: 30),
+                          icon: const Icon(Icons.play_arrow, size: 26),
                           label: const Text(
                             "Reproducir",
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                              fontSize: 15,
                             ),
                           ),
                         ),
@@ -136,69 +242,23 @@ class MovieDetailsScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
 
-            // SECCIÓN DE DETALLES ABAJO DEL BANNER
+            // --- 4. SECCIÓN INFERIOR (debajo del banner) ---
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).size.height * 0.72,
+                left: 20,
+                right: 20,
+                bottom: 40,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Text(
-                        "98% para ti", // Dato dummy para look real
-                        style: GoogleFonts.roboto(
-                          color: const Color(0xFF46D369),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 15),
-                      Text(
-                        movie.releaseDate?.toString().substring(0, 4) ?? '2026',
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                      const SizedBox(width: 15),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white60),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                        child: const Text(
-                          "16+",
-                          style: TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ),
-                      const SizedBox(width: 15),
-                      Text(
-                        movie.category ?? 'Serie',
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 15),
-                  // LA DESCRIPCIÓN
-                  Text(
-                    movie.description ?? 'Sin descripción disponible.',
-                    style: GoogleFonts.roboto(
-                      color: Colors.white.withOpacity(0.9),
-                      fontSize: 15,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 25),
-                  // INFO DE REPARTO / GÉNEROS (Opcional para más realismo)
-                  const Text(
-                    "Géneros: Suspenso, Drama, Terror",
-                    style: TextStyle(color: Colors.white54, fontSize: 13),
-                  ),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 16),
+                  // Puedes agregar secciones extra aquí:
+                  // "Más información", episodios, reparto, etc.
                 ],
               ),
             ),
