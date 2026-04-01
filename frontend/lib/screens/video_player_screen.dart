@@ -88,23 +88,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 // Permite que el control de navegación funcione
                 useShouldOverrideUrlLoading: true,
                 javaScriptCanOpenWindowsAutomatically: false,
+                userAgent:
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
               ),
               onWebViewCreated: (controller) {
                 _webViewController = controller;
               },
               // EL NOMBRE CORRECTO ES ESTE:
               shouldOverrideUrlLoading: (controller, navigationAction) async {
-                var uri = navigationAction.request.url;
+                var uri = navigationAction.request.url.toString();
 
-                // Si la URL es de vidsrc o es el embed inicial, permitimos
-                if (uri != null &&
-                    (uri.toString().contains("vidsrc") ||
-                        uri.toString().contains("embed"))) {
+                // Permitimos TODO lo que tenga que ver con vidsrc o el reproductor de video
+                if (uri.contains("vidsrc") ||
+                    uri.contains("vapi") ||
+                    uri.contains("static")) {
                   return NavigationActionPolicy.ALLOW;
                 }
 
-                // Si intenta abrir CUALQUIER otra cosa (publicidad, popups), lo bloqueamos
-                return NavigationActionPolicy.CANCEL;
+                // Solo bloqueamos si el host es claramente de anuncios (popups)
+                if (navigationAction.isForMainFrame) {
+                  return NavigationActionPolicy.CANCEL;
+                }
+
+                return NavigationActionPolicy.ALLOW;
               },
             ),
 
