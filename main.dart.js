@@ -97606,7 +97606,7 @@ if(s.d)s.X6()},
 K(a){var s,r,q,p=this,o=null,n=p.a,m=B.c.bv(n.c)
 n=n.e
 s=n.toLowerCase()
-r=B.c.n(s,"serie")||B.c.n(s,"tv")?"https://vidsrc.to/embed/tv/"+m+"/1/1":"https://vidsrc.to/embed/movie/"+m
+r=B.c.n(s,"serie")||B.c.n(s,"tv")?"https://vidsrc.me/embed/tv/"+m+"/1/1":"https://vidsrc.me/embed/movie/"+m
 A.j3("DEBUG_VIDEO_URL: "+r)
 n=A.aHd(o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,A.l2(r))
 q=t.p
