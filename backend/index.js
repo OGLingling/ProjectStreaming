@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 
 // --- CONFIGURACIÓN TMDB ---
 // Regístrate en themoviedb.org para obtener tu clave gratuita
-const TMDB_API_KEY = 'TU_API_KEY_AQUI'; 
+const TMDB_API_KEY = 'd8a00b94f5c00821e497b569fec9a61f'; 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
 // CONFIGURACION DE CORS PARA FLUTTER (WEB Y MOVIL)
