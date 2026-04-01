@@ -2,6 +2,7 @@
 
 class Movie {
   final String? id;
+  final String? imdbId;
   final String title;
   final String? description;
   final DateTime releaseDate;
@@ -16,6 +17,7 @@ class Movie {
 
   Movie({
     this.id,
+    this.imdbId,
     required this.title,
     this.description,
     required this.releaseDate,
@@ -33,6 +35,7 @@ class Movie {
     return Movie(
       // Soporta id de tu DB (int) o de Addons (String/IMDB)
       id: json['id']?.toString() ?? json['imdb_id']?.toString(),
+      imdbId: json['imdb_id'],
       title: json['title'] ?? json['name'] ?? 'Sin título',
       description: json['description'] ?? json['overview'] ?? '',
       releaseDate: json['releaseDate'] != null
@@ -59,6 +62,7 @@ class Movie {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'imdbId': imdbId,
       'title': title,
       'description': description,
       'releaseDate': releaseDate.toIso8601String(),

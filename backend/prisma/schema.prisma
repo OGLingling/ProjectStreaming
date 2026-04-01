@@ -9,7 +9,7 @@ datasource db {
 
 model Movie {
   id           Int      @id @default(autoincrement())
-  externalId   String?  @unique // Aquí guardarías el ID del addon (ej: "tt12345")
+  imdbId       String?  @unique // Aquí guardarás el "tt1234567"
   title        String
   description  String?
   releaseDate  DateTime
@@ -18,10 +18,10 @@ model Movie {
   backdropUrl  String?
   category     String?
   type         String   @default("movie")
-  videoUrl     String?  // El link directo si es tuyo
+  videoUrl     String?  
   
   // RELACIÓN CON EL ADDON
-  addonId      Int?     // Si la peli viene de un addon, guardamos cuál es
+  addonId      Int?
   addon        Addon?   @relation(fields: [addonId], references: [id])
   
   createdAt    DateTime @default(now())
