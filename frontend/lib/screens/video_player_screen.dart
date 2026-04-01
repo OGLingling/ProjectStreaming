@@ -6,13 +6,13 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 class VideoPlayerScreen extends StatefulWidget {
   final String imdbId;
   final String title;
-  final String type; // <--- 1. AGREGADO AQUÍ
+  final String type;
 
   const VideoPlayerScreen({
     super.key,
     required this.imdbId,
     required this.title,
-    required this.type, // <--- 2. REQUERIDO AQUÍ
+    required this.type,
   });
 
   @override
@@ -24,36 +24,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Timer? _hideTimer;
   InAppWebViewController? _webViewController;
 
-  // 3. LA FUNCIÓN DEBE ESTAR AQUÍ ADENTRO PARA USAR "widget."
-  WebUri _getVidsrcUrl() {
-    final String id = widget.imdbId.trim();
+  // 1. ESTRUCTURA DE URL DINÁMICA
+  WebUri _buildStreamingUrl() {
+    final String cleanId = widget.imdbId.trim();
+    final String cleanType = widget.type.toLowerCase().trim();
 
-    // Limpiamos el type y manejamos posibles valores nulos
-    final String rawType = (widget.type ?? "").toLowerCase();
+    // Detectamos si es película o serie
+    final bool isTV = cleanType.contains('tv') || cleanType.contains('serie');
 
-    // Verificamos si es serie (incluyendo variaciones comunes)
-    final bool isSerie = rawType.contains('serie') || rawType.contains('tv');
+    // Construcción de la URL base
+    // Si es serie, incluimos temporada 1 episodio 1 por defecto
+    final String finalUrl = isTV
+        ? "https://vidsrc.me/embed/tv/$cleanId/1/1"
+        : "https://vidsrc.me/embed/movie/$cleanId";
 
-    final String finalUrl;
-    if (isSerie) {
-      finalUrl = "https://vidsrc.me/embed/tv/$id/1/1";
-    } else {
-      finalUrl = "https://vidsrc.me/embed/movie/$id";
-    }
-
-    // ESTO ES VITAL: Mira la consola de depuración cuando des clic en reproducir
-    print("DEBUG_VIDEO_URL: $finalUrl");
-
+    debugPrint("URL de Streaming Generada: $finalUrl");
     return WebUri(finalUrl);
   }
 
   @override
   void initState() {
     super.initState();
+    // Bloqueamos orientación horizontal para video
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
+    // Ocultamos barras del sistema para inmersión total
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _startHideTimer();
   }
@@ -78,42 +75,61 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         onTap: _toggleControls,
         child: Stack(
           children: [
+            // 2. CONFIGURACIÓN DEL WIDGET INAPPWEBVIEW
             InAppWebView(
-              initialUrlRequest: URLRequest(url: _getVidsrcUrl()),
+              initialUrlRequest: URLRequest(url: _buildStreamingUrl()),
               initialSettings: InAppWebViewSettings(
+                // Configuración básica solicitada
                 javaScriptEnabled: true,
                 allowsInlineMediaPlayback: true,
                 mediaPlaybackRequiresUserGesture: false,
                 transparentBackground: true,
-                // Permite que el control de navegación funcione
-                useShouldOverrideUrlLoading: true,
-                javaScriptCanOpenWindowsAutomatically: false,
+
+                // 3. SUPLANTACIÓN DE USER AGENT (Chrome Windows 11)
                 userAgent:
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+
+                // 4. CONFIGURACIÓN AVANZADA DE SEGURIDAD Y COOKIES
+                mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+                thirdPartyCookiesEnabled: true,
+                javaScriptCanOpenWindowsAutomatically:
+                    false, // Bloqueo preventivo de popups
+                useShouldOverrideUrlLoading:
+                    true, // Habilitar interceptor de navegación
               ),
               onWebViewCreated: (controller) {
                 _webViewController = controller;
               },
-              // EL NOMBRE CORRECTO ES ESTE:
+              // 5. MANEJO DE REDIRECCIONES Y BLOQUEO DE POPUPS
               shouldOverrideUrlLoading: (controller, navigationAction) async {
-                var uri = navigationAction.request.url.toString();
+                final uri = navigationAction.request.url?.toString() ?? "";
 
-                // Permitimos TODO lo que tenga que ver con vidsrc o el reproductor de video
-                if (uri.contains("vidsrc") ||
-                    uri.contains("vapi") ||
-                    uri.contains("static")) {
+                // Dominios permitidos (Fuentes de video y estáticos)
+                final List<String> allowedDomains = [
+                  "vidsrc.me",
+                  "vidsrc.xyz",
+                  "vapi.to",
+                  "static.vidsrc.me",
+                  "sbx.html", // Permitir archivos críticos
+                  "sbx.js",
+                ];
+
+                // Verificamos si la URL contiene algún dominio permitido
+                bool isAllowed = allowedDomains.any(
+                  (domain) => uri.contains(domain),
+                );
+
+                if (isAllowed) {
                   return NavigationActionPolicy.ALLOW;
                 }
 
-                // Solo bloqueamos si el host es claramente de anuncios (popups)
-                if (navigationAction.isForMainFrame) {
-                  return NavigationActionPolicy.CANCEL;
-                }
-
-                return NavigationActionPolicy.ALLOW;
+                // Bloqueamos cualquier redirección fuera de los dominios de confianza (Popups/Ads)
+                debugPrint("BLOQUEADO REDIRECCIÓN A: $uri");
+                return NavigationActionPolicy.CANCEL;
               },
             ),
 
+            // Capa de controles personalizados
             if (_showControls)
               Positioned(
                 top: 0,
@@ -139,7 +155,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         onPressed: () => Navigator.pop(context),
                       ),
                       Expanded(
-                        // Agregado para evitar error de overflow en títulos largos
                         child: Text(
                           widget.title,
                           style: const TextStyle(
@@ -162,6 +177,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
+    // Restauramos orientación al salir
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _webViewController?.stopLoading();
