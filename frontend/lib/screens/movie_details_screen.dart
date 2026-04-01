@@ -9,9 +9,7 @@ class MovieDetailsScreen extends StatelessWidget {
   const MovieDetailsScreen({super.key, required this.movieData});
 
   void _playVideo(BuildContext context, String id, String title) {
-    // Quitamos espacios en blanco
     final cleanId = id.trim();
-
     if (cleanId.isNotEmpty && cleanId != 'null') {
       Navigator.push(
         context,
@@ -34,12 +32,10 @@ class MovieDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Convertimos el mapa a objeto Movie usando tu modelo actualizado
     final movie = Movie.fromJson(movieData);
-
-    // Usamos únicamente imdbId que es el que definiste en Prisma
     final String? movieId = movie.imdbId;
 
+    // Priorizamos backdropUrl para el banner estilo Netflix
     final String coverImg = (movie.backdropUrl ?? movie.imageUrl ?? '').trim();
     final bool hasValidCoverImg =
         coverImg.isNotEmpty && coverImg.toLowerCase() != 'null';
@@ -59,116 +55,150 @@ class MovieDetailsScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ÁREA DEL BANNER
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: !hasValidCoverImg
-                        ? Container(color: Colors.grey[900])
-                        : (coverImg.startsWith('http')
-                              ? Image.network(coverImg, fit: BoxFit.cover)
-                              : Image.asset(coverImg, fit: BoxFit.cover)),
-                  ),
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [
-                            Colors.black.withOpacity(0.9),
-                            Colors.black.withOpacity(0.4),
-                            Colors.transparent,
-                          ],
-                        ),
+            // ÁREA DEL BANNER ESTILO NETFLIX
+            Stack(
+              children: [
+                // 1. Imagen de Fondo
+                AspectRatio(
+                  aspectRatio:
+                      16 / 11, // Un poco más alto para mejor impacto visual
+                  child: !hasValidCoverImg
+                      ? Container(color: Colors.grey[900])
+                      : (coverImg.startsWith('http')
+                            ? Image.network(coverImg, fit: BoxFit.cover)
+                            : Image.asset(coverImg, fit: BoxFit.cover)),
+                ),
+                // 2. Gradiente Vertical (El secreto del look Netflix)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        stops: const [0.0, 0.4, 0.7, 1.0],
+                        colors: [
+                          Colors.black.withOpacity(
+                            0.5,
+                          ), // Sombra suave arriba para el botón back
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.8),
+                          const Color(
+                            0xFF141414,
+                          ), // Negro sólido que funde con el body
+                        ],
                       ),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 40,
-                      vertical: 20,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          movie.title.toUpperCase(),
-                          style: GoogleFonts.montserrat(
-                            color: Colors.white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
+                ),
+                // 3. Contenido sobre el banner (Título y Play)
+                Positioned(
+                  bottom: 20,
+                  left: 20,
+                  right: 20,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        movie.title.toUpperCase(),
+                        style: GoogleFonts.montserrat(
+                          color: Colors.white,
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -1,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // BOTÓN REPRODUCIR ANCHO (Full Width Estilo Móvil)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 45,
+                        child: ElevatedButton.icon(
+                          onPressed: () =>
+                              _playVideo(context, movieId ?? '', movie.title),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            elevation: 0,
+                          ),
+                          icon: const Icon(Icons.play_arrow, size: 30),
+                          label: const Text(
+                            "Reproducir",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 15),
-                        // BOTÓN REPRODUCIR
-                        SizedBox(
-                          width: 160,
-                          height: 42,
-                          child: ElevatedButton.icon(
-                            onPressed: () => _playVideo(
-                              context,
-                              movieId ?? '', // Si es nulo, envía string vacío
-                              movie.title,
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.black,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                            icon: const Icon(Icons.play_arrow, size: 28),
-                            label: const Text(
-                              "Reproducir",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
 
-            // INFORMACIÓN ADICIONAL
+            // SECCIÓN DE DETALLES ABAJO DEL BANNER
             Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 10),
                   Row(
                     children: [
                       Text(
-                        "${movie.rating} Calificación",
-                        style: const TextStyle(
-                          color: Color(0xFF46D369),
+                        "98% para ti", // Dato dummy para look real
+                        style: GoogleFonts.roboto(
+                          color: const Color(0xFF46D369),
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(width: 15),
                       Text(
-                        movie.category ?? 'Película',
+                        movie.releaseDate?.toString().substring(0, 4) ?? '2026',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                      const SizedBox(width: 15),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white60),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        child: const Text(
+                          "16+",
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ),
+                      const SizedBox(width: 15),
+                      Text(
+                        movie.category ?? 'Serie',
                         style: const TextStyle(color: Colors.white70),
                       ),
                     ],
                   ),
                   const SizedBox(height: 15),
+                  // LA DESCRIPCIÓN
                   Text(
                     movie.description ?? 'Sin descripción disponible.',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      height: 1.4,
+                    style: GoogleFonts.roboto(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 15,
+                      height: 1.5,
                     ),
                   ),
+                  const SizedBox(height: 25),
+                  // INFO DE REPARTO / GÉNEROS (Opcional para más realismo)
+                  const Text(
+                    "Géneros: Suspenso, Drama, Terror",
+                    style: TextStyle(color: Colors.white54, fontSize: 13),
+                  ),
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
