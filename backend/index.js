@@ -207,39 +207,46 @@ app.put("/api/users/:id", async (req, res) => {
 app.get(['/api/movies', '/movies'], async (req, res) => {
     let { type } = req.query;
     
-    console.log("Petición recibida. Filtro original:", type);
+    console.log("Consulta de películas recibida. Filtro:", type);
 
     try {
         let whereCondition = {};
         
         if (type) {
-            // Normalizamos el tipo: quitamos espacios y pasamos a minúsculas
-            // Esto evita que "Serie" vs "serie" falle.
+            // Esto limpia el texto y lo pasa a minúsculas: "Serie" -> "serie"
             const normalizedType = type.toLowerCase().trim();
-            whereCondition = { type: normalizedType };
+            
+            // Hacemos que busque coincidencias aunque el usuario mande "Series" en vez de "serie"
+            whereCondition = {
+                type: {
+                    contains: normalizedType.replace('s', ''), // Quita la 's' final si existe
+                    mode: 'insensitive'
+                }
+            };
         }
 
-        // 1. Buscamos en nuestra base de datos (Railway)
+        // 1. Buscamos en la DB de Railway
         const content = await prisma.movie.findMany({
             where: whereCondition,
             orderBy: { releaseDate: 'desc' }
         });
 
-        console.log(`Encontrados en DB: ${content.length} registros.`);
+        console.log(`Registros encontrados para [${type || 'TODO'}]: ${content.length}`);
 
-        if (content.length === 0) {
-            return res.json([]); // Si no hay nada, enviamos lista vacía sin error
+        // 2. Si no hay resultados, devolvemos lista vacía rápido
+        if (!content || content.length === 0) {
+            return res.json([]);
         }
 
-        // 2. Por cada película, pedimos los datos reales a TMDB usando su imdbId
+        // 3. Enriquecemos con TMDB
         const enrichedContent = await Promise.all(
             content.map(movie => enrichMovieData(movie))
         );
 
         res.json(enrichedContent);
     } catch (error) {
-        console.error("Error crítico cargando películas:", error);
-        res.status(500).json({ error: "Error al cargar contenido", details: error.message });
+        console.error("Error en /api/movies:", error);
+        res.status(500).json({ error: "Error al cargar contenido" });
     }
 });
 
