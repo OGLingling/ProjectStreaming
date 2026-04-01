@@ -36,9 +36,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     final String finalUrl;
     if (isSerie) {
-      finalUrl = "https://vidsrc.to/embed/tv/$id/1/1";
+      finalUrl = "https://vidsrc.me/embed/tv/$id/1/1";
     } else {
-      finalUrl = "https://vidsrc.to/embed/movie/$id";
+      finalUrl = "https://vidsrc.me/embed/movie/$id";
     }
 
     // ESTO ES VITAL: Mira la consola de depuración cuando des clic en reproducir
