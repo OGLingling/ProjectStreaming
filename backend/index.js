@@ -40,6 +40,7 @@ async function enrichMovieData(movie) {
                 imageUrl: `https://image.tmdb.org/t/p/w500${data.poster_path}`,
                 backdropUrl: `https://image.tmdb.org/t/p/original${data.backdrop_path}`,
                 rating: parseFloat(data.vote_average.toFixed(1)),
+                type: movie.type
             };
         }
     } catch (error) {

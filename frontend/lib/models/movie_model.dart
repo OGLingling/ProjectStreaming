@@ -35,7 +35,7 @@ class Movie {
     return Movie(
       // Soporta id de tu DB (int) o de Addons (String/IMDB)
       id: json['id']?.toString() ?? json['imdb_id']?.toString(),
-      imdbId: json['imdb_id'],
+      imdbId: json['imdb_id'] ?? json['imdbId'],
       title: json['title'] ?? json['name'] ?? 'Sin título',
       description: json['description'] ?? json['overview'] ?? '',
       releaseDate: json['releaseDate'] != null

@@ -8,14 +8,14 @@ class MovieDetailsScreen extends StatelessWidget {
 
   const MovieDetailsScreen({super.key, required this.movieData});
 
-  void _playVideo(BuildContext context, String id, String title) {
+  void _playVideo(BuildContext context, String id, String title, String type) {
     final cleanId = id.trim();
     if (cleanId.isNotEmpty && cleanId != 'null') {
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) =>
-              VideoPlayerScreen(imdbId: cleanId, title: title),
+              VideoPlayerScreen(imdbId: cleanId, title: title, type: type),
         ),
       );
     } else {
@@ -246,14 +246,20 @@ class MovieDetailsScreen extends StatelessWidget {
 
                               // BOTÓN REPRODUCIR
                               SizedBox(
-                                width: 180,
-                                height: 40,
+                                width: double
+                                    .infinity, // Lo cambié a infinity para que ocupe el ancho como en Netflix
+                                height: 42,
                                 child: ElevatedButton.icon(
-                                  onPressed: () => _playVideo(
-                                    context,
-                                    movieId ?? '',
-                                    movie.title,
-                                  ),
+                                  onPressed: () {
+                                    // Agregamos el parámetro 'type' a la función de reproducción
+                                    _playVideo(
+                                      context,
+                                      movieId ?? '',
+                                      movie.title,
+                                      movie.type ??
+                                          'Pelicula', // Enviamos "Serie" o "Pelicula"
+                                    );
+                                  },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.white,
                                     foregroundColor: Colors.black,
@@ -262,12 +268,12 @@ class MovieDetailsScreen extends StatelessWidget {
                                       borderRadius: BorderRadius.circular(3),
                                     ),
                                   ),
-                                  icon: const Icon(Icons.play_arrow, size: 24),
+                                  icon: const Icon(Icons.play_arrow, size: 28),
                                   label: const Text(
                                     "Reproducir",
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 15,
+                                      fontSize: 16,
                                     ),
                                   ),
                                 ),

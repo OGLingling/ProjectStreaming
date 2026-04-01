@@ -1,17 +1,18 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart'; // Nuevo import
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
-  final String
-  imdbId; // Cambiamos URL por el ID de la película (ej. tt10155932)
+  final String imdbId;
   final String title;
+  final String type; // <--- 1. AGREGADO AQUÍ
 
   const VideoPlayerScreen({
     super.key,
     required this.imdbId,
     required this.title,
+    required this.type, // <--- 2. REQUERIDO AQUÍ
   });
 
   @override
@@ -23,17 +24,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Timer? _hideTimer;
   InAppWebViewController? _webViewController;
 
+  // 3. LA FUNCIÓN DEBE ESTAR AQUÍ ADENTRO PARA USAR "widget."
+  WebUri _getVidsrcUrl() {
+    final String id = widget.imdbId.trim();
+    final String contentCategory = widget.type.toLowerCase().contains('serie')
+        ? 'tv'
+        : 'movie';
+
+    if (contentCategory == 'tv') {
+      // URL para Series (T1 E1 por defecto)
+      return WebUri("https://vidsrc.to/embed/tv/$id/1/1");
+    } else {
+      // URL para Películas
+      return WebUri("https://vidsrc.to/embed/movie/$id");
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-
-    // 1. CONFIGURACIÓN DE PANTALLA (Igual que el tuyo)
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-
     _startHideTimer();
   }
 
@@ -57,32 +71,44 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         onTap: _toggleControls,
         child: Stack(
           children: [
-            // 1. EL REPRODUCTOR (WEBVIEW)
-            // Usamos vidsrc.to que es el más estable para este método
             InAppWebView(
-              initialUrlRequest: URLRequest(
-                url: WebUri("https://vidsrc.to/embed/movie/${widget.imdbId}"),
-              ),
+              initialUrlRequest: URLRequest(url: _getVidsrcUrl()),
               initialSettings: InAppWebViewSettings(
                 javaScriptEnabled: true,
-                allowsInlineMediaPlayback: true, // Crucial para iOS
+                allowsInlineMediaPlayback: true,
                 mediaPlaybackRequiresUserGesture: false,
                 transparentBackground: true,
+                // Permite que el control de navegación funcione
+                useShouldOverrideUrlLoading: true,
+                javaScriptCanOpenWindowsAutomatically: false,
               ),
               onWebViewCreated: (controller) {
                 _webViewController = controller;
               },
+              // EL NOMBRE CORRECTO ES ESTE:
+              shouldOverrideUrlLoading: (controller, navigationAction) async {
+                var uri = navigationAction.request.url;
+
+                // Si la URL es de vidsrc o es el embed inicial, permitimos
+                if (uri != null &&
+                    (uri.toString().contains("vidsrc") ||
+                        uri.toString().contains("embed"))) {
+                  return NavigationActionPolicy.ALLOW;
+                }
+
+                // Si intenta abrir CUALQUIER otra cosa (publicidad, popups), lo bloqueamos
+                return NavigationActionPolicy.CANCEL;
+              },
             ),
 
-            // 2. CAPA NEGRA SUPERIOR E INFERIOR (Solo visual para tus controles)
-            if (_showControls) ...[
+            if (_showControls)
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
                 child: Container(
                   height: 80,
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
@@ -99,22 +125,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         ),
                         onPressed: () => Navigator.pop(context),
                       ),
-                      Text(
-                        widget.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                      Expanded(
+                        // Agregado para evitar error de overflow en títulos largos
+                        child: Text(
+                          widget.title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ],
-
-            // Nota: Los controles de Play/Pause y Barra de progreso
-            // ahora son manejados por el reproductor web mismo.
           ],
         ),
       ),
@@ -123,10 +149,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
-    // 2. RESTABLECER PANTALLA AL SALIR (Igual que el tuyo)
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-
+    _webViewController?.stopLoading();
     _hideTimer?.cancel();
     super.dispose();
   }
