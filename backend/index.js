@@ -204,14 +204,32 @@ app.put("/api/users/:id", async (req, res) => {
 });
 
 // --- OBTENER PELICULAS (MODIFICADO CON AXIOS Y TMDB) ---
-app.get('/api/movies', async (req, res) => {
-    const { type } = req.query;
+app.get(['/api/movies', '/movies'], async (req, res) => {
+    let { type } = req.query;
+    
+    console.log("Petición recibida. Filtro original:", type);
+
     try {
+        let whereCondition = {};
+        
+        if (type) {
+            // Normalizamos el tipo: quitamos espacios y pasamos a minúsculas
+            // Esto evita que "Serie" vs "serie" falle.
+            const normalizedType = type.toLowerCase().trim();
+            whereCondition = { type: normalizedType };
+        }
+
         // 1. Buscamos en nuestra base de datos (Railway)
         const content = await prisma.movie.findMany({
-            where: type ? { type: String(type) } : {},
+            where: whereCondition,
             orderBy: { releaseDate: 'desc' }
         });
+
+        console.log(`Encontrados en DB: ${content.length} registros.`);
+
+        if (content.length === 0) {
+            return res.json([]); // Si no hay nada, enviamos lista vacía sin error
+        }
 
         // 2. Por cada película, pedimos los datos reales a TMDB usando su imdbId
         const enrichedContent = await Promise.all(
@@ -220,8 +238,8 @@ app.get('/api/movies', async (req, res) => {
 
         res.json(enrichedContent);
     } catch (error) {
-        console.error("Error cargando películas:", error);
-        res.status(500).json({ error: "Error al cargar contenido" });
+        console.error("Error crítico cargando películas:", error);
+        res.status(500).json({ error: "Error al cargar contenido", details: error.message });
     }
 });
 

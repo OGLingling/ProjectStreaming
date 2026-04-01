@@ -24,7 +24,8 @@ class _MoviesScreenState extends State<MoviesScreen>
   bool _isVideoInitialized = false;
 
   // Cambia esto por tu URL de Railway
-  final String apiBaseUrl = "https://tu-proyecto.railway.app/api/movies";
+  final String apiBaseUrl =
+      "https://projectstreaming-production.up.railway.app/api/movies";
 
   @override
   void initState() {
