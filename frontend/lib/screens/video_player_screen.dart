@@ -27,17 +27,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // 3. LA FUNCIÓN DEBE ESTAR AQUÍ ADENTRO PARA USAR "widget."
   WebUri _getVidsrcUrl() {
     final String id = widget.imdbId.trim();
-    final String contentCategory = widget.type.toLowerCase().contains('serie')
-        ? 'tv'
-        : 'movie';
 
-    if (contentCategory == 'tv') {
-      // URL para Series (T1 E1 por defecto)
-      return WebUri("https://vidsrc.to/embed/tv/$id/1/1");
+    // Limpiamos el type y manejamos posibles valores nulos
+    final String rawType = (widget.type ?? "").toLowerCase();
+
+    // Verificamos si es serie (incluyendo variaciones comunes)
+    final bool isSerie = rawType.contains('serie') || rawType.contains('tv');
+
+    final String finalUrl;
+    if (isSerie) {
+      finalUrl = "https://vidsrc.to/embed/tv/$id/1/1";
     } else {
-      // URL para Películas
-      return WebUri("https://vidsrc.to/embed/movie/$id");
+      finalUrl = "https://vidsrc.to/embed/movie/$id";
     }
+
+    // ESTO ES VITAL: Mira la consola de depuración cuando des clic en reproducir
+    print("DEBUG_VIDEO_URL: $finalUrl");
+
+    return WebUri(finalUrl);
   }
 
   @override
