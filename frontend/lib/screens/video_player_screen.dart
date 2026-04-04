@@ -24,47 +24,61 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Timer? _hideTimer;
   InAppWebViewController? _webViewController;
 
-  // 1. ESTRUCTURA DE URL DINÁMICA
+  // 1. CONTROL DE SERVIDORES
+  int _currentProviderIndex = 0;
+  final List<String> _providers = ["Vidsrc", "Embed.su"];
+
+  // 2. GENERADOR DE URL CON BACKUP
   WebUri _buildStreamingUrl() {
-    final String cleanId = widget.imdbId.trim();
-    final String cleanType = widget.type.toLowerCase().trim();
+    final String id = widget.imdbId.trim();
+    final bool isTV =
+        widget.type.toLowerCase().contains('serie') ||
+        widget.type.toLowerCase().contains('tv');
 
-    // Detectamos si es película o serie
-    final bool isTV = cleanType.contains('tv') || cleanType.contains('serie');
+    if (_currentProviderIndex == 0) {
+      // OPCIÓN 1: VIDSRC
+      return WebUri(
+        isTV
+            ? "https://vidsrc.me/embed/tv/$id/1/1"
+            : "https://vidsrc.me/embed/movie/$id",
+      );
+    } else {
+      // OPCIÓN 2: EMBED.SU (BACKUP)
+      return WebUri(
+        isTV
+            ? "https://embed.su/embed/tv/$id/1/1"
+            : "https://embed.su/embed/movie/$id",
+      );
+    }
+  }
 
-    // Construcción de la URL base
-    // Si es serie, incluimos temporada 1 episodio 1 por defecto
-    final String finalUrl = isTV
-        ? "https://vidsrc.me/embed/tv/$cleanId/1/1"
-        : "https://vidsrc.me/embed/movie/$cleanId";
-
-    debugPrint("URL de Streaming Generada: $finalUrl");
-    return WebUri(finalUrl);
+  // 3. FUNCIÓN PARA CAMBIAR DE SERVIDOR EN CALIENTE
+  void _toggleServer() {
+    setState(() {
+      _currentProviderIndex = (_currentProviderIndex + 1) % _providers.length;
+    });
+    _webViewController?.loadUrl(
+      urlRequest: URLRequest(url: _buildStreamingUrl()),
+    );
+    _startHideTimer(); // Reiniciar timer de controles
   }
 
   @override
   void initState() {
     super.initState();
-    // Bloqueamos orientación horizontal para video
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    // Ocultamos barras del sistema para inmersión total
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _startHideTimer();
   }
 
   void _startHideTimer() {
     _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 3), () {
+    _hideTimer = Timer(const Duration(seconds: 4), () {
       if (mounted) setState(() => _showControls = false);
     });
-  }
-
-  void _toggleControls() {
-    setState(() => _showControls = !_showControls);
-    if (_showControls) _startHideTimer();
   }
 
   @override
@@ -72,71 +86,48 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
-        onTap: _toggleControls,
+        onTap: () {
+          setState(() => _showControls = !_showControls);
+          if (_showControls) _startHideTimer();
+        },
         child: Stack(
           children: [
-            // 2. CONFIGURACIÓN DEL WIDGET INAPPWEBVIEW
             InAppWebView(
               initialUrlRequest: URLRequest(url: _buildStreamingUrl()),
               initialSettings: InAppWebViewSettings(
-                // Configuración básica solicitada
                 javaScriptEnabled: true,
                 allowsInlineMediaPlayback: true,
-                mediaPlaybackRequiresUserGesture: false,
-                transparentBackground: true,
-
-                // 3. SUPLANTACIÓN DE USER AGENT (Chrome Windows 11)
                 userAgent:
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-
-                // 4. CONFIGURACIÓN AVANZADA DE SEGURIDAD Y COOKIES
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
                 mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-                thirdPartyCookiesEnabled: true,
-                javaScriptCanOpenWindowsAutomatically:
-                    false, // Bloqueo preventivo de popups
-                useShouldOverrideUrlLoading:
-                    true, // Habilitar interceptor de navegación
+                useShouldOverrideUrlLoading: true,
               ),
-              onWebViewCreated: (controller) {
-                _webViewController = controller;
-              },
-              // 5. MANEJO DE REDIRECCIONES Y BLOQUEO DE POPUPS
+              onWebViewCreated: (controller) => _webViewController = controller,
               shouldOverrideUrlLoading: (controller, navigationAction) async {
-                final uri = navigationAction.request.url?.toString() ?? "";
-
-                // Dominios permitidos (Fuentes de video y estáticos)
-                final List<String> allowedDomains = [
-                  "vidsrc.me",
-                  "vidsrc.xyz",
-                  "vapi.to",
-                  "static.vidsrc.me",
-                  "sbx.html", // Permitir archivos críticos
-                  "sbx.js",
-                ];
-
-                // Verificamos si la URL contiene algún dominio permitido
-                bool isAllowed = allowedDomains.any(
-                  (domain) => uri.contains(domain),
-                );
-
-                if (isAllowed) {
+                final uri = navigationAction.request.url.toString();
+                // Permitimos vidsrc, embed.su y sus dominios de carga estática
+                if (uri.contains("vidsrc") ||
+                    uri.contains("embed.su") ||
+                    uri.contains("vapi") ||
+                    uri.contains("static")) {
                   return NavigationActionPolicy.ALLOW;
                 }
-
-                // Bloqueamos cualquier redirección fuera de los dominios de confianza (Popups/Ads)
-                debugPrint("BLOQUEADO REDIRECCIÓN A: $uri");
-                return NavigationActionPolicy.CANCEL;
+                return NavigationActionPolicy
+                    .CANCEL; // Bloquea Popups publicitarios
               },
             ),
 
-            // Capa de controles personalizados
+            // CONTROLES SUPERIORES
             if (_showControls)
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
                 child: Container(
-                  height: 80,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
@@ -147,22 +138,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   child: Row(
                     children: [
                       IconButton(
-                        icon: const Icon(
-                          Icons.arrow_back,
-                          color: Colors.white,
-                          size: 30,
-                        ),
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
                         onPressed: () => Navigator.pop(context),
                       ),
                       Expanded(
                         child: Text(
-                          widget.title,
+                          "${widget.title} - ${_providers[_currentProviderIndex]}",
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
-                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // BOTÓN DE CAMBIAR SERVIDOR (BACKUP)
+                      ElevatedButton.icon(
+                        onPressed: _toggleServer,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.redAccent.withOpacity(0.8),
+                        ),
+                        icon: const Icon(
+                          Icons.dns,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                        label: const Text(
+                          "Cambiar Servidor",
+                          style: TextStyle(color: Colors.white, fontSize: 12),
                         ),
                       ),
                     ],
@@ -177,7 +178,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
-    // Restauramos orientación al salir
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _webViewController?.stopLoading();
