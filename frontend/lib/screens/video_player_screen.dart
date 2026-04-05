@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -24,11 +23,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Timer? _hideTimer;
   InAppWebViewController? _webViewController;
 
-  // 1. CONTROL DE SERVIDORES
+  // CONTROL DE SERVIDORES
   int _currentProviderIndex = 0;
-  final List<String> _providers = ["Vidsrc", "Embed.su"];
+  final List<String> _providers = ["Vidsrc.me", "Embed.su"];
 
-  // 2. GENERADOR DE URL CON BACKUP
+  // GENERADOR DE URL (WEB OPTIMIZED)
   WebUri _buildStreamingUrl() {
     final String id = widget.imdbId.trim();
     final bool isTV =
@@ -36,14 +35,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         widget.type.toLowerCase().contains('tv');
 
     if (_currentProviderIndex == 0) {
-      // OPCIÓN 1: VIDSRC
+      // Servidor 1: Vidsrc
       return WebUri(
         isTV
             ? "https://vidsrc.me/embed/tv/$id/1/1"
             : "https://vidsrc.me/embed/movie/$id",
       );
     } else {
-      // OPCIÓN 2: EMBED.SU (BACKUP)
+      // Servidor 2: Embed.su (Backup)
       return WebUri(
         isTV
             ? "https://embed.su/embed/tv/$id/1/1"
@@ -52,26 +51,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  // 3. FUNCIÓN PARA CAMBIAR DE SERVIDOR EN CALIENTE
   void _toggleServer() {
     setState(() {
       _currentProviderIndex = (_currentProviderIndex + 1) % _providers.length;
     });
+    // En Web, recargamos la URL directamente en el controlador
     _webViewController?.loadUrl(
       urlRequest: URLRequest(url: _buildStreamingUrl()),
     );
-    _startHideTimer(); // Reiniciar timer de controles
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _startHideTimer();
   }
 
   void _startHideTimer() {
@@ -85,49 +72,36 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: GestureDetector(
-        onTap: () {
-          setState(() => _showControls = !_showControls);
-          if (_showControls) _startHideTimer();
+      body: MouseRegion(
+        // En Web usamos MouseRegion para detectar movimiento del ratón
+        onHover: (_) {
+          if (!_showControls) setState(() => _showControls = true);
+          _startHideTimer();
         },
         child: Stack(
           children: [
+            // WEBVIEW OPTIMIZADO PARA NAVEGADORES
             InAppWebView(
               initialUrlRequest: URLRequest(url: _buildStreamingUrl()),
               initialSettings: InAppWebViewSettings(
                 javaScriptEnabled: true,
                 allowsInlineMediaPlayback: true,
+                // En Web, el UserAgent del navegador suele ser suficiente,
+                // pero lo forzamos para evitar bloqueos de frames.
                 userAgent:
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-                mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-                useShouldOverrideUrlLoading: true,
               ),
               onWebViewCreated: (controller) => _webViewController = controller,
-              shouldOverrideUrlLoading: (controller, navigationAction) async {
-                final uri = navigationAction.request.url.toString();
-                // Permitimos vidsrc, embed.su y sus dominios de carga estática
-                if (uri.contains("vidsrc") ||
-                    uri.contains("embed.su") ||
-                    uri.contains("vapi") ||
-                    uri.contains("static")) {
-                  return NavigationActionPolicy.ALLOW;
-                }
-                return NavigationActionPolicy
-                    .CANCEL; // Bloquea Popups publicitarios
-              },
             ),
 
-            // CONTROLES SUPERIORES
+            // CONTROLES
             if (_showControls)
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 10,
-                  ),
+                  padding: const EdgeInsets.all(15),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
@@ -141,29 +115,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         icon: const Icon(Icons.arrow_back, color: Colors.white),
                         onPressed: () => Navigator.pop(context),
                       ),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          "${widget.title} - ${_providers[_currentProviderIndex]}",
+                          "${widget.title} (${_providers[_currentProviderIndex]})",
                           style: const TextStyle(
                             color: Colors.white,
+                            fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-                      // BOTÓN DE CAMBIAR SERVIDOR (BACKUP)
-                      ElevatedButton.icon(
+                      // BOTÓN DE BACKUP
+                      TextButton.icon(
                         onPressed: _toggleServer,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent.withOpacity(0.8),
+                        style: TextButton.styleFrom(
+                          backgroundColor: Colors.red.withOpacity(0.7),
                         ),
-                        icon: const Icon(
-                          Icons.dns,
-                          size: 18,
-                          color: Colors.white,
-                        ),
+                        icon: const Icon(Icons.swap_calls, color: Colors.white),
                         label: const Text(
-                          "Cambiar Servidor",
-                          style: TextStyle(color: Colors.white, fontSize: 12),
+                          "Cambiar de Servidor",
+                          style: TextStyle(color: Colors.white),
                         ),
                       ),
                     ],
@@ -174,14 +146,5 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    _webViewController?.stopLoading();
-    _hideTimer?.cancel();
-    super.dispose();
   }
 }
