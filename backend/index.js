@@ -68,34 +68,41 @@ async function enrichMovieData(movie) {
 
 app.get(['/api/movies', '/movies'], async (req, res) => {
     try {
-        const { type } = req.query;
-        let whereCondition = {};
-        
-        if (type) {
-            const normalizedType = type.toLowerCase().trim().replace('s', '');
-            whereCondition = { type: { contains: normalizedType, mode: 'insensitive' } };
-        }
-
-        // 1. Obtener de Prisma
-        const content = await prisma.movie.findMany({
-            where: whereCondition,
-            orderBy: { createdAt: 'desc' },
-            take: 20 // Limitamos a 20 para asegurar que la carga sea instantánea
+        // 1. Intentamos traer lo que hay en tu DB (Prisma)
+        let content = await prisma.movie.findMany({
+            orderBy: { createdAt: 'desc' }
         });
 
+        // 2. SI LA DB ESTÁ VACÍA: Traemos tendencias de TMDB para que la app no se vea fea
         if (content.length === 0) {
-            return res.json([]); // Si no hay nada en la DB, enviamos lista vacía rápido
+            console.log("DB vacía, trayendo tendencias de TMDB...");
+            const trending = await axios.get(
+                `${TMDB_BASE_URL}/trending/all/week?api_key=${TMDB_API_KEY}&language=es-ES`
+            );
+            
+            // Mapeamos el formato de TMDB al formato que espera tu MovieModel en Flutter
+            const fallbackMovies = trending.data.results.map(m => ({
+                id: m.id,
+                tmdbId: m.id.toString(),
+                title: m.title || m.name,
+                description: m.overview,
+                imageUrl: `https://image.tmdb.org/t/p/w500${m.poster_path}`,
+                backdropUrl: `https://image.tmdb.org/t/p/original${m.backdrop_path}`,
+                type: m.media_type,
+                rating: m.vote_average
+            }));
+            
+            return res.json(fallbackMovies);
         }
 
-        // 2. Enriquecer (Si TMDB falla, enrichMovieData devuelve el objeto de la DB original)
+        // 3. Si había contenido en la DB, lo enriquecemos como antes
         const enrichedContent = await Promise.all(
             content.map(movie => enrichMovieData(movie))
         );
 
         res.json(enrichedContent);
     } catch (error) {
-        console.error("Critical Error en /api/movies:", error);
-        res.status(500).json({ error: "Error interno del servidor" });
+        res.status(500).json({ error: "Error al cargar contenido" });
     }
 });
 
