@@ -126,44 +126,63 @@ class _MoviesScreenState extends State<MoviesScreen> {
   }
 
   Widget _buildNetflixHeader() {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      height: 90,
-      width: double.infinity,
-      color: Colors.black.withOpacity(_scrollOpacity),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Text(
-                "MOVIEWIND",
-                style: GoogleFonts.bebasNeue(
-                  color: Colors.red,
-                  fontSize: 35,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.search, color: Colors.white, size: 28),
-                onPressed: () {},
-              ),
-              const SizedBox(width: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Container(
-                  width: 30,
-                  height: 30,
-                  color: Colors.blue,
-                  child: const Icon(
-                    Icons.person,
-                    color: Colors.white,
-                    size: 20,
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        height: 100, // Altura suficiente para el gradiente y contenido
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.black.withOpacity(
+                _scrollOpacity > 0.1 ? 0.8 : 0.4,
+              ), // Gradiente base superior para legibilidad
+              Colors.black.withOpacity(_scrollOpacity), // Fusión dinámica
+              Colors.black.withOpacity(_scrollOpacity * 0.5),
+              Colors.transparent,
+            ],
+            stops: const [0.0, 0.4, 0.8, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Text(
+                  "MOVIEWIND",
+                  style: GoogleFonts.bebasNeue(
+                    color: Colors.red,
+                    fontSize: 35,
+                    letterSpacing: 1.2,
                   ),
                 ),
-              ),
-            ],
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.search, color: Colors.white, size: 28),
+                  onPressed: () {},
+                ),
+                const SizedBox(width: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    color: Colors.blue,
+                    child: const Icon(
+                      Icons.person,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -173,7 +192,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
   Widget _buildMainContent() {
     return ListView(
       controller: _scrollController,
-      padding: EdgeInsets.zero,
+      padding: EdgeInsets.zero, // CRÍTICO: Elimina el padding del ListView
       children: [
         _buildHeroBanner(),
         const SizedBox(height: 20),
@@ -191,11 +210,11 @@ class _MoviesScreenState extends State<MoviesScreen> {
     final size = MediaQuery.of(context).size;
 
     return SizedBox(
-      height: size.height * 0.8,
+      height: size.height * 0.85, // Un poco más alto para mayor inmersión
       width: size.width,
       child: Stack(
         children: [
-          // VIDEO O IMAGEN
+          // VIDEO O IMAGEN (Ocupa TODO el espacio sin SafeAreas)
           Positioned.fill(
             child: _ytController != null
                 ? IgnorePointer(
@@ -211,10 +230,36 @@ class _MoviesScreenState extends State<MoviesScreen> {
                       ),
                     ),
                   )
-                : Image.network(movie.backdropUrl ?? '', fit: BoxFit.cover),
+                : Image.network(
+                    movie.backdropUrl ?? movie.imageUrl ?? '',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: Colors.black),
+                  ),
           ),
 
-          // GRADIENTE INFERIOR (Fusión perfecta)
+          // GRADIENTE SUPERIOR (Para legibilidad del AppBar/Header)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 120,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.7),
+                    Colors.black.withOpacity(0.3),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // GRADIENTE INFERIOR (Fusión con el fondo de la app #141414)
           Positioned.fill(
             child: Container(
               decoration: const BoxDecoration(
@@ -222,12 +267,12 @@ class _MoviesScreenState extends State<MoviesScreen> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black45,
+                    Colors.transparent,
                     Colors.transparent,
                     Colors.transparent,
                     Color(0xFF141414),
                   ],
-                  stops: [0, 0.2, 0.7, 1.0],
+                  stops: [0, 0.4, 0.7, 1.0],
                 ),
               ),
             ),
