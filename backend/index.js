@@ -10,7 +10,6 @@ const prisma = new PrismaClient();
 const TMDB_API_KEY = 'd8a00b94f5c00821e497b569fec9a61f'; 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// CONFIGURACION DE CORS
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -21,7 +20,7 @@ app.use(cors({
 app.use(express.json());
 
 // ==========================================
-//   LÓGICA DE PELÍCULAS (VERSIÓN ULTRA-FAST)
+//   LÓGICA DE PELÍCULAS (ENRIQUECIMIENTO)
 // ==========================================
 
 async function enrichMovieData(movie) {
@@ -32,21 +31,19 @@ async function enrichMovieData(movie) {
         let apiUrl;
         if (movie.tmdbId) {
             const path = movie.type === 'tv' ? 'tv' : 'movie';
-            // Usamos append_to_response para traer videos (trailers) de una vez
             apiUrl = `${TMDB_BASE_URL}/${path}/${movie.tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=videos`;
         } else {
             apiUrl = `${TMDB_BASE_URL}/find/${movie.imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=es-ES`;
         }
 
-        // Añadimos un timeout de 2 segundos para que la API no se quede colgada
         const response = await axios.get(apiUrl, { timeout: 2000 });
         
-        let data = movie.tmdbId 
+        const data = movie.tmdbId 
             ? response.data 
             : (response.data.movie_results[0] || response.data.tv_results[0]);
 
         if (data) {
-            // Extraer trailer si existe
+            // Buscamos el trailer oficial en YouTube
             const trailer = data.videos?.results?.find(v => v.type === 'Trailer' && v.site === 'YouTube');
 
             return {
@@ -56,50 +53,47 @@ async function enrichMovieData(movie) {
                 imageUrl: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : movie.imageUrl,
                 backdropUrl: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : movie.backdropUrl,
                 rating: data.vote_average ? parseFloat(data.vote_average.toFixed(1)) : (movie.rating || 0.0),
-                trailerUrl: trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : null,
+                // Si la DB tiene trailerUrl lo respeta, si no, usa el de TMDB
+                trailerUrl: movie.trailerUrl || (trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : null),
             };
         }
     } catch (error) {
-        // Log ligero para no saturar la consola de Railway
-        console.error(`[TMDB Skip] ID ${identifier}: ${error.code || 'Timeout/Error'}`);
+        console.error(`[TMDB Skip] ID ${identifier}: ${error.code || 'Error'}`);
     }
-    return movie; // Siempre devolvemos el original si falla el enriquecimiento
+    return movie;
 }
 
 app.get(['/api/movies', '/movies'], async (req, res) => {
     try {
-        // 1. Intentamos traer lo que hay en tu DB (Prisma)
-        let content = await prisma.movie.findMany({
+        const { type } = req.query;
+        let whereCondition = {};
+        if (type) {
+            const normalizedType = type.toLowerCase().trim().replace('s', '');
+            whereCondition = { type: { contains: normalizedType, mode: 'insensitive' } };
+        }
+
+        const content = await prisma.movie.findMany({
+            where: whereCondition,
             orderBy: { createdAt: 'desc' }
         });
 
-        // 2. SI LA DB ESTÁ VACÍA: Traemos tendencias de TMDB para que la app no se vea fea
+        // Modo Fallback: Si no hay nada en Neon, mostramos tendencias mundiales
         if (content.length === 0) {
-            console.log("DB vacía, trayendo tendencias de TMDB...");
-            const trending = await axios.get(
-                `${TMDB_BASE_URL}/trending/all/week?api_key=${TMDB_API_KEY}&language=es-ES`
-            );
-            
-            // Mapeamos el formato de TMDB al formato que espera tu MovieModel en Flutter
-            const fallbackMovies = trending.data.results.map(m => ({
+            const trending = await axios.get(`${TMDB_BASE_URL}/trending/all/week?api_key=${TMDB_API_KEY}&language=es-ES`);
+            const fallback = trending.data.results.map(m => ({
                 id: m.id,
                 tmdbId: m.id.toString(),
                 title: m.title || m.name,
                 description: m.overview,
                 imageUrl: `https://image.tmdb.org/t/p/w500${m.poster_path}`,
                 backdropUrl: `https://image.tmdb.org/t/p/original${m.backdrop_path}`,
-                type: m.media_type,
-                rating: m.vote_average
+                type: m.media_type === 'tv' ? 'tv' : 'movie',
+                rating: m.vote_average ? parseFloat(m.vote_average.toFixed(1)) : 0.0
             }));
-            
-            return res.json(fallbackMovies);
+            return res.json(fallback);
         }
 
-        // 3. Si había contenido en la DB, lo enriquecemos como antes
-        const enrichedContent = await Promise.all(
-            content.map(movie => enrichMovieData(movie))
-        );
-
+        const enrichedContent = await Promise.all(content.map(movie => enrichMovieData(movie)));
         res.json(enrichedContent);
     } catch (error) {
         res.status(500).json({ error: "Error al cargar contenido" });
@@ -107,29 +101,22 @@ app.get(['/api/movies', '/movies'], async (req, res) => {
 });
 
 // ==========================================
-//   LÓGICA DE AUTENTICACIÓN (SIN TOCAR)
+//   AUTENTICACIÓN (LOGIN & REGISTER)
 // ==========================================
 
 async function sendEmail(to, subject, htmlContent) {
-    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-        method: 'POST',
-        headers: {
-            'accept': 'application/json',
-            'api-key': process.env.BREVO_API_KEY,
-            'content-type': 'application/json'
-        },
-        body: JSON.stringify({
+    try {
+        await axios.post('https://api.brevo.com/v3/smtp/email', {
             sender: { name: 'MovieWind', email: 'moviewindsupport@gmail.com' },
             to: [{ email: to }],
             subject: subject,
             htmlContent: htmlContent
-        })
-    });
-    if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Error al enviar email');
+        }, {
+            headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error("Error enviando email:", error.response?.data || error.message);
     }
-    return response.json();
 }
 
 app.post('/api/auth/send-otp', async (req, res) => {
@@ -141,55 +128,50 @@ app.post('/api/auth/send-otp', async (req, res) => {
         await prisma.user.upsert({
             where: { email: normalizedEmail },
             update: { pin: otp, pinExpiresAt: new Date(Date.now() + 15 * 60000) },
-            create: { email: normalizedEmail, pin: otp, pinExpiresAt: new Date(Date.now() + 15 * 60000), name: "Usuario Nuevo" }
+            create: { email: normalizedEmail, pin: otp, pinExpiresAt: new Date(Date.now() + 15 * 60000), name: "Usuario" }
         });
-        await sendEmail(normalizedEmail, "Tu codigo de acceso - MovieWind", `
-            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #1a1a2e; border-radius: 16px; overflow: hidden; padding: 20px;">
-                <h1 style="color: #E50914; text-align: center;">MovieWind</h1>
-                <h2 style="color: white; text-align: center;">Codigo: ${otp}</h2>
-            </div>
-        `);
+        await sendEmail(normalizedEmail, "Tu código de acceso - MovieWind", `<h1>Código: ${otp}</h1>`);
         res.json({ success: true });
-    } catch (error) { res.status(500).json({ error: "Error al enviar el correo" }); }
+    } catch (error) { res.status(500).json({ error: "Error de servidor" }); }
 });
 
 app.post('/api/auth/verify-otp', async (req, res) => {
     const { email, code } = req.body;
-    const normalizedEmail = email.toLowerCase().trim();
     try {
-        const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+        const user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
         if (user && user.pin === code && new Date() < user.pinExpiresAt) {
-            const updatedUser = await prisma.user.update({
-                where: { email: normalizedEmail },
+            const updated = await prisma.user.update({
+                where: { email: email.toLowerCase().trim() },
                 data: { pin: null, pinExpiresAt: null, isVerified: true }
             });
-            res.json(updatedUser);
-        } else { res.status(401).json({ error: "Codigo incorrecto o expirado" }); }
+            res.json(updated);
+        } else { res.status(401).json({ error: "Código inválido" }); }
     } catch (error) { res.status(500).json({ error: "Error al verificar" }); }
 });
+
+app.post('/api/auth/register', async (req, res) => {
+    const { email, name, plan } = req.body;
+    try {
+        const user = await prisma.user.upsert({
+            where: { email: email.toLowerCase().trim() },
+            update: { name, plan: plan || "basico" },
+            create: { email: email.toLowerCase().trim(), name, plan: plan || "basico", isVerified: true }
+        });
+        res.status(201).json(user);
+    } catch (error) { res.status(500).json({ error: "Error en registro" }); }
+});
+
+// ==========================================
+//   GESTIÓN DE USUARIOS
+// ==========================================
 
 app.get('/api/users', async (req, res) => {
     const { email } = req.query;
     if (!email) return res.status(400).json({ error: "Email requerido" });
     try {
-        const user = await prisma.user.findUnique({ where: { email: String(email).toLowerCase().trim() } });
-        res.json(user || null);
-    } catch (error) { res.status(500).json({ error: "Error al buscar usuario" }); }
-});
-
-app.post('/api/auth/register', async (req, res) => {
-    const { email, name, password, plan } = req.body;
-    const normalizedEmail = email.toLowerCase().trim();
-    let planNormalizado = plan ? plan.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : "basico";
-    try {
-        const user = await prisma.user.upsert({
-            where: { email: normalizedEmail },
-            update: { name, plan: planNormalizado },
-            create: { email: normalizedEmail, name, password: password || "123456", plan: planNormalizado, isVerified: true }
-        });
-        await sendEmail(normalizedEmail, "Bienvenido a MovieWind!", `<h2>Bienvenido, ${name}!</h2>`);
-        res.status(201).json(user);
-    } catch (error) { res.status(500).json({ error: "Error en registro" }); }
+        const user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+        res.json(user);
+    } catch (error) { res.status(500).json({ error: "Error" }); }
 });
 
 app.put("/api/users/:id", async (req, res) => {
@@ -197,7 +179,7 @@ app.put("/api/users/:id", async (req, res) => {
     const { name, profilePic, plan } = req.body;
     try {
         const userUpdated = await prisma.user.update({
-            where: { id: id },
+            where: { id: id.includes('-') ? id : parseInt(id) }, // Maneja UUID o Int
             data: { name, profilePic, plan },
         });
         res.json(userUpdated);
@@ -206,5 +188,5 @@ app.put("/api/users/:id", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Servidor MOVIEWIND corriendo en puerto ${PORT}`);
+    console.log(`Servidor corriendo en puerto ${PORT}`);
 });

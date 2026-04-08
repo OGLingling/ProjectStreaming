@@ -23,7 +23,7 @@ class MovieDetailsScreen extends StatelessWidget {
             tmdbId: tmdbId,
             imdbId: imdbId,
             title: movie.title,
-            type: movie.type ?? 'movie',
+            type: movie.type,
           ),
         ),
       );

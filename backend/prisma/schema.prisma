@@ -14,26 +14,22 @@ model Movie {
   title        String
   description  String?  @db.Text
   releaseDate  String?
+  
   // Visuales
   imageUrl     String?
   backdropUrl  String?
+  
+  // NUEVO: Campo para el trailer de YouTube
+  trailerUrl   String?  @map("trailer_url")
+  
   // Clasificación
   category     String?
   type         String   @default("movie")
-  // Metadatos de Negocio
-  addonId      Int?
-  addon        Addon?   @relation(fields: [addonId], references: [id])
+  
   createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt // Estándar Pro para auditoría de cambios
-  @@index([title]) // Índice adicional si planeas implementar un buscador
-}
+  updatedAt    DateTime @updatedAt 
 
-model Addon {
-  id        Int      @id @default(autoincrement())
-  name      String
-  baseUrl   String   @unique
-  movies    Movie[]  // Relación: Un addon puede tener muchas pelis guardadas
-  createdAt DateTime @default(now())
+  @@index([title]) 
 }
 
 enum PlanType {
