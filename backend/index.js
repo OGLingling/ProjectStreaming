@@ -25,24 +25,20 @@ app.use(express.json());
 // ==========================================
 
 async function enrichMovieData(movie) {
-    // Intentamos usar tmdbId primero, si no, usamos imdbId
     const identifier = movie.tmdbId || movie.imdbId;
+    // Si no hay IDs externos, devolvemos la película tal cual está en Prisma
     if (!identifier) return movie;
 
     try {
         let apiUrl;
-        // Si tenemos el ID de TMDB (numérico), la consulta es directa y más rápida
         if (movie.tmdbId) {
             const path = movie.type === 'tv' ? 'tv' : 'movie';
             apiUrl = `${TMDB_BASE_URL}/${path}/${movie.tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
         } else {
-            // Si solo tenemos el ID de IMDB (tt123...), usamos el endpoint /find
             apiUrl = `${TMDB_BASE_URL}/find/${movie.imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=es-ES`;
         }
 
         const response = await axios.get(apiUrl);
-        
-        // Extraer data dependiendo del endpoint usado
         const data = movie.tmdbId 
             ? response.data 
             : (response.data.movie_results[0] || response.data.tv_results[0]);
@@ -52,15 +48,16 @@ async function enrichMovieData(movie) {
                 ...movie,
                 title: data.title || data.name || movie.title,
                 description: data.overview || movie.description,
+                // Si TMDB no tiene imagen, usamos la que ya tenemos en la DB
                 imageUrl: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : movie.imageUrl,
                 backdropUrl: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : movie.backdropUrl,
-                rating: data.vote_average ? parseFloat(data.vote_average.toFixed(1)) : 0.0,
-                releaseDate: data.release_date || data.first_air_date || movie.releaseDate,
+                rating: data.vote_average ? parseFloat(data.vote_average.toFixed(1)) : (movie.rating || 0.0),
             };
         }
     } catch (error) {
-        console.error(`[TMDB Error] ID ${identifier}:`, error.message);
+        console.error(`[TMDB Silent Error] ID ${identifier}:`, error.message);
     }
+    // CRÍTICO: Si algo falla, devolvemos la película original para que Flutter no reciba null
     return movie;
 }
 

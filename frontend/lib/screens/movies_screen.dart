@@ -16,39 +16,32 @@ class MoviesScreen extends StatefulWidget {
   State<MoviesScreen> createState() => _MoviesScreenState();
 }
 
-class _MoviesScreenState extends State<MoviesScreen>
-    with WidgetsBindingObserver {
+class _MoviesScreenState extends State<MoviesScreen> {
   List<Movie> movies = [];
   bool isLoading = true;
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
   bool _isMuted = true;
-  double _scrollOffset = 0.0;
   final ScrollController _scrollController = ScrollController();
 
+  // Cambiado a la ruta correcta que definimos en el backend enriquecido
   final String apiBaseUrl =
       "https://projectstreaming-production.up.railway.app/api/movies";
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
     _loadData();
-  }
-
-  void _onScroll() {
-    setState(() {
-      _scrollOffset = _scrollController.offset;
-    });
   }
 
   Future<void> _loadData() async {
     try {
       final response = await http.get(Uri.parse(apiBaseUrl));
       if (response.statusCode == 200) {
-        List<dynamic> data = jsonDecode(response.body);
+        final List<dynamic> data = jsonDecode(response.body);
         if (mounted) {
           setState(() {
+            // Validamos que el mapeo sea correcto según el nuevo modelo enriquecido
             movies = data.map((m) => Movie.fromJson(m)).toList();
             isLoading = false;
           });
@@ -56,86 +49,69 @@ class _MoviesScreenState extends State<MoviesScreen>
         }
       }
     } catch (e) {
+      debugPrint("Error cargando películas: $e");
       if (mounted) setState(() => isLoading = false);
     }
   }
 
   void _initVideoBanner() {
-    // URL por defecto para el trailer de MOVIEWIND
+    // URL de respaldo segura
     String url =
         "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/DulceHogar.mp4";
 
     _videoController = VideoPlayerController.networkUrl(WebUri(url))
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() => _isVideoInitialized = true);
-          _videoController?.setVolume(0.0);
-          _videoController?.play();
-          _videoController?.setLooping(true);
-        }
-      });
+      ..initialize()
+          .then((_) {
+            if (mounted) {
+              setState(() => _isVideoInitialized = true);
+              _videoController?.setVolume(0.0);
+              _videoController?.setLooping(true);
+              _videoController?.play();
+            }
+          })
+          .catchError((error) => debugPrint("Video error: $error"));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
-      extendBodyBehindAppBar: true,
-      appBar: PreferredSize(
-        preferredSize: Size(MediaQuery.of(context).size.width, 70),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          color: Colors.black.withOpacity((_scrollOffset / 350).clamp(0, 0.9)),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Text(
-                    "MOVIEWIND",
-                    style: GoogleFonts.bebasNeue(
-                      color: Colors.red,
-                      fontSize: 32,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                  const Spacer(),
-                  const Icon(Icons.search, color: Colors.white, size: 28),
-                  const SizedBox(width: 20),
-                  const CircleAvatar(
-                    radius: 14,
-                    backgroundColor: Colors.blue,
-                    child: Icon(Icons.person, size: 18, color: Colors.white),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+      // ELIMINADO: appBar duplicado.
+      // Ahora el contenido sube hasta el tope y respeta el AppBar del MainScreen.
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.red))
+          : movies.isEmpty
+          ? const Center(
+              child: Text(
+                "No hay contenido disponible",
+                style: TextStyle(color: Colors.white),
+              ),
+            )
           : VisibilityDetector(
-              key: const Key('movies-main-key'),
+              key: const Key('movies-list-key'),
               onVisibilityChanged: (info) {
                 if (info.visibleFraction > 0.5)
                   _videoController?.play();
                 else
                   _videoController?.pause();
               },
-              child: ListView(
+              child: SingleChildScrollView(
                 controller: _scrollController,
-                padding: EdgeInsets.zero,
-                children: [
-                  _buildVideoBanner(),
-                  const SizedBox(height: 10),
-                  _buildSection("Tendencias ahora", movies),
-                  _buildSection(
-                    "Aclamadas por la crítica",
-                    movies.reversed.toList(),
-                  ),
-                  const SizedBox(height: 50),
-                ],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildVideoBanner(),
+                    const SizedBox(height: 10),
+                    _buildSection("Tendencias ahora", movies),
+                    _buildSection(
+                      "Aclamadas por la crítica",
+                      movies.reversed.toList(),
+                    ),
+                    const SizedBox(
+                      height: 100,
+                    ), // Espacio extra para el Bottom Nav
+                  ],
+                ),
               ),
             ),
     );
@@ -146,10 +122,9 @@ class _MoviesScreenState extends State<MoviesScreen>
     final mainMovie = movies[0];
 
     return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.75,
+      height: MediaQuery.of(context).size.height * 0.70,
       child: Stack(
         children: [
-          // Capa de Video o Imagen de respaldo
           Positioned.fill(
             child: _isVideoInitialized
                 ? FittedBox(
@@ -160,9 +135,11 @@ class _MoviesScreenState extends State<MoviesScreen>
                       child: VideoPlayer(_videoController!),
                     ),
                   )
-                : Image.network(mainMovie.backdropUrl ?? '', fit: BoxFit.cover),
+                : (mainMovie.backdropUrl != null
+                      ? Image.network(mainMovie.backdropUrl!, fit: BoxFit.cover)
+                      : Container(color: Colors.black)),
           ),
-          // Gradiente Inferior Negro (Fusión con el feed)
+          // Gradiente Pro para mezclar con el fondo negro
           const Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -170,18 +147,17 @@ class _MoviesScreenState extends State<MoviesScreen>
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black38,
+                    Colors.black54,
                     Colors.transparent,
                     Color(0xFF141414),
                   ],
-                  stops: [0.0, 0.6, 1.0],
+                  stops: [0.0, 0.5, 1.0],
                 ),
               ),
             ),
           ),
-          // Controles y Texto
           Positioned(
-            bottom: 60,
+            bottom: 40,
             left: 0,
             right: 0,
             child: Column(
@@ -191,89 +167,60 @@ class _MoviesScreenState extends State<MoviesScreen>
                   textAlign: TextAlign.center,
                   style: GoogleFonts.bebasNeue(
                     color: Colors.white,
-                    fontSize: 48,
-                    letterSpacing: 2,
+                    fontSize: 42,
                   ),
                 ),
                 const SizedBox(height: 15),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    ElevatedButton.icon(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              MovieDetailsScreen(movieData: mainMovie.toJson()),
-                        ),
-                      ),
-                      icon: const Icon(
-                        Icons.play_arrow,
-                        size: 30,
-                        color: Colors.black,
-                      ),
-                      label: const Text(
-                        "Reproducir",
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        minimumSize: const Size(140, 45),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
+                    _bannerButton(
+                      Icons.play_arrow,
+                      "Reproducir",
+                      Colors.white,
+                      Colors.black,
+                      mainMovie,
                     ),
                     const SizedBox(width: 15),
-                    ElevatedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(
-                        Icons.info_outline,
-                        size: 26,
-                        color: Colors.white,
-                      ),
-                      label: const Text(
-                        "Información",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white.withOpacity(0.2),
-                        minimumSize: const Size(140, 45),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
+                    _bannerButton(
+                      Icons.info_outline,
+                      "Información",
+                      Colors.white24,
+                      Colors.white,
+                      mainMovie,
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          // Botón de Mute (Esquina inferior derecha del banner)
-          Positioned(
-            bottom: 70,
-            right: 20,
-            child: IconButton(
-              icon: Icon(
-                _isMuted ? Icons.volume_off_outlined : Icons.volume_up_outlined,
-                color: Colors.white,
-                size: 30,
-              ),
-              onPressed: () {
-                setState(() {
-                  _isMuted = !_isMuted;
-                  _videoController?.setVolume(_isMuted ? 0.0 : 1.0);
-                });
-              },
-            ),
-          ),
         ],
+      ),
+    );
+  }
+
+  Widget _bannerButton(
+    IconData icon,
+    String label,
+    Color bg,
+    Color txt,
+    Movie movie,
+  ) {
+    return ElevatedButton.icon(
+      onPressed: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MovieDetailsScreen(movieData: movie.toJson()),
+        ),
+      ),
+      icon: Icon(icon, color: txt),
+      label: Text(
+        label,
+        style: TextStyle(color: txt, fontWeight: FontWeight.bold),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: bg,
+        minimumSize: const Size(140, 40),
       ),
     );
   }
@@ -283,45 +230,50 @@ class _MoviesScreenState extends State<MoviesScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 16, top: 20, bottom: 8),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
           child: Text(
             title,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
         SizedBox(
-          height: 180,
+          height: 170,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(left: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: list.length,
-            itemBuilder: (context, i) => GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      MovieDetailsScreen(movieData: list[i].toJson()),
-                ),
-              ),
-              child: Container(
-                width: 120,
-                margin: const EdgeInsets.only(right: 12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(4),
-                  image: DecorationImage(
-                    image: NetworkImage(list[i].imageUrl ?? ''),
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-            ),
+            itemBuilder: (context, i) => _movieCard(list[i]),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _movieCard(Movie movie) {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MovieDetailsScreen(movieData: movie.toJson()),
+        ),
+      ),
+      child: Container(
+        width: 115,
+        margin: const EdgeInsets.only(right: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          image: DecorationImage(
+            image: NetworkImage(
+              movie.imageUrl ?? 'https://via.placeholder.com/500',
+            ),
+            fit: BoxFit.cover,
+          ),
+        ),
+      ),
     );
   }
 
