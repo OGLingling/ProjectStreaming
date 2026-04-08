@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../models/movie_model.dart';
 import 'movie_details_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -67,11 +68,12 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
-  void _openMovie(Map<String, dynamic> movie) {
+  void _openMovie(Map<String, dynamic> movieData) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MovieDetailsScreen(movieData: movie),
+        builder: (context) =>
+            MovieDetailsScreen(movie: Movie.fromJson(movieData)),
       ),
     );
   }

@@ -4,15 +4,21 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/movie_model.dart';
 import 'video_player_screen.dart';
 
-class MovieDetailsScreen extends StatelessWidget {
-  final Map<String, dynamic> movieData;
+class MovieDetailsScreen extends StatefulWidget {
+  final Movie movie;
+  final Map<String, dynamic>? user;
 
-  const MovieDetailsScreen({super.key, required this.movieData});
+  const MovieDetailsScreen({super.key, required this.movie, this.user});
 
+  @override
+  State<MovieDetailsScreen> createState() => _MovieDetailsScreenState();
+}
+
+class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
   // Lógica de navegación pro: Maneja ambos IDs y tipos de contenido
-  void _navigateToPlayer(BuildContext context, Movie movie) {
-    final String? tmdbId = movie.tmdbId?.toString();
-    final String? imdbId = movie.imdbId;
+  void _navigateToPlayer(BuildContext context) {
+    final String? tmdbId = widget.movie.tmdbId?.toString();
+    final String? imdbId = widget.movie.imdbId;
 
     if ((tmdbId != null && tmdbId != 'null') ||
         (imdbId != null && imdbId != 'null')) {
@@ -22,8 +28,8 @@ class MovieDetailsScreen extends StatelessWidget {
           builder: (context) => VideoPlayerScreen(
             tmdbId: tmdbId,
             imdbId: imdbId,
-            title: movie.title,
-            type: movie.type ?? 'movie',
+            title: widget.movie.title,
+            type: widget.movie.type ?? 'movie',
           ),
         ),
       );
@@ -44,7 +50,6 @@ class MovieDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final movie = Movie.fromJson(movieData);
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
@@ -64,7 +69,7 @@ class MovieDetailsScreen extends StatelessWidget {
                 children: [
                   // Hero Image
                   Image.network(
-                    movie.backdropUrl ?? movie.imageUrl ?? '',
+                    widget.movie.backdropUrl ?? widget.movie.imageUrl ?? '',
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) =>
                         Container(color: Colors.grey[900]),
@@ -99,7 +104,7 @@ class MovieDetailsScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                   // Título principal
                   Text(
-                    movie.title,
+                    widget.movie.title,
                     style: GoogleFonts.roboto(
                       color: Colors.white,
                       fontSize: 28,
@@ -112,7 +117,7 @@ class MovieDetailsScreen extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        movie.releaseDate?.substring(0, 4) ?? "2024",
+                        widget.movie.releaseDate?.substring(0, 4) ?? "2024",
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 14,
@@ -151,7 +156,7 @@ class MovieDetailsScreen extends StatelessWidget {
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton.icon(
-                      onPressed: () => _navigateToPlayer(context, movie),
+                      onPressed: () => _navigateToPlayer(context),
                       icon: const Icon(Icons.play_arrow, size: 30),
                       label: const Text(
                         "Reproducir",
@@ -201,7 +206,7 @@ class MovieDetailsScreen extends StatelessWidget {
 
                   // Sinopsis
                   Text(
-                    movie.description ?? 'Sin descripción disponible.',
+                    widget.movie.description ?? 'Sin descripción disponible.',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 15,
@@ -220,7 +225,7 @@ class MovieDetailsScreen extends StatelessWidget {
                           style: TextStyle(color: Colors.white60),
                         ),
                         TextSpan(
-                          text: "${movie.category ?? 'Acción, Drama'}",
+                          text: "${widget.movie.category ?? 'Acción, Drama'}",
                           style: const TextStyle(color: Colors.grey),
                         ),
                       ],
@@ -261,3 +266,4 @@ class MovieDetailsScreen extends StatelessWidget {
     );
   }
 }
+

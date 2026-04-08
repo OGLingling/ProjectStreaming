@@ -131,8 +131,7 @@ class _CategoryMovieCardState extends State<CategoryMovieCard> {
         context,
         MaterialPageRoute(
           builder: (context) => MovieDetailsScreen(
-            // Enviamos el JSON que ahora incluye backdropUrl e imageUrl correctos
-            movieData: widget.movie.toJson(),
+            movie: widget.movie,
           ),
         ),
       );

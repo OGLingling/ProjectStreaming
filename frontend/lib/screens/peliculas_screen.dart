@@ -3,6 +3,7 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
+import '../models/movie_model.dart';
 import 'movie_details_screen.dart';
 
 class PeliculasScreen extends StatefulWidget {
@@ -351,7 +352,8 @@ class _MoviePosterCardState extends State<_MoviePosterCard> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => MovieDetailsScreen(movieData: widget.movie),
+              builder: (context) =>
+                  MovieDetailsScreen(movie: Movie.fromJson(widget.movie)),
             ),
           );
         },
