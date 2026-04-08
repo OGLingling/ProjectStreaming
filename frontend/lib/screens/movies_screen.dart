@@ -22,7 +22,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
   bool _isMuted = true;
 
   // IMPORTANTE: Asegúrate de poner tu API KEY real aquí
-  final String tmdbApiKey = "TU_API_KEY_TMDB";
+  final String tmdbApiKey = "d8a00b94f5c00821e497b569fec9a61f";
   final String apiBaseUrl =
       "https://projectstreaming-production.up.railway.app/api/movies";
 
