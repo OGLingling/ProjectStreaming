@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/movie_model.dart';
@@ -8,290 +9,255 @@ class MovieDetailsScreen extends StatelessWidget {
 
   const MovieDetailsScreen({super.key, required this.movieData});
 
-  void _playVideo(BuildContext context, String id, String title, String type) {
-    final cleanId = id.trim();
-    if (cleanId.isNotEmpty && cleanId != 'null') {
+  // Lógica de navegación pro: Maneja ambos IDs y tipos de contenido
+  void _navigateToPlayer(BuildContext context, Movie movie) {
+    final String? tmdbId = movie.tmdbId?.toString();
+    final String? imdbId = movie.imdbId;
+
+    if ((tmdbId != null && tmdbId != 'null') ||
+        (imdbId != null && imdbId != 'null')) {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) =>
-              VideoPlayerScreen(imdbId: cleanId, title: title, type: type),
+          builder: (context) => VideoPlayerScreen(
+            tmdbId: tmdbId,
+            imdbId: imdbId,
+            title: movie.title,
+            type: movie.type ?? 'movie',
+          ),
         ),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Error: Esta película no tiene un ID de IMDB configurado.",
-          ),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      _showErrorSnackBar(context, "Contenido no disponible temporalmente.");
     }
+  }
+
+  void _showErrorSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(color: Colors.white)),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final movie = Movie.fromJson(movieData);
-    final String? movieId = movie.imdbId;
-
-    final String coverImg = (movie.backdropUrl ?? movie.imageUrl ?? '').trim();
-    final bool hasValidCoverImg =
-        coverImg.isNotEmpty && coverImg.toLowerCase() != 'null';
+    final size = MediaQuery.of(context).size;
 
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // Calculamos la altura real de la imagen 16:9 al ancho de pantalla
-          final double screenWidth = constraints.maxWidth;
-          final double imageHeight = screenWidth * (9 / 16);
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          // Header con efecto de colapso profesional
+          SliverAppBar(
+            expandedHeight: size.height * 0.45,
+            backgroundColor: const Color(0xFF141414),
+            elevation: 0,
+            pinned: true,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Hero Image
+                  Image.network(
+                    movie.backdropUrl ?? movie.imageUrl ?? '',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: Colors.grey[900]),
+                  ),
+                  // Gradiente dinámico (Netflix signature)
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black54,
+                          Colors.transparent,
+                          Color(0xFF141414),
+                        ],
+                        stops: [0.0, 0.5, 1.0],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
-          return SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // --- STACK: IMAGEN + GRADIENTES + CONTENIDO SUPERPUESTO ---
-                SizedBox(
-                  width: screenWidth,
-                  height: imageHeight,
-                  child: Stack(
+          // Contenido de la información
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 12),
+                  // Título principal
+                  Text(
+                    movie.title,
+                    style: GoogleFonts.roboto(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Fila de Metadatos (Año, Calificación, Calidad)
+                  Row(
                     children: [
-                      // IMAGEN sin recorte, ajustada al ancho
-                      Positioned.fill(
-                        child: !hasValidCoverImg
-                            ? Container(color: Colors.grey[900])
-                            : (coverImg.startsWith('http')
-                                  ? Image.network(
-                                      coverImg,
-                                      fit: BoxFit.cover,
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                    )
-                                  : Image.asset(
-                                      coverImg,
-                                      fit: BoxFit.cover,
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                    )),
+                      Text(
+                        movie.releaseDate?.substring(0, 4) ?? "2024",
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
                       ),
-
-                      // GRADIENTE HORIZONTAL (izquierda oscura, derecha transparente)
-                      Positioned.fill(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                              stops: const [0.0, 0.45, 0.75],
-                              colors: [
-                                Colors.black.withOpacity(0.92),
-                                Colors.black.withOpacity(0.4),
-                                Colors.transparent,
-                              ],
-                            ),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[800],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        child: const Text(
+                          "16+",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-
-                      // GRADIENTE VERTICAL SUPERIOR (para AppBar legible)
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        height: imageHeight * 0.25,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.black.withOpacity(0.6),
-                                Colors.transparent,
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // GRADIENTE VERTICAL INFERIOR (fusión con negro)
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        height: imageHeight * 0.45,
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.transparent, Color(0xFF141414)],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // CONTENIDO SUPERPUESTO (parte inferior izquierda)
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(28, 0, 40, 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // TÍTULO
-                              Text(
-                                movie.title.toUpperCase(),
-                                style: GoogleFonts.montserrat(
-                                  color: Colors.white,
-                                  fontSize: 30,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: -0.5,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-
-                              // METADATOS
-                              Row(
-                                children: [
-                                  const Text(
-                                    "98% para ti",
-                                    style: TextStyle(
-                                      color: Color(0xFF46D369),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    movie.releaseDate?.toString().substring(
-                                          0,
-                                          4,
-                                        ) ??
-                                        '2026',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 5,
-                                      vertical: 1,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      border: Border.all(color: Colors.white60),
-                                      borderRadius: BorderRadius.circular(2),
-                                    ),
-                                    child: const Text(
-                                      "16+",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    movie.category ?? 'Terror / Horror',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-
-                              // DESCRIPCIÓN
-                              SizedBox(
-                                width: screenWidth * 0.50,
-                                child: Text(
-                                  movie.description ??
-                                      'Sin descripción disponible.',
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    height: 1.45,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-
-                              // GÉNEROS
-                              if (movie.category != null)
-                                Text(
-                                  "Géneros: ${movie.category}",
-                                  style: const TextStyle(
-                                    color: Colors.white54,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              const SizedBox(height: 16),
-
-                              // BOTÓN REPRODUCIR
-                              SizedBox(
-                                width: double
-                                    .infinity, // Lo cambié a infinity para que ocupe el ancho como en Netflix
-                                height: 42,
-                                child: ElevatedButton.icon(
-                                  onPressed: () {
-                                    // Agregamos el parámetro 'type' a la función de reproducción
-                                    _playVideo(
-                                      context,
-                                      movieId ?? '',
-                                      movie.title,
-                                      movie.type ??
-                                          'Pelicula', // Enviamos "Serie" o "Pelicula"
-                                    );
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    foregroundColor: Colors.black,
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                  ),
-                                  icon: const Icon(Icons.play_arrow, size: 28),
-                                  label: const Text(
-                                    "Reproducir",
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        "4K Ultra HD",
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
                       ),
                     ],
                   ),
-                ),
-                // Espacio extra mínimo debajo si quieres agregar más secciones
-                const SizedBox(height: 20),
-              ],
+                  const SizedBox(height: 20),
+
+                  // BOTÓN REPRODUCIR (Primario)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _navigateToPlayer(context, movie),
+                      icon: const Icon(Icons.play_arrow, size: 30),
+                      label: const Text(
+                        "Reproducir",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // BOTÓN DESCARGAR (Secundario)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showErrorSnackBar(
+                        context,
+                        "Función de descarga no disponible.",
+                      ),
+                      icon: const Icon(Icons.download, size: 24),
+                      label: const Text(
+                        "Descargar",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey[850],
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Sinopsis
+                  Text(
+                    movie.description ?? 'Sin descripción disponible.',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+
+                  // Información de Cast/Género
+                  RichText(
+                    text: TextSpan(
+                      style: const TextStyle(color: Colors.grey, fontSize: 13),
+                      children: [
+                        const TextSpan(
+                          text: "Géneros: ",
+                          style: TextStyle(color: Colors.white60),
+                        ),
+                        TextSpan(
+                          text: "${movie.category ?? 'Acción, Drama'}",
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+
+                  // Fila de acciones sociales
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildActionButton(Icons.add, "Mi lista"),
+                      _buildActionButton(
+                        Icons.thumb_up_alt_outlined,
+                        "Calificar",
+                      ),
+                      _buildActionButton(Icons.share, "Compartir"),
+                    ],
+                  ),
+                  const SizedBox(height: 50),
+                ],
+              ),
             ),
-          );
-        },
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildActionButton(IconData icon, String label) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: Colors.white, size: 28),
+        const SizedBox(height: 8),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+      ],
     );
   }
 }

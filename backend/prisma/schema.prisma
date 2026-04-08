@@ -9,22 +9,23 @@ datasource db {
 
 model Movie {
   id           Int      @id @default(autoincrement())
-  imdbId       String?  @unique // Aquí guardarás el "tt1234567"
+  tmdbId       String?  @unique @map("tmdb_id")
+  imdbId       String?  @unique @map("imdb_id") 
   title        String
-  description  String?
-  releaseDate  DateTime
-  rating       Float    @default(0.0)
+  description  String?  @db.Text
+  releaseDate  String?
+  // Visuales
   imageUrl     String?
   backdropUrl  String?
+  // Clasificación
   category     String?
   type         String   @default("movie")
-  videoUrl     String?  
-  
-  // RELACIÓN CON EL ADDON
+  // Metadatos de Negocio
   addonId      Int?
   addon        Addon?   @relation(fields: [addonId], references: [id])
-  
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt // Estándar Pro para auditoría de cambios
+  @@index([title]) // Índice adicional si planeas implementar un buscador
 }
 
 model Addon {

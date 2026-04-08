@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../models/movie_model.dart';
 import 'movie_details_screen.dart';
 
@@ -19,19 +20,26 @@ class _MoviesScreenState extends State<MoviesScreen>
     with WidgetsBindingObserver {
   List<Movie> movies = [];
   bool isLoading = true;
-  bool _showVideo = true;
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
+  bool _isMuted = true;
+  double _scrollOffset = 0.0;
+  final ScrollController _scrollController = ScrollController();
 
-  // Cambia esto por tu URL de Railway
   final String apiBaseUrl =
       "https://projectstreaming-production.up.railway.app/api/movies";
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
+    _scrollController.addListener(_onScroll);
     _loadData();
+  }
+
+  void _onScroll() {
+    setState(() {
+      _scrollOffset = _scrollController.offset;
+    });
   }
 
   Future<void> _loadData() async {
@@ -48,66 +56,84 @@ class _MoviesScreenState extends State<MoviesScreen>
         }
       }
     } catch (e) {
-      debugPrint("Error: $e");
       if (mounted) setState(() => isLoading = false);
     }
   }
 
   void _initVideoBanner() {
-    // Usamos el videoUrl de la primera película o uno por defecto
-    String? url =
-        movies[0].videoUrl ??
+    // URL por defecto para el trailer de MOVIEWIND
+    String url =
         "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/DulceHogar.mp4";
 
-    _videoController = VideoPlayerController.networkUrl(Uri.parse(url))
+    _videoController = VideoPlayerController.networkUrl(WebUri(url))
       ..initialize().then((_) {
         if (mounted) {
           setState(() => _isVideoInitialized = true);
-          _videoController?.setVolume(0.0); // Banner silencioso es mejor
+          _videoController?.setVolume(0.0);
           _videoController?.play();
           _videoController?.setLooping(true);
         }
       });
   }
 
-  void _navigateToDetails(Map<String, dynamic> movieData) async {
-    _videoController?.pause();
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => MovieDetailsScreen(movieData: movieData),
-      ),
-    );
-    if (mounted && _showVideo && _isVideoInitialized) _videoController?.play();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
+      extendBodyBehindAppBar: true,
+      appBar: PreferredSize(
+        preferredSize: Size(MediaQuery.of(context).size.width, 70),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          color: Colors.black.withOpacity((_scrollOffset / 350).clamp(0, 0.9)),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Text(
+                    "MOVIEWIND",
+                    style: GoogleFonts.bebasNeue(
+                      color: Colors.red,
+                      fontSize: 32,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const Spacer(),
+                  const Icon(Icons.search, color: Colors.white, size: 28),
+                  const SizedBox(width: 20),
+                  const CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Colors.blue,
+                    child: Icon(Icons.person, size: 18, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.red))
-          : movies.isEmpty
-          ? const Center(
-              child: Text(
-                "No hay películas",
-                style: TextStyle(color: Colors.white),
-              ),
-            )
           : VisibilityDetector(
               key: const Key('movies-main-key'),
               onVisibilityChanged: (info) {
-                if (info.visibleFraction > 0.8)
+                if (info.visibleFraction > 0.5)
                   _videoController?.play();
                 else
                   _videoController?.pause();
               },
               child: ListView(
+                controller: _scrollController,
                 padding: EdgeInsets.zero,
                 children: [
-                  _buildBanner(),
-                  const SizedBox(height: 20),
-                  _buildSection("Tu Próxima Historia", movies),
+                  _buildVideoBanner(),
+                  const SizedBox(height: 10),
+                  _buildSection("Tendencias ahora", movies),
+                  _buildSection(
+                    "Aclamadas por la crítica",
+                    movies.reversed.toList(),
+                  ),
                   const SizedBox(height: 50),
                 ],
               ),
@@ -115,60 +141,140 @@ class _MoviesScreenState extends State<MoviesScreen>
     );
   }
 
-  Widget _buildBanner() {
-    final Movie mainMovie = movies[0];
-    final String bannerImg = (mainMovie.backdropUrl ?? '').trim();
+  Widget _buildVideoBanner() {
+    if (movies.isEmpty) return const SizedBox.shrink();
+    final mainMovie = movies[0];
 
-    return Stack(
-      children: [
-        SizedBox(
-          height: MediaQuery.of(context).size.height * 0.7,
-          width: double.infinity,
-          child: _showVideo && _isVideoInitialized
-              ? VideoPlayer(_videoController!)
-              : Image.network(bannerImg, fit: BoxFit.cover),
-        ),
-        Positioned.fill(
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, const Color(0xFF141414)],
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.75,
+      child: Stack(
+        children: [
+          // Capa de Video o Imagen de respaldo
+          Positioned.fill(
+            child: _isVideoInitialized
+                ? FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: _videoController!.value.size.width,
+                      height: _videoController!.value.size.height,
+                      child: VideoPlayer(_videoController!),
+                    ),
+                  )
+                : Image.network(mainMovie.backdropUrl ?? '', fit: BoxFit.cover),
+          ),
+          // Gradiente Inferior Negro (Fusión con el feed)
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black38,
+                    Colors.transparent,
+                    Color(0xFF141414),
+                  ],
+                  stops: [0.0, 0.6, 1.0],
+                ),
               ),
             ),
           ),
-        ),
-        Positioned(
-          bottom: 40,
-          left: 0,
-          right: 0,
-          child: Column(
-            children: [
-              Text(
-                mainMovie.title.toUpperCase(),
-                textAlign: TextAlign.center,
-                style: GoogleFonts.montserrat(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: () => _navigateToDetails(mainMovie.toJson()),
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text("Reproducir"),
+          // Controles y Texto
+          Positioned(
+            bottom: 60,
+            left: 0,
+            right: 0,
+            child: Column(
+              children: [
+                Text(
+                  mainMovie.title.toUpperCase(),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.bebasNeue(
+                    color: Colors.white,
+                    fontSize: 48,
+                    letterSpacing: 2,
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 15),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              MovieDetailsScreen(movieData: mainMovie.toJson()),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.play_arrow,
+                        size: 30,
+                        color: Colors.black,
+                      ),
+                      label: const Text(
+                        "Reproducir",
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        minimumSize: const Size(140, 45),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 15),
+                    ElevatedButton.icon(
+                      onPressed: () {},
+                      icon: const Icon(
+                        Icons.info_outline,
+                        size: 26,
+                        color: Colors.white,
+                      ),
+                      label: const Text(
+                        "Información",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white.withOpacity(0.2),
+                        minimumSize: const Size(140, 45),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+          // Botón de Mute (Esquina inferior derecha del banner)
+          Positioned(
+            bottom: 70,
+            right: 20,
+            child: IconButton(
+              icon: Icon(
+                _isMuted ? Icons.volume_off_outlined : Icons.volume_up_outlined,
+                color: Colors.white,
+                size: 30,
+              ),
+              onPressed: () {
+                setState(() {
+                  _isMuted = !_isMuted;
+                  _videoController?.setVolume(_isMuted ? 0.0 : 1.0);
+                });
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -177,30 +283,37 @@ class _MoviesScreenState extends State<MoviesScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          padding: const EdgeInsets.only(left: 16, top: 20, bottom: 8),
           child: Text(
             title,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
         SizedBox(
-          height: 200,
+          height: 180,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.only(left: 16),
             itemCount: list.length,
             itemBuilder: (context, i) => GestureDetector(
-              onTap: () => _navigateToDetails(list[i].toJson()),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      MovieDetailsScreen(movieData: list[i].toJson()),
+                ),
+              ),
               child: Container(
-                width: 130,
-                margin: const EdgeInsets.only(left: 20),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    list[i].imageUrl ?? '',
+                width: 120,
+                margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  image: DecorationImage(
+                    image: NetworkImage(list[i].imageUrl ?? ''),
                     fit: BoxFit.cover,
                   ),
                 ),
@@ -215,6 +328,7 @@ class _MoviesScreenState extends State<MoviesScreen>
   @override
   void dispose() {
     _videoController?.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 }

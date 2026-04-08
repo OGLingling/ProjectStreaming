@@ -1,97 +1,83 @@
-//import 'dart:convert';
+import 'dart:convert';
 
 class Movie {
-  final String? id;
+  final int? id; // ID interno de tu DB (Autoincrement)
+  final String? tmdbId; // Nueva llave maestra
   final String? imdbId;
   final String title;
   final String? description;
-  final DateTime releaseDate;
-  final double rating;
+  final String? releaseDate; // Cambiado a String para consistencia con Prisma
   final String? imageUrl;
   final String? backdropUrl;
   final String? category;
-  final String? type;
-  final String? videoUrl;
-  final String? originAddonUrl;
-  final List<StreamOption>? streams;
+  final String type; // "movie" o "tv"
+  final DateTime? createdAt;
 
   Movie({
     this.id,
+    this.tmdbId,
     this.imdbId,
     required this.title,
     this.description,
-    required this.releaseDate,
-    required this.rating,
+    this.releaseDate,
     this.imageUrl,
     this.backdropUrl,
     this.category,
-    this.type,
-    this.originAddonUrl,
-    this.streams,
-    this.videoUrl,
+    required this.type,
+    this.createdAt,
   });
 
   factory Movie.fromJson(Map<String, dynamic> json) {
     return Movie(
-      // Soporta id de tu DB (int) o de Addons (String/IMDB)
-      id: json['id']?.toString() ?? json['imdb_id']?.toString(),
-      imdbId: json['imdb_id'] ?? json['imdbId'],
-      title: json['title'] ?? json['name'] ?? 'Sin título',
-      description: json['description'] ?? json['overview'] ?? '',
-      releaseDate: json['releaseDate'] != null
-          ? DateTime.parse(json['releaseDate'])
-          : (json['last_updated'] != null
-                ? DateTime.parse(json['last_updated'])
-                : DateTime.now()),
-      rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
-      imageUrl: json['imageUrl'] ?? json['poster_path'],
-      backdropUrl: json['backdropUrl'] ?? json['imageUrl'],
+      // Prisma devuelve 'id' como Int, nos aseguramos de capturarlo bien
+      id: json['id'] is int
+          ? json['id']
+          : int.tryParse(json['id']?.toString() ?? ''),
+
+      // Mapeo flexible para tmdb_id (snake_case de la DB) o tmdbId (camelCase del JSON)
+      tmdbId: (json['tmdbId'] ?? json['tmdb_id'])?.toString(),
+
+      // Mapeo flexible para imdbId
+      imdbId: (json['imdbId'] ?? json['imdb_id'])?.toString(),
+
+      title: json['title'] ?? 'Sin título',
+      description: json['description'] ?? '',
+
+      // Guardamos la fecha como String para evitar errores de parseo DateTime.parse()
+      // si el formato de la API cambia.
+      releaseDate: json['releaseDate']?.toString(),
+
+      imageUrl: json['imageUrl'],
+      backdropUrl: json['backdropUrl'],
       category: json['category'],
-      type: json['type'],
-      videoUrl: json['videoUrl'],
-      originAddonUrl: json['originAddonUrl'],
-      streams: json['streams'] != null
-          ? (json['streams'] as List)
-                .map((i) => StreamOption.fromJson(i))
-                .toList()
+
+      // Valor por defecto "movie" si viene nulo
+      type: json['type'] ?? 'movie',
+
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString())
           : null,
     );
   }
 
-  // MÉTODO IMPORTANTE: Necesario para _navigateToDetails(movie.toJson())
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'tmdbId': tmdbId,
       'imdbId': imdbId,
       'title': title,
       'description': description,
-      'releaseDate': releaseDate.toIso8601String(),
-      'rating': rating,
+      'releaseDate': releaseDate,
       'imageUrl': imageUrl,
       'backdropUrl': backdropUrl,
       'category': category,
       'type': type,
-      'videoUrl': videoUrl,
-      'originAddonUrl': originAddonUrl,
-      'streams': streams?.map((e) => e.toJson()).toList(),
+      'createdAt': createdAt?.toIso8601String(),
     };
   }
-}
 
-class StreamOption {
-  final String quality;
-  final String url;
-
-  StreamOption({required this.quality, required this.url});
-
-  factory StreamOption.fromJson(Map<String, dynamic> json) {
-    return StreamOption(
-      quality: json['title'] ?? json['name'] ?? 'HD',
-      url: json['url'] ?? '',
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {'quality': quality, 'url': url};
-  }
+  // Helper pro: Para mostrar solo el año en la UI
+  String get releaseYear => (releaseDate != null && releaseDate!.length >= 4)
+      ? releaseDate!.substring(0, 4)
+      : 'N/A';
 }
