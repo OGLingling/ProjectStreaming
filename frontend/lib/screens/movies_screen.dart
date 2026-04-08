@@ -17,34 +17,19 @@ class MoviesScreen extends StatefulWidget {
 class _MoviesScreenState extends State<MoviesScreen> {
   List<Movie> movies = [];
   bool isLoading = true;
-  double _scrollOpacity = 0.0;
-
-  // Controladores de Video
+  final ScrollController _scrollController = ScrollController();
   YoutubePlayerController? _ytController;
   bool _isMuted = true;
 
-  final ScrollController _scrollController = ScrollController();
-
-  // URL de tu API en Railway
+  // IMPORTANTE: Asegúrate de poner tu API KEY real aquí
+  final String tmdbApiKey = "TU_API_KEY_TMDB";
   final String apiBaseUrl =
       "https://projectstreaming-production.up.railway.app/api/movies";
-  // Tu API KEY de TMDB para los trailers
-  final String tmdbApiKey = "TU_API_KEY_AQUI";
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
     _loadData();
-  }
-
-  void _onScroll() {
-    double offset = _scrollController.offset;
-    // El header se vuelve opaco entre los 0 y 300px de scroll
-    double opacity = (offset / 300).clamp(0, 1.0);
-    if (opacity != _scrollOpacity) {
-      setState(() => _scrollOpacity = opacity);
-    }
   }
 
   Future<void> _loadData() async {
@@ -57,13 +42,11 @@ class _MoviesScreenState extends State<MoviesScreen> {
             movies = data.map((m) => Movie.fromJson(m)).toList();
             isLoading = false;
           });
-          // Cargamos el trailer de la primera película para el Hero Banner
           if (movies.isNotEmpty) _loadTrailer(movies[0].id.toString());
         }
       }
     } catch (e) {
-      debugPrint("Error loading movies: $e");
-      if (mounted) setState(() => isLoading = false);
+      debugPrint("Error: $e");
     }
   }
 
@@ -75,18 +58,14 @@ class _MoviesScreenState extends State<MoviesScreen> {
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final List videos = data['results'];
-
         final trailer = videos.firstWhere(
           (v) => v['type'] == 'Trailer' && v['site'] == 'YouTube',
           orElse: () => videos.isNotEmpty ? videos[0] : null,
         );
-
-        if (trailer != null && mounted) {
-          _initYoutube(trailer['key']);
-        }
+        if (trailer != null && mounted) _initYoutube(trailer['key']);
       }
     } catch (e) {
-      debugPrint("TMDB Trailer Error: $e");
+      debugPrint("Trailer Error: $e");
     }
   }
 
@@ -100,8 +79,6 @@ class _MoviesScreenState extends State<MoviesScreen> {
           mute: true,
           loop: true,
           hideControls: true,
-          disableDragSeek: true,
-          forceHD: true,
         ),
       );
     });
@@ -113,92 +90,25 @@ class _MoviesScreenState extends State<MoviesScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
-      // Permite que el contenido se dibuje debajo de la barra de estado
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          // 1. CAPA DE CONTENIDO (Scroll)
-          isLoading
-              ? const Center(
-                  child: CircularProgressIndicator(color: Colors.red),
-                )
-              : MediaQuery.removePadding(
-                  context: context,
-                  removeTop: true, // ESTO ELIMINA LA ROTURA SUPERIOR
-                  child: ListView(
-                    controller: _scrollController,
-                    children: [
-                      _buildHeroBanner(size),
-                      const SizedBox(height: 20),
-                      _buildSection("Tendencias ahora", movies),
-                      _buildSection(
-                        "Aclamadas por la crítica",
-                        movies.reversed.toList(),
-                      ),
-                      _buildSection(
-                        "Recién añadidas",
-                        movies.reversed.skip(2).toList(),
-                      ),
-                      const SizedBox(height: 100),
-                    ],
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator(color: Colors.red))
+          : MediaQuery.removePadding(
+              context: context,
+              removeTop: true,
+              child: ListView(
+                controller: _scrollController,
+                children: [
+                  _buildHeroBanner(size),
+                  const SizedBox(height: 20),
+                  _buildSection("Tendencias ahora", movies),
+                  _buildSection(
+                    "Aclamadas por la crítica",
+                    movies.reversed.toList(),
                   ),
-                ),
-
-          // 2. HEADER FLOTANTE (Logo y Perfil)
-          _buildNetflixHeader(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNetflixHeader() {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        // Se vuelve negro al hacer scroll
-        color: Colors.black.withOpacity(_scrollOpacity.clamp(0.0, 0.9)),
-        child: SafeArea(
-          bottom: false,
-          child: Container(
-            height: 60,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Text(
-                  "MOVIEWIND",
-                  style: GoogleFonts.bebasNeue(
-                    color: Colors.red,
-                    fontSize: 32,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.search, color: Colors.white, size: 26),
-                  onPressed: () {},
-                ),
-                const SizedBox(width: 5),
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: Colors.blue,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: const Icon(
-                    Icons.person,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                ),
-              ],
+                  const SizedBox(height: 100),
+                ],
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -208,22 +118,19 @@ class _MoviesScreenState extends State<MoviesScreen> {
 
     return SizedBox(
       height: size.height * 0.8,
-      width: size.width,
       child: Stack(
         children: [
-          // VIDEO DE FONDO
+          // FONDO (Video o Imagen)
           Positioned.fill(
             child: _ytController != null
-                ? IgnorePointer(
-                    child: FittedBox(
-                      fit: BoxFit.cover, // ELIMINA HUECOS NEGROS
-                      child: SizedBox(
-                        width: size.width,
-                        height: size.height * 0.8,
-                        child: YoutubePlayer(
-                          controller: _ytController!,
-                          showVideoProgressIndicator: false,
-                        ),
+                ? FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: size.width,
+                      height: size.height * 0.8,
+                      child: YoutubePlayer(
+                        controller: _ytController!,
+                        showVideoProgressIndicator: false,
                       ),
                     ),
                   )
@@ -232,8 +139,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
                     fit: BoxFit.cover,
                   ),
           ),
-
-          // GRADIENTE PARA FUSIÓN CON LA LISTA
+          // GRADIENTE DE FUSIÓN
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
@@ -241,18 +147,16 @@ class _MoviesScreenState extends State<MoviesScreen> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withOpacity(0.4),
                     Colors.transparent,
                     Colors.transparent,
-                    const Color(0xFF141414), // Mismo que el Scaffold
+                    const Color(0xFF141414),
                   ],
-                  stops: const [0.0, 0.2, 0.6, 1.0],
+                  stops: const [0.0, 0.5, 1.0],
                 ),
               ),
             ),
           ),
-
-          // TÍTULO Y BOTONES
+          // INFO Y BOTONES
           Positioned(
             bottom: 60,
             left: 0,
@@ -264,11 +168,10 @@ class _MoviesScreenState extends State<MoviesScreen> {
                   textAlign: TextAlign.center,
                   style: GoogleFonts.bebasNeue(
                     color: Colors.white,
-                    fontSize: 48,
-                    height: 1,
+                    fontSize: 45,
                   ),
                 ),
-                const SizedBox(height: 25),
+                const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -292,24 +195,6 @@ class _MoviesScreenState extends State<MoviesScreen> {
               ],
             ),
           ),
-
-          // BOTÓN DE MUTE
-          Positioned(
-            right: 20,
-            bottom: 150,
-            child: IconButton(
-              icon: Icon(
-                _isMuted ? Icons.volume_off_outlined : Icons.volume_up_outlined,
-                color: Colors.white,
-              ),
-              onPressed: () {
-                setState(() {
-                  _isMuted = !_isMuted;
-                  _isMuted ? _ytController?.mute() : _ytController?.unMute();
-                });
-              },
-            ),
-          ),
         ],
       ),
     );
@@ -323,24 +208,28 @@ class _MoviesScreenState extends State<MoviesScreen> {
     Movie movie,
   ) {
     return ElevatedButton.icon(
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (c) => MovieDetailsScreen(movie: movie, user: widget.user),
-          ),
-        );
-      },
-      icon: Icon(icon, color: textCol, size: 24),
+      onPressed: () => _navigateToDetails(movie),
+      icon: Icon(icon, color: textCol),
       label: Text(
         text,
         style: TextStyle(color: textCol, fontWeight: FontWeight.bold),
       ),
       style: ElevatedButton.styleFrom(
         backgroundColor: bg,
-        minimumSize: const Size(150, 40),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        elevation: 0,
+        minimumSize: const Size(140, 40),
+      ),
+    );
+  }
+
+  // CORRECCIÓN DE NAVEGACIÓN SINCRONIZADA
+  void _navigateToDetails(Movie movie) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (c) => MovieDetailsScreen(
+          movie: movie, // Se pasa el objeto Movie directamente
+          user: widget.user,
+        ),
       ),
     );
   }
@@ -350,7 +239,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Text(
             title,
             style: const TextStyle(
@@ -366,30 +255,20 @@ class _MoviesScreenState extends State<MoviesScreen> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.only(left: 16),
             itemCount: list.length,
-            itemBuilder: (context, i) {
-              return GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (c) =>
-                          MovieDetailsScreen(movie: list[i], user: widget.user),
-                    ),
-                  );
-                },
-                child: Container(
-                  width: 110,
-                  margin: const EdgeInsets.only(right: 10),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: Image.network(
-                      list[i].imageUrl ?? '',
-                      fit: BoxFit.cover,
-                    ),
+            itemBuilder: (context, i) => GestureDetector(
+              onTap: () => _navigateToDetails(list[i]),
+              child: Container(
+                width: 110,
+                margin: const EdgeInsets.only(right: 10),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Image.network(
+                    list[i].imageUrl ?? '',
+                    fit: BoxFit.cover,
                   ),
                 ),
-              );
-            },
+              ),
+            ),
           ),
         ),
       ],
