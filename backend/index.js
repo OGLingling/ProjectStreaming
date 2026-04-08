@@ -67,9 +67,11 @@ app.get(['/api/movies', '/movies'], async (req, res) => {
     try {
         const { type } = req.query;
         let whereCondition = {};
+        
         if (type) {
-            const normalizedType = type.toLowerCase().trim().replace('s', '');
-            whereCondition = { type: { contains: normalizedType, mode: 'insensitive' } };
+            // Convierte "Pelicula" o "Serie" a los términos que entiende tu lógica (movie/tv)
+            const normalizedType = type.toLowerCase().startsWith('peli') ? 'movie' : 'tv';
+            whereCondition = { type: normalizedType };
         }
 
         const content = await prisma.movie.findMany({
@@ -77,26 +79,15 @@ app.get(['/api/movies', '/movies'], async (req, res) => {
             orderBy: { createdAt: 'desc' }
         });
 
-        // Modo Fallback: Si no hay nada en Neon, mostramos tendencias mundiales
-        if (content.length === 0) {
-            const trending = await axios.get(`${TMDB_BASE_URL}/trending/all/week?api_key=${TMDB_API_KEY}&language=es-ES`);
-            const fallback = trending.data.results.map(m => ({
-                id: m.id,
-                tmdbId: m.id.toString(),
-                title: m.title || m.name,
-                description: m.overview,
-                imageUrl: `https://image.tmdb.org/t/p/w500${m.poster_path}`,
-                backdropUrl: `https://image.tmdb.org/t/p/original${m.backdrop_path}`,
-                type: m.media_type === 'tv' ? 'tv' : 'movie',
-                rating: m.vote_average ? parseFloat(m.vote_average.toFixed(1)) : 0.0
-            }));
-            return res.json(fallback);
-        }
+        // Si no hay nada, el enriquecimiento no se rompe
+        const enrichedContent = await Promise.all(
+            content.map(movie => enrichMovieData(movie))
+        );
 
-        const enrichedContent = await Promise.all(content.map(movie => enrichMovieData(movie)));
         res.json(enrichedContent);
     } catch (error) {
-        res.status(500).json({ error: "Error al cargar contenido" });
+        console.error("Error en /api/movies:", error);
+        res.status(500).json({ error: "Error al cargar datos de Neon" });
     }
 });
 
