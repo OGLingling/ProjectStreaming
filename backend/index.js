@@ -25,23 +25,23 @@ app.use(express.json());
 // ==========================================
 
 async function enrichMovieData(movie) {
-    const identifier = movie.tmdbId || movie.imdbId;
+    const identifier = movie.tmdb_id || movie.imdb_id;
     if (!identifier) return movie;
 
     try {
         let apiUrl;
-        if (movie.tmdbId) {
+        if (movie.tmdb_id) {
             const path = movie.type === 'tv' ? 'tv' : 'movie';
             // Usamos append_to_response para traer videos (trailers) de una vez
-            apiUrl = `${TMDB_BASE_URL}/${path}/${movie.tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=videos`;
+            apiUrl = `${TMDB_BASE_URL}/${path}/${movie.tmdb_id}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=videos`;
         } else {
-            apiUrl = `${TMDB_BASE_URL}/find/${movie.imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=es-ES`;
+            apiUrl = `${TMDB_BASE_URL}/find/${movie.imdb_id}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=es-ES`;
         }
 
         // Añadimos un timeout de 2 segundos para que la API no se quede colgada
         const response = await axios.get(apiUrl, { timeout: 2000 });
         
-        let data = movie.tmdbId 
+        let data = movie.tmdb_id 
             ? response.data 
             : (response.data.movie_results[0] || response.data.tv_results[0]);
 
