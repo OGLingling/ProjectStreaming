@@ -504,8 +504,9 @@ class _AuthScreenState extends State<AuthScreen> {
           border: InputBorder.none,
         ),
         onChanged: (v) {
-          if (v.isNotEmpty && index < 3)
+          if (v.isNotEmpty && index < 3) {
             _codeFocusNodes[index + 1].requestFocus();
+          }
           if (v.isEmpty && index > 0) _codeFocusNodes[index - 1].requestFocus();
         },
       ),
@@ -529,8 +530,12 @@ class _AuthScreenState extends State<AuthScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    for (final c in _codeControllers) c.dispose();
-    for (final n in _codeFocusNodes) n.dispose();
+    for (final c in _codeControllers) {
+      c.dispose();
+    }
+    for (final n in _codeFocusNodes) {
+      n.dispose();
+    }
     super.dispose();
   }
 }

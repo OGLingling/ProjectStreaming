@@ -71,7 +71,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                   Image.network(
                     widget.movie.backdropUrl ?? widget.movie.imageUrl ?? '',
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
+                    errorBuilder: (_, _, _) =>
                         Container(color: Colors.grey[900]),
                   ),
                   // Gradiente dinámico (Netflix signature)
@@ -117,7 +117,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                   Row(
                     children: [
                       Text(
-                        widget.movie.releaseDate?.substring(0, 4) ?? "2024",
+                        widget.movie.releaseDate.substring(0, 4) ?? "2024",
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 14,
@@ -225,7 +225,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                           style: TextStyle(color: Colors.white60),
                         ),
                         TextSpan(
-                          text: "${widget.movie.category ?? 'Acción, Drama'}",
+                          text: widget.movie.category ?? 'Acción, Drama',
                           style: const TextStyle(color: Colors.grey),
                         ),
                       ],
@@ -266,4 +266,3 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
     );
   }
 }
-

@@ -69,7 +69,7 @@ class _ControlParentalScreenState extends State<ControlParentalScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: SwitchListTile(
-                activeColor: const Color(0xFFE50914),
+                activeThumbColor: const Color(0xFFE50914),
                 title: const Text(
                   "Bloqueo de perfil",
                   style: TextStyle(color: Colors.white),

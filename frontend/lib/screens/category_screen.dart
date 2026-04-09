@@ -41,7 +41,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
         setState(() {
           movies = data.map((m) => Movie.fromJson(m)).where((movie) {
-            final movieType = movie.type?.toLowerCase().trim() ?? '';
+            final movieType = movie.type.toLowerCase().trim() ?? '';
             final targetKey = widget.categoryKey.toLowerCase().trim();
             return movieType == targetKey;
           }).toList();
@@ -130,9 +130,7 @@ class _CategoryMovieCardState extends State<CategoryMovieCard> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => MovieDetailsScreen(
-            movie: widget.movie,
-          ),
+          builder: (context) => MovieDetailsScreen(movie: widget.movie),
         ),
       );
     } else {
