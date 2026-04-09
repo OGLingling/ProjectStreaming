@@ -99441,7 +99441,7 @@ return null},
 $S:0}
 A.tN.prototype={
 ab(){var s=t.N
-return new A.Kb(A.b([A.T(["name","VidLink","baseUrl","https://vidlink.pro/"],s,s),A.T(["name","SuperEmbed","baseUrl","https://multiembed.mov/"],s,s),A.T(["name","MoviesAPI","baseUrl","https://moviesapi.club/"],s,s),A.T(["name","AutoEmbed","baseUrl","https://player.autoembed.cc/"],s,s)],t.SN))}}
+return new A.Kb(A.b([A.T(["name","VidLink","baseUrl","https://vidlink.pro/"],s,s),A.T(["name","MoviesAPI","baseUrl","https://moviesapi.club/"],s,s),A.T(["name","AutoEmbed","baseUrl","https://player.autoembed.cc/"],s,s)],t.SN))}}
 A.Kb.prototype={
 Ti(){var s,r,q,p,o,n=this,m="baseUrl",l=n.r[n.f],k=n.a.f,j=B.c.p(k.toLowerCase(),"serie")||B.c.p(k.toLowerCase(),"tv")
 k=l.h(0,"name")
@@ -99453,9 +99453,7 @@ p=q==null?r.d:q
 if(p==null)p=""
 if(k==="VidLink"){o=A.e(l.h(0,m))+s+"/"+p
 if(j){n.a.toString
-o+="/1/1"}}else if(k==="SuperEmbed"){o=A.e(l.h(0,m))+"?video_id="+p+"&tmdb=1"
-if(j){n.a.toString
-o+="&s=1&e=1"}}else if(k==="MoviesAPI")if(j){k=l.h(0,m)
+o+="/1/1"}}else if(k==="MoviesAPI")if(j){k=l.h(0,m)
 n.a.toString
 o=A.e(k)+"tv/"+p+"-1-1"}else o=A.e(l.h(0,m))+"movie/"+p
 else if(k==="AutoEmbed"){o=A.e(l.h(0,m))+s+"/"+p
@@ -99475,7 +99473,7 @@ if(s.e)n.push(A.bi(r,B.Fh,B.m,B.h,r,r,r,r,r,r,r,r,r))
 return A.eA(q,B.h,A.dJ(B.ao,n,B.B,B.b4,r),r)}}
 A.aDH.prototype={
 $0(){var s=this.a
-s.f=(s.f+1)%4
+s.f=(s.f+1)%3
 s.e=!0},
 $S:0}
 A.aDJ.prototype={
