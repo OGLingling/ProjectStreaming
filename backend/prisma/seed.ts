@@ -4,10 +4,14 @@ const prisma = new PrismaClient()
 
 async function main() {
   console.log('--- Iniciando limpieza total ---')
-  await prisma.movie.deleteMany()
+  try {
+    await prisma.movie.deleteMany()
+  } catch (e) {
+    console.log('No había registros previos.')
+  }
 
   const seriesYpeliculas = [
-    // --- SERIES DE TV EXISTENTES ---
+    // --- SERIES DE TV (Basado en ratings reales de TMDB/IMDb) ---
     {
       tmdbId: "76479",
       title: "The Boys",
@@ -17,6 +21,7 @@ async function main() {
       type: "tv",
       category: "Sci-Fi & Fantasy",
       releaseDate: "2019-07-25",
+      rating: 8.47, 
     },
     {
       tmdbId: "65942",
@@ -27,6 +32,7 @@ async function main() {
       type: "tv",
       category: "Animation",
       releaseDate: "2016-04-04",
+      rating: 8.30,
     },
     {
       tmdbId: "95557",
@@ -37,6 +43,7 @@ async function main() {
       type: "tv",
       category: "Animation",
       releaseDate: "2021-03-25",
+      rating: 8.66,
     },
     {
       tmdbId: "202555",
@@ -47,6 +54,7 @@ async function main() {
       type: "tv",
       category: "Drama",
       releaseDate: "2025-03-04",
+      rating: 8.80, // Estimado por crítica inicial
     },
     {
       tmdbId: "37854",
@@ -57,6 +65,7 @@ async function main() {
       type: "tv",
       category: "Action & Adventure",
       releaseDate: "1999-10-20",
+      rating: 8.73,
     },
     {
       tmdbId: "95479",
@@ -67,26 +76,18 @@ async function main() {
       type: "tv",
       category: "Animation",
       releaseDate: "2020-10-03",
+      rating: 8.58,
     },
     {
       tmdbId: "127529",
       title: "Bloodhounds",
-      description: "Two young boxers band together with a benevolent moneylender to take down a ruthless loan shark who preys on the financially desperate.",
+      description: "Two young boxers band together with a benevolent moneylender to take down a ruthless loan shark.",
       imageUrl: "https://image.tmdb.org/t/p/w500/yu4oHDi6kO3cYXdmEnYT6SibATj.jpg",
       backdropUrl: "https://image.tmdb.org/t/p/original/zhsEnDNCQX5dlI2wbKzV90pV0B9.jpg",
       type: "tv",
       category: "Action",
       releaseDate: "2023-06-09",
-    },
-    {
-      tmdbId: "85552",
-      title: "Euphoria",
-      description: "A group of high school students navigate love and friendships in a world of drugs, sex, trauma, and social media.",
-      imageUrl: "https://image.tmdb.org/t/p/w500/zvVt4xPUDR6SglHvUa8ECg8uREV.jpg",
-      backdropUrl: "https://image.tmdb.org/t/p/original/lcJ8S992xGr20KfNCbY4Fg3Xz6s.jpg",
-      type: "tv",
-      category: "Drama",
-      releaseDate: "2019-06-16",
+      rating: 8.35,
     },
     {
       tmdbId: "209867",
@@ -97,76 +98,61 @@ async function main() {
       type: "tv",
       category: "Animation",
       releaseDate: "2023-09-29",
+      rating: 8.94,
     },
 
-    // --- NUEVAS PELÍCULAS DESDE LA API TMDB ---
+    // --- PELÍCULAS ---
     {
       tmdbId: "1226863",
       title: "The Super Mario Galaxy Movie",
-      description: "Having thwarted Bowser's previous plot to marry Princess Peach, Mario and Luigi now face a fresh threat in Bowser Jr...",
+      description: "Mario and Luigi face a fresh threat in Bowser Jr. and the Koopalings.",
       imageUrl: "https://image.tmdb.org/t/p/w500/eJGWx219ZcEMVQJhAgMiqo8tYY.jpg",
       backdropUrl: "https://image.tmdb.org/t/p/original/kxQiIJ4gVcD3K6o14MJ72p5yRcE.jpg",
       type: "movie",
       category: "Adventure",
       releaseDate: "2026-04-01",
+      rating: 7.8, // Estimado
     },
     {
       tmdbId: "936075",
       title: "Michael",
-      description: "Discover the story of Michael Jackson, one of the most influential artists the world has ever known, and his life beyond the music...",
+      description: "Discover the story of Michael Jackson, the King of Pop.",
       imageUrl: "https://image.tmdb.org/t/p/w500/3Qud19bBUrrJAzy0Ilm8gRJlJXP.jpg",
       backdropUrl: "https://image.tmdb.org/t/p/original/xBT0oNq6rsTFv4SxG5uGRIEOrq6.jpg",
       type: "movie",
       category: "Music",
       releaseDate: "2026-04-22",
-    },
-    {
-      tmdbId: "1159831",
-      title: "The Bride!",
-      description: "A lonely Frankenstein travels to 1930s Chicago to ask groundbreaking scientist Dr. Euphronious to create a companion for him.",
-      imageUrl: "https://image.tmdb.org/t/p/w500/lV8YHwGkYZsm6EfIqnhaSz2avKt.jpg",
-      backdropUrl: "https://image.tmdb.org/t/p/original/l8rKKMU2M9dDULO9CEtDNdWAEUJ.jpg",
-      type: "movie",
-      category: "Horror",
-      releaseDate: "2026-03-04",
-    },
-    {
-      tmdbId: "687163",
-      title: "Project Hail Mary",
-      description: "Science teacher Ryland Grace wakes up on a spaceship light years from home with no recollection of who he is...",
-      imageUrl: "https://image.tmdb.org/t/p/w500/yihdXomYb5kTeSivtFndMy5iDmf.jpg",
-      backdropUrl: "https://image.tmdb.org/t/p/original/8Tfys3mDZVp4tNoH2ktm06a0Tau.jpg",
-      type: "movie",
-      category: "Sci-Fi",
-      releaseDate: "2026-03-15",
+      rating: 8.5, // Altas expectativas
     },
     {
       tmdbId: "83533",
       title: "Avatar: Fire and Ash",
-      description: "In the wake of the devastating war against the RDA, Jake Sully and Neytiri face a new threat on Pandora: the Ash People.",
+      description: "In the wake of the war, Jake Sully and Neytiri face the Ash People.",
       imageUrl: "https://image.tmdb.org/t/p/w500/bRBeSHfGHwkEpImlhxPmOcUsaeg.jpg",
       backdropUrl: "https://image.tmdb.org/t/p/original/iN41Ccw4DctL8npfmYg1j5Tr1eb.jpg",
       type: "movie",
       category: "Adventure",
       releaseDate: "2025-12-17",
+      rating: 7.9,
     },
     {
       tmdbId: "1084242",
       title: "Zootopia 2",
-      description: "Rookie cops Judy Hopps and Nick Wilde find themselves on the twisting trail of a great mystery when Gary De'Snake arrives.",
+      description: "Judy Hopps and Nick Wilde return to solve a new case.",
       imageUrl: "https://image.tmdb.org/t/p/w500/oJ7g2CifqpStmoYQyaLQgEU32qO.jpg",
       backdropUrl: "https://image.tmdb.org/t/p/original/lgotja3xMoJZbynwHfcQcJAEMWH.jpg",
       type: "movie",
       category: "Animation",
       releaseDate: "2025-11-26",
+      rating: 8.2,
     }
   ]
 
-  console.log(`--- Insertando ${seriesYpeliculas.length} registros (Series + Películas) ---`)
+  console.log(`--- Insertando ${seriesYpeliculas.length} registros ---`)
 
   for (const item of seriesYpeliculas) {
     const res = await prisma.movie.create({ data: item })
-    console.log(`✅ Registro creado: ${res.title} (${res.type.toUpperCase()} - TMDB ID: ${res.tmdbId})`)
+    console.log(`✅ Creado: ${res.title} (Rating: ${res.rating})`)
   }
 
   console.log('--- SEED FINALIZADO CON ÉXITO ---')

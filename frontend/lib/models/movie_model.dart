@@ -38,7 +38,9 @@ class Movie {
       imageUrl: json['imageUrl'],
       backdropUrl: json['backdropUrl'],
       trailerUrl: json['trailerUrl'], // Mapeo directo desde el JSON del backend
-      rating: (json['rating'] ?? 0.0).toDouble(),
+      rating: json['rating'] != null
+          ? double.parse(json['rating'].toString())
+          : 0.0,
       category: json['category'],
       type: json['type'] ?? 'movie',
     );
