@@ -19,9 +19,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
   bool isLoading = true;
   final ScrollController _scrollController = ScrollController();
   YoutubePlayerController? _ytController;
-  bool _isMuted = true;
 
-  // IMPORTANTE: Asegúrate de poner tu API KEY real aquí
   final String tmdbApiKey = "d8a00b94f5c00821e497b569fec9a61f";
   final String apiBaseUrl =
       "https://projectstreaming-production.up.railway.app/api/movies";
@@ -42,7 +40,8 @@ class _MoviesScreenState extends State<MoviesScreen> {
             movies = data.map((m) => Movie.fromJson(m)).toList();
             isLoading = false;
           });
-          if (movies.isNotEmpty) _loadTrailer(movies[0].id.toString());
+          // Usamos el tmdbId real guardado en tu DB
+          if (movies.isNotEmpty) _loadTrailer(movies[0].tmdbId ?? '');
         }
       }
     } catch (e) {
@@ -50,9 +49,10 @@ class _MoviesScreenState extends State<MoviesScreen> {
     }
   }
 
-  Future<void> _loadTrailer(String movieId) async {
+  Future<void> _loadTrailer(String tmdbId) async {
+    if (tmdbId.isEmpty) return;
     final url =
-        "https://api.themoviedb.org/3/movie/$movieId/videos?api_key=$tmdbApiKey&language=es-ES";
+        "https://api.themoviedb.org/3/movie/$tmdbId/videos?api_key=$tmdbApiKey&language=es-ES";
     try {
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
@@ -71,17 +71,17 @@ class _MoviesScreenState extends State<MoviesScreen> {
 
   void _initYoutube(String key) {
     _ytController?.dispose();
-    setState(() {
-      _ytController = YoutubePlayerController(
-        initialVideoId: key,
-        flags: const YoutubePlayerFlags(
-          autoPlay: true,
-          mute: true,
-          loop: true,
-          hideControls: true,
-        ),
-      );
-    });
+    _ytController = YoutubePlayerController(
+      initialVideoId: key,
+      flags: const YoutubePlayerFlags(
+        autoPlay: true,
+        mute: true,
+        loop: true,
+        hideControls: true,
+        disableDragSeek: true, // Crucial para no bloquear scroll
+      ),
+    );
+    setState(() {});
   }
 
   @override
@@ -92,22 +92,19 @@ class _MoviesScreenState extends State<MoviesScreen> {
       backgroundColor: const Color(0xFF141414),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.red))
-          : MediaQuery.removePadding(
-              context: context,
-              removeTop: true,
-              child: ListView(
-                controller: _scrollController,
-                children: [
-                  _buildHeroBanner(size),
-                  const SizedBox(height: 20),
-                  _buildSection("Tendencias ahora", movies),
-                  _buildSection(
-                    "Aclamadas por la crítica",
-                    movies.reversed.toList(),
-                  ),
-                  const SizedBox(height: 100),
-                ],
-              ),
+          : ListView(
+              controller: _scrollController,
+              padding: EdgeInsets.zero,
+              children: [
+                _buildHeroBanner(size),
+                const SizedBox(height: 20),
+                _buildSection("Tendencias ahora", movies),
+                _buildSection(
+                  "Aclamadas por la crítica",
+                  movies.reversed.toList(),
+                ),
+                const SizedBox(height: 100),
+              ],
             ),
     );
   }
@@ -120,55 +117,48 @@ class _MoviesScreenState extends State<MoviesScreen> {
       height: size.height * 0.8,
       child: Stack(
         children: [
-          // FONDO (Video o Imagen)
+          // Capa de Video bloqueada para gestos (Permite scroll)
           Positioned.fill(
-            child: _ytController != null
-                ? FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: size.width,
-                      height: size.height * 0.8,
-                      child: YoutubePlayer(
-                        controller: _ytController!,
-                        showVideoProgressIndicator: false,
+            child: IgnorePointer(
+              child: _ytController != null
+                  ? FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: size.width,
+                        height: size.height * 0.8,
+                        child: YoutubePlayer(controller: _ytController!),
                       ),
-                    ),
-                  )
-                : Image.network(
-                    movie.backdropUrl ?? movie.imageUrl ?? '',
-                    fit: BoxFit.cover,
-                  ),
+                    )
+                  : Image.network(movie.backdropUrl ?? '', fit: BoxFit.cover),
+            ),
           ),
-          // GRADIENTE DE FUSIÓN
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.transparent,
-                    const Color(0xFF141414),
-                  ],
-                  stops: const [0.0, 0.5, 1.0],
-                ),
+          // Gradiente
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.transparent,
+                  Color(0xFF141414),
+                ],
+                stops: [0.0, 0.6, 1.0],
               ),
             ),
           ),
-          // INFO Y BOTONES
+          // Botones (Fuera del IgnorePointer para que funcionen)
           Positioned(
-            bottom: 60,
+            bottom: 80,
             left: 0,
             right: 0,
             child: Column(
               children: [
                 Text(
                   movie.title.toUpperCase(),
-                  textAlign: TextAlign.center,
                   style: GoogleFonts.bebasNeue(
                     color: Colors.white,
-                    fontSize: 45,
+                    fontSize: 50,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -216,20 +206,16 @@ class _MoviesScreenState extends State<MoviesScreen> {
       ),
       style: ElevatedButton.styleFrom(
         backgroundColor: bg,
-        minimumSize: const Size(140, 40),
+        minimumSize: const Size(150, 45),
       ),
     );
   }
 
-  // CORRECCIÓN DE NAVEGACIÓN SINCRONIZADA
   void _navigateToDetails(Movie movie) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (c) => MovieDetailsScreen(
-          movie: movie, // Se pasa el objeto Movie directamente
-          user: widget.user,
-        ),
+        builder: (c) => MovieDetailsScreen(movie: movie, user: widget.user),
       ),
     );
   }
@@ -244,30 +230,20 @@ class _MoviesScreenState extends State<MoviesScreen> {
             title,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
         SizedBox(
-          height: 160,
+          height: 200,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.only(left: 16),
             itemCount: list.length,
-            itemBuilder: (context, i) => GestureDetector(
-              onTap: () => _navigateToDetails(list[i]),
-              child: Container(
-                width: 110,
-                margin: const EdgeInsets.only(right: 10),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: Image.network(
-                    list[i].imageUrl ?? '',
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
+            itemBuilder: (context, i) => MovieCard(
+              movie: list[i],
+              onDetail: () => _navigateToDetails(list[i]),
             ),
           ),
         ),
@@ -280,5 +256,81 @@ class _MoviesScreenState extends State<MoviesScreen> {
     _scrollController.dispose();
     _ytController?.dispose();
     super.dispose();
+  }
+}
+
+// COMPONENTE PARA EL EFECTO HOVER Y POPUP
+class MovieCard extends StatefulWidget {
+  final Movie movie;
+  final VoidCallback onDetail;
+  const MovieCard({super.key, required this.movie, required this.onDetail});
+
+  @override
+  State<MovieCard> createState() => _MovieCardState();
+}
+
+class _MovieCardState extends State<MovieCard> {
+  bool isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => isHovered = true),
+      onExit: (_) => setState(() => isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onDetail,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.only(right: 12),
+          width: isHovered ? 130 : 110, // Efecto escala
+          curve: Curves.easeInOut,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.network(
+                  widget.movie.imageUrl ?? '',
+                  fit: BoxFit.cover,
+                  height: 160,
+                ),
+              ),
+              if (isHovered)
+                Positioned(
+                  bottom: -40,
+                  left: -10,
+                  right: -10,
+                  child: Material(
+                    elevation: 10,
+                    color: const Color(0xFF1F1F1F),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.movie.title,
+                            maxLines: 1,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Text(
+                            "Ver detalles",
+                            style: TextStyle(color: Colors.red, fontSize: 9),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
