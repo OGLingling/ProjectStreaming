@@ -29,12 +29,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // --- LISTA DE SERVIDORES ACTUALIZADA ---
+  // --- LISTA DE SERVIDORES CON VIDLINK ---
   final List<Map<String, String>> _providers = [
-    {
-      "name": "SuperEmbed",
-      "baseUrl": "https://multiembed.mov/",
-    }, // superembed.stream suele redirigir aquí
+    {"name": "VidLink", "baseUrl": "https://vidlink.pro/"},
+    {"name": "SuperEmbed", "baseUrl": "https://multiembed.mov/"},
     {"name": "MoviesAPI", "baseUrl": "https://moviesapi.club/"},
     {"name": "AutoEmbed", "baseUrl": "https://player.autoembed.cc/"},
   ];
@@ -50,9 +48,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String mediaType = isTV ? "tv" : "movie";
     String id = widget.tmdbId ?? widget.imdbId ?? "";
 
-    if (providerName == "SuperEmbed") {
+    if (providerName == "VidLink") {
+      // Formato: https://vidlink.pro/movie/ID o https://vidlink.pro/tv/ID/1/1
+      finalUrl = "${provider['baseUrl']}$mediaType/$id";
+      if (isTV) {
+        finalUrl += "/${widget.season}/${widget.episode}";
+      }
+    } else if (providerName == "SuperEmbed") {
       // Formato: https://multiembed.mov/?video_id=ID&tmdb=1
-      // Para series añade &s=1&e=1
       finalUrl = "${provider['baseUrl']}?video_id=$id&tmdb=1";
       if (isTV) {
         finalUrl += "&s=${widget.season}&e=${widget.episode}";
@@ -103,7 +106,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: ActionChip(
-              backgroundColor: Colors.redAccent.withOpacity(0.9),
+              backgroundColor: Colors.blueAccent.withOpacity(0.9),
               label: Text(
                 "Server: ${_providers[_currentProviderIndex]['name']}",
                 style: const TextStyle(
@@ -113,11 +116,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
               onPressed: _switchServer,
-              avatar: const Icon(
-                Icons.settings_input_component,
-                size: 14,
-                color: Colors.white,
-              ),
+              avatar: const Icon(Icons.dns, size: 14, color: Colors.white),
             ),
           ),
         ],
@@ -132,22 +131,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               useOnLoadResource: true,
               javaScriptCanOpenWindowsAutomatically: false,
               mediaPlaybackRequiresUserGesture: false,
+              // UserAgent actualizado para evitar bloqueos de bots
               userAgent:
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
             ),
             onWebViewCreated: (controller) => _webViewController = controller,
             onLoadStop: (controller, url) {
               setState(() => _isLoading = false);
             },
             onCreateWindow: (controller, createWindowAction) async {
-              return false; // Bloqueo de popups publicitarios
+              return false; // Bloqueo de popups
             },
           ),
           if (_isLoading)
             Container(
               color: Colors.black,
               child: const Center(
-                child: CircularProgressIndicator(color: Colors.redAccent),
+                child: CircularProgressIndicator(color: Colors.blueAccent),
               ),
             ),
         ],
