@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
-  final String? tmdbId; // Ahora opcional, pero recomendado
-  final String? imdbId; // Mantenemos compatibilidad
+  final String? tmdbId;
+  final String? imdbId;
   final String title;
   final String type;
   final int season;
@@ -29,11 +29,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // Configuración de proveedores con soporte para TMDB e IMDB
+  // --- NUEVA LISTA DE SERVIDORES ---
   final List<Map<String, String>> _providers = [
-    {"name": "Vidsrc.me", "baseUrl": "https://vidsrc.me/embed/"},
-    {"name": "Vidsrc.cc", "baseUrl": "https://vidsrc.cc/v2/embed/"},
-    {"name": "Embed.su", "baseUrl": "https://embed.su/embed/"},
+    {"name": "VidLink", "baseUrl": "https://vidlink.pro/"},
+    {"name": "AutoEmbed", "baseUrl": "https://player.autoembed.cc/"},
+    {
+      "name": "SimpleEmbed",
+      "baseUrl": "https://p2p.xyz/embed/",
+    }, // Ejemplo de endpoint común
   ];
 
   WebUri _generateUrl() {
@@ -42,19 +45,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         widget.type.toLowerCase().contains('serie') ||
         widget.type.toLowerCase().contains('tv');
 
-    // Priorizamos TMDB ID si está disponible
-    final String mediaType = isTV ? "tv" : "movie";
-    final String idParam = widget.tmdbId != null
-        ? "tmdb=${widget.tmdbId}"
-        : "imdb=${widget.imdbId}";
+    String finalUrl = "";
+    String providerName = provider['name']!;
+    String mediaType = isTV ? "tv" : "movie";
+    String id = widget.tmdbId ?? widget.imdbId ?? "";
 
-    String url = "${provider['baseUrl']}$mediaType?$idParam";
-
-    if (isTV) {
-      url += "&s=${widget.season}&e=${widget.episode}";
+    // Cada servidor tiene su propia estructura de URL
+    if (providerName == "VidLink") {
+      // Formato: https://vidlink.pro/movie/ID o https://vidlink.pro/tv/ID/1/1
+      finalUrl = "${provider['baseUrl']}$mediaType/$id";
+      if (isTV) finalUrl += "/${widget.season}/${widget.episode}";
+    } else if (providerName == "AutoEmbed") {
+      // Formato: https://player.autoembed.cc/movie/ID o https://player.autoembed.cc/tv/ID/1/1
+      finalUrl = "${provider['baseUrl']}$mediaType/$id";
+      if (isTV) finalUrl += "/${widget.season}/${widget.episode}";
+    } else if (providerName == "SimpleEmbed") {
+      // Formato: https://p2p.xyz/embed/movie?tmdb=ID o tv?tmdb=ID&s=1&e=1
+      finalUrl = "${provider['baseUrl']}$mediaType?tmdb=$id";
+      if (isTV) finalUrl += "&s=${widget.season}&e=${widget.episode}";
     }
 
-    return WebUri(url);
+    return WebUri(finalUrl);
   }
 
   void _switchServer() {
@@ -71,6 +82,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
+        elevation: 0,
         title: Text(
           widget.title,
           style: const TextStyle(color: Colors.white, fontSize: 16),
@@ -83,13 +95,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: ActionChip(
-              backgroundColor: Colors.redAccent,
+              backgroundColor: Colors.blueAccent.withOpacity(0.8),
               label: Text(
-                _providers[_currentProviderIndex]['name']!,
-                style: const TextStyle(color: Colors.white, fontSize: 12),
+                "Servidor: ${_providers[_currentProviderIndex]['name']}",
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               onPressed: _switchServer,
-              avatar: const Icon(Icons.dns, size: 16, color: Colors.white),
+              avatar: const Icon(Icons.cyclone, size: 14, color: Colors.white),
             ),
           ),
         ],
@@ -102,8 +118,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               javaScriptEnabled: true,
               allowsInlineMediaPlayback: true,
               useOnLoadResource: true,
-              // Bloqueo básico de Popups y optimización
-              javaScriptCanOpenWindowsAutomatically: false,
+              javaScriptCanOpenWindowsAutomatically: false, // Bloqueo de popups
               mediaPlaybackRequiresUserGesture: false,
               userAgent:
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -112,13 +127,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onLoadStop: (controller, url) {
               setState(() => _isLoading = false);
             },
-            // Seguridad: Bloqueamos cualquier intento de abrir una pestaña nueva (Publicidad)
+            // Seguridad reforzada contra publicidad
             onCreateWindow: (controller, createWindowAction) async {
-              return false;
+              return false; // Evita que el WebView abra nuevas ventanas (publicidad)
             },
           ),
           if (_isLoading)
-            const Center(child: CircularProgressIndicator(color: Colors.red)),
+            Container(
+              color: Colors.black,
+              child: const Center(
+                child: CircularProgressIndicator(color: Colors.blueAccent),
+              ),
+            ),
         ],
       ),
     );
