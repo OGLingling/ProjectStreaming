@@ -98664,7 +98664,7 @@ A5(){var s=0,r=A.v(t.H),q=1,p=[],o=this,n,m,l,k
 var $async$A5=A.w(function(a,b){if(a===1){p.push(b)
 s=q}for(;;)switch(s){case 0:q=3
 s=6
-return A.q(A.LP("Pelicula"),$async$A5)
+return A.q(A.LP("movie"),$async$A5)
 case 6:n=b
 if(o.c!=null){o.a1(new A.ayq(o,n))
 o.apc()}q=1
@@ -98723,10 +98723,7 @@ A.ayn.prototype={
 $1(a){return A.agX(a)},
 $S:123}
 A.ayo.prototype={
-$1(a){var s=a.Q
-if(s.toLowerCase()!=="pelicula")s=s.toLowerCase()==="movie"
-else s=!0
-return s},
+$1(a){return a.Q.toLowerCase()==="movie"},
 $S:75}
 A.ayp.prototype={
 $2(a,b){return B.d.b9(b.y,a.y)},
@@ -99124,7 +99121,7 @@ A6(){var s=0,r=A.v(t.H),q=1,p=[],o=this,n,m,l,k
 var $async$A6=A.w(function(a,b){if(a===1){p.push(b)
 s=q}for(;;)switch(s){case 0:q=3
 s=6
-return A.q(A.LP("Serie"),$async$A6)
+return A.q(A.LP("tv"),$async$A6)
 case 6:n=b
 if(o.c!=null){o.a1(new A.aBJ(o,n))
 o.aos()}q=1
@@ -99188,10 +99185,7 @@ A.aBG.prototype={
 $1(a){return A.agX(a)},
 $S:123}
 A.aBH.prototype={
-$1(a){var s=a.Q
-if(s.toLowerCase()!=="serie")s=s.toLowerCase()==="tv show"
-else s=!0
-return s},
+$1(a){return a.Q.toLowerCase()==="tv"},
 $S:75}
 A.aBI.prototype={
 $2(a,b){return B.d.b9(b.y,a.y)},
