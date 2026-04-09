@@ -10,17 +10,19 @@ const prisma = new PrismaClient();
 const TMDB_API_KEY = 'd8a00b94f5c00821e497b569fec9a61f'; 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// CONFIGURACION DE CORS
+// 1. CONFIGURACIÓN DE CORS ULTRA-PERMISIVA
+// Esto elimina los errores rojos de "Access to fetch at... blocked by CORS"
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-    credentials: true
+    methods: '*',
+    allowedHeaders: '*',
+    exposedHeaders: '*'
 }));
 
 app.use(express.json());
 
-// PROXY MEJORADO: Ahora maneja mejor los tiempos de espera (Timeout)
+// 2. PROXY TOTAL: Ahora inyecta una base de URL para que el navegador encuentre los scripts y fuentes
+// Esto corrige los errores 404 de archivos .js y .css que viste en la consola
 app.get('/api/proxy-stream', async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send("Falta la URL");
@@ -28,25 +30,31 @@ app.get('/api/proxy-stream', async (req, res) => {
     try {
         const response = await axios.get(targetUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/123.0.0.0 Safari/537.36',
-                'Referer': 'https://vidsrc.pro/',
-                'Origin': 'https://vidsrc.pro/'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                'Referer': new URL(targetUrl).origin,
+                'Origin': new URL(targetUrl).origin
             },
-            timeout: 8000 // Si el servidor no responde en 8 seg, cortamos para evitar error 500
+            timeout: 12000 // Aumentamos el margen para evitar el Error 500 por Timeout
         });
 
         res.set('Content-Type', 'text/html');
-        // Agregamos un pequeño script para intentar romper el sandbox desde adentro
-        const enhancedHtml = response.data.replace('<head>', '<head><base href="' + targetUrl + '">');
-        res.send(enhancedHtml);
+        
+        // CRÍTICO: Inyectamos la etiqueta <base> para que el navegador busque los scripts 
+        // en el dominio original del video y no en tu servidor de Railway.
+        let html = response.data;
+        const origin = new URL(targetUrl).origin;
+        html = html.replace('<head>', `<head><base href="${origin}/">`);
+        
+        res.send(html);
 
     } catch (error) {
         console.error("Proxy Error:", error.message);
+        // Enviamos una respuesta limpia en lugar de un Error 500 para que la App no se rompa
         res.status(200).send(`
-            <body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
-                <div style="text-align:center;">
-                    <p>El servidor de video no respondió (Timeout).</p>
-                    <button onclick="window.location.reload()" style="background:#444;color:#fff;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;">Reintentar</button>
+            <body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+                <div style="text-align:center;font-family:sans-serif;">
+                    <p>El servidor de video no respondió a tiempo.</p>
+                    <button onclick="window.location.reload()" style="background:#E50914;color:#white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-weight:bold;">REINTENTAR</button>
                 </div>
             </body>
         `);
@@ -122,7 +130,7 @@ app.get(['/api/movies', '/movies'], async (req, res) => {
 });
 
 // ==========================================
-//   LÓGICA DE AUTENTICACIÓN (SIN TOCAR)
+//   LÓGICA DE AUTENTICACIÓN (ORIGINAL)
 // ==========================================
 
 async function sendEmail(to, subject, htmlContent) {

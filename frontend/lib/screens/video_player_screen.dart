@@ -29,7 +29,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // --- CONFIGURACIÓN DE TU PROXY EN RAILWAY ---
   final String _proxyBaseUrl =
       "https://projectstreaming-production.up.railway.app/api/proxy-stream?url=";
 
@@ -49,7 +48,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String mediaType = isTV ? "tv" : "movie";
 
     String rawUrl = "";
-
     if (provider['name'] == "Vidsrc.me") {
       rawUrl =
           "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
@@ -58,7 +56,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           "${provider['baseUrl']}$mediaType/$id${isTV ? "/${widget.season}/${widget.episode}" : ""}";
     }
 
-    // El proxy es vital para que ESET no bloquee la conexión
     return WebUri("$_proxyBaseUrl${Uri.encodeComponent(rawUrl)}");
   }
 
@@ -106,17 +103,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             initialSettings: InAppWebViewSettings(
               javaScriptEnabled: true,
               allowsInlineMediaPlayback: true,
-              // Eliminamos 'iframeSandbox' para evitar el error de compilación.
-              // Usamos UserAgent de escritorio para saltar protecciones de bots
+              // CLAVE: Engaño total de UserAgent para saltar el "Please Disable Sandbox"
               userAgent:
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-              // Permitimos el acceso universal para evitar errores de CORS
+
+              // CONFIGURACIÓN ANTI-BLOQUEO (CORS y SEGURIDAD)
               allowUniversalAccessFromFileURLs: true,
+              allowFileAccessFromFileURLs: true,
               mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+              safeBrowsingEnabled:
+                  false, // Evita que Google bloquee el sitio por "sospechoso"
+              // Para versiones 6.0+, esto desactiva restricciones internas de Flutter Web
+              isInspectable: true,
             ),
             onWebViewCreated: (controller) => _webViewController = controller,
             onLoadStop: (controller, url) => setState(() => _isLoading = false),
-            // Bloqueamos la creación de ventanas nuevas (Popups de publicidad)
+            // Bloqueo estricto de popups de publicidad que rompen el JS
             onCreateWindow: (controller, createWindowAction) async => false,
           ),
           if (_isLoading)
