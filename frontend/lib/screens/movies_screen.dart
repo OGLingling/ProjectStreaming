@@ -16,7 +16,7 @@ class MoviesScreen extends StatefulWidget {
 
 class _MoviesScreenState extends State<MoviesScreen> {
   List<Movie> movies = [];
-  List<Movie> series = []; // Lista separada para series
+  List<Movie> series = [];
   List<Movie> topRatedMovies = [];
   bool isLoading = true;
 
@@ -42,11 +42,9 @@ class _MoviesScreenState extends State<MoviesScreen> {
           setState(() {
             final allContent = data.map((m) => Movie.fromJson(m)).toList();
 
-            // Filtramos series y películas (ajusta según tu modelo de datos)
             movies = allContent.where((m) => m.type == 'movie').toList();
             series = allContent.where((m) => m.type == 'tv').toList();
 
-            // Si no tienes el campo 'type', simplemente divide la lista para pruebas:
             if (series.isEmpty && allContent.length > 5) {
               series = allContent.sublist(allContent.length ~/ 2);
             }
@@ -102,7 +100,6 @@ class _MoviesScreenState extends State<MoviesScreen> {
                 const SizedBox(height: 30),
                 _buildSection("Películas para ti", movies),
                 const SizedBox(height: 30),
-                // Nueva sección de Series con el mismo comportamiento
                 _buildSection("Series Populares", series),
                 const SizedBox(height: 100),
               ],
@@ -110,7 +107,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
     );
   }
 
-  // --- El carrusel automático se mantiene igual ---
+  // --- DISEÑO DE BANNER ACTUALIZADO (ESTILO SEGUNDA FOTO) ---
   Widget _buildAutoCarousel(Size size) {
     if (topRatedMovies.isEmpty) return const SizedBox.shrink();
     return SizedBox(
@@ -127,48 +124,80 @@ class _MoviesScreenState extends State<MoviesScreen> {
                 fit: StackFit.expand,
                 children: [
                   Image.network(movie.backdropUrl ?? '', fit: BoxFit.cover),
+
+                  // Gradiente profundo para estilo cinematográfico
                   Container(
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
+                          Colors.black.withOpacity(0.3),
                           Colors.transparent,
-                          Colors.transparent,
-                          Color(0xFF141414),
+                          Colors.black.withOpacity(0.7),
+                          const Color(0xFF141414),
                         ],
-                        stops: [0.0, 0.4, 1.0],
+                        stops: const [0.0, 0.3, 0.8, 1.0],
                       ),
                     ),
                   ),
+
+                  // Contenido Centralizado
                   Positioned(
-                    bottom: 80,
-                    left: 40,
+                    bottom: 60,
+                    left: 0,
+                    right: 0,
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           movie.title.toUpperCase(),
+                          textAlign: TextAlign.center,
                           style: GoogleFonts.bebasNeue(
                             color: Colors.white,
-                            fontSize: 65,
+                            fontSize: 75,
+                            letterSpacing: 2,
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 10),
+
+                        // Badge de calificación
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.stars,
+                              color: Colors.blueAccent,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              "${movie.rating} | Top de la Semana",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 25),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             _netflixButton(
                               Icons.play_arrow,
-                              "Reproducir",
+                              "Ver ahora",
                               Colors.white,
                               Colors.black,
                               movie,
                             ),
-                            const SizedBox(width: 15),
+                            const SizedBox(width: 20),
                             _netflixButton(
                               Icons.info_outline,
-                              "Más info",
-                              Colors.grey.withOpacity(0.5),
+                              "Más detalles",
+                              Colors.white.withOpacity(0.2),
                               Colors.white,
                               movie,
                             ),
@@ -180,6 +209,29 @@ class _MoviesScreenState extends State<MoviesScreen> {
                 ],
               );
             },
+          ),
+
+          // Indicadores de carrusel (Puntos)
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                topRatedMovies.length,
+                (index) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  height: 4,
+                  width: _currentPage == index ? 20 : 8,
+                  decoration: BoxDecoration(
+                    color: _currentPage == index ? Colors.red : Colors.grey,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -193,21 +245,26 @@ class _MoviesScreenState extends State<MoviesScreen> {
     Color textCol,
     Movie movie,
   ) {
-    return ElevatedButton.icon(
-      onPressed: () => _navigateToDetails(movie),
-      icon: Icon(icon, color: textCol, size: 28),
-      label: Text(
-        text,
-        style: TextStyle(
-          color: textCol,
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
+    return SizedBox(
+      height: 48, // Un poco más de altura para comodidad táctil
+      child: ElevatedButton.icon(
+        onPressed: () => _navigateToDetails(movie),
+        icon: Icon(icon, color: textCol, size: 24),
+        label: Text(
+          text,
+          style: TextStyle(
+            color: textCol,
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-      ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: bg,
-        padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: bg,
+          foregroundColor: textCol,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 25),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        ),
       ),
     );
   }
@@ -237,7 +294,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
           ),
         ),
         SizedBox(
-          height: 250, // Un poco más alto para permitir el escalado (pop-up)
+          height: 250,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -260,7 +317,6 @@ class _MoviesScreenState extends State<MoviesScreen> {
   }
 }
 
-// --- MovieCard con EFECTO POP-UP ---
 class MovieCard extends StatefulWidget {
   final Movie movie;
   final VoidCallback onDetail;
@@ -285,10 +341,8 @@ class _MovieCardState extends State<MovieCard> {
           curve: Curves.easeOut,
           margin: const EdgeInsets.only(right: 15),
           width: 150,
-          // El secreto del Pop-Up está en el Transform.scale:
-          // Escala la tarjeta sin empujar a las vecinas
           transform: isHovered
-              ? (Matrix4.identity()..scale(1.2))
+              ? (Matrix4.identity()..scale(1.15))
               : Matrix4.identity(),
           transformAlignment: Alignment.center,
           child: Column(
@@ -302,7 +356,7 @@ class _MovieCardState extends State<MovieCard> {
                             BoxShadow(
                               color: Colors.black.withOpacity(0.5),
                               blurRadius: 15,
-                              spreadRadius: 5,
+                              spreadRadius: 2,
                             ),
                           ]
                         : [],
@@ -322,6 +376,7 @@ class _MovieCardState extends State<MovieCard> {
                   child: Text(
                     widget.movie.title,
                     maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.white,
