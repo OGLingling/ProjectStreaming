@@ -29,14 +29,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // --- NUEVA LISTA DE SERVIDORES ---
+  // --- LISTA DE SERVIDORES ACTUALIZADA ---
   final List<Map<String, String>> _providers = [
-    {"name": "VidLink", "baseUrl": "https://vidlink.pro/"},
-    {"name": "AutoEmbed", "baseUrl": "https://player.autoembed.cc/"},
     {
-      "name": "SimpleEmbed",
-      "baseUrl": "https://p2p.xyz/embed/",
-    }, // Ejemplo de endpoint común
+      "name": "SuperEmbed",
+      "baseUrl": "https://multiembed.mov/",
+    }, // superembed.stream suele redirigir aquí
+    {"name": "MoviesAPI", "baseUrl": "https://moviesapi.club/"},
+    {"name": "AutoEmbed", "baseUrl": "https://player.autoembed.cc/"},
   ];
 
   WebUri _generateUrl() {
@@ -50,19 +50,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String mediaType = isTV ? "tv" : "movie";
     String id = widget.tmdbId ?? widget.imdbId ?? "";
 
-    // Cada servidor tiene su propia estructura de URL
-    if (providerName == "VidLink") {
-      // Formato: https://vidlink.pro/movie/ID o https://vidlink.pro/tv/ID/1/1
-      finalUrl = "${provider['baseUrl']}$mediaType/$id";
-      if (isTV) finalUrl += "/${widget.season}/${widget.episode}";
+    if (providerName == "SuperEmbed") {
+      // Formato: https://multiembed.mov/?video_id=ID&tmdb=1
+      // Para series añade &s=1&e=1
+      finalUrl = "${provider['baseUrl']}?video_id=$id&tmdb=1";
+      if (isTV) {
+        finalUrl += "&s=${widget.season}&e=${widget.episode}";
+      }
+    } else if (providerName == "MoviesAPI") {
+      // Formato: https://moviesapi.club/movie/ID o /tv/ID-1-1
+      if (isTV) {
+        finalUrl =
+            "${provider['baseUrl']}tv/$id-${widget.season}-${widget.episode}";
+      } else {
+        finalUrl = "${provider['baseUrl']}movie/$id";
+      }
     } else if (providerName == "AutoEmbed") {
-      // Formato: https://player.autoembed.cc/movie/ID o https://player.autoembed.cc/tv/ID/1/1
+      // Formato: https://player.autoembed.cc/movie/ID o /tv/ID/1/1
       finalUrl = "${provider['baseUrl']}$mediaType/$id";
-      if (isTV) finalUrl += "/${widget.season}/${widget.episode}";
-    } else if (providerName == "SimpleEmbed") {
-      // Formato: https://p2p.xyz/embed/movie?tmdb=ID o tv?tmdb=ID&s=1&e=1
-      finalUrl = "${provider['baseUrl']}$mediaType?tmdb=$id";
-      if (isTV) finalUrl += "&s=${widget.season}&e=${widget.episode}";
+      if (isTV) {
+        finalUrl += "/${widget.season}/${widget.episode}";
+      }
     }
 
     return WebUri(finalUrl);
@@ -95,9 +103,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: ActionChip(
-              backgroundColor: Colors.blueAccent.withOpacity(0.8),
+              backgroundColor: Colors.redAccent.withOpacity(0.9),
               label: Text(
-                "Servidor: ${_providers[_currentProviderIndex]['name']}",
+                "Server: ${_providers[_currentProviderIndex]['name']}",
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 11,
@@ -105,7 +113,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               ),
               onPressed: _switchServer,
-              avatar: const Icon(Icons.cyclone, size: 14, color: Colors.white),
+              avatar: const Icon(
+                Icons.settings_input_component,
+                size: 14,
+                color: Colors.white,
+              ),
             ),
           ),
         ],
@@ -118,7 +130,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               javaScriptEnabled: true,
               allowsInlineMediaPlayback: true,
               useOnLoadResource: true,
-              javaScriptCanOpenWindowsAutomatically: false, // Bloqueo de popups
+              javaScriptCanOpenWindowsAutomatically: false,
               mediaPlaybackRequiresUserGesture: false,
               userAgent:
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -127,16 +139,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onLoadStop: (controller, url) {
               setState(() => _isLoading = false);
             },
-            // Seguridad reforzada contra publicidad
             onCreateWindow: (controller, createWindowAction) async {
-              return false; // Evita que el WebView abra nuevas ventanas (publicidad)
+              return false; // Bloqueo de popups publicitarios
             },
           ),
           if (_isLoading)
             Container(
               color: Colors.black,
               child: const Center(
-                child: CircularProgressIndicator(color: Colors.blueAccent),
+                child: CircularProgressIndicator(color: Colors.redAccent),
               ),
             ),
         ],
