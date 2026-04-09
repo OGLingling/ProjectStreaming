@@ -40,7 +40,6 @@ class _MoviesScreenState extends State<MoviesScreen> {
             movies = data.map((m) => Movie.fromJson(m)).toList();
             isLoading = false;
           });
-          // Usamos el tmdbId real guardado en tu DB
           if (movies.isNotEmpty) _loadTrailer(movies[0].tmdbId ?? '');
         }
       }
@@ -78,7 +77,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
         mute: true,
         loop: true,
         hideControls: true,
-        disableDragSeek: true, // Crucial para no bloquear scroll
+        disableDragSeek: true,
       ),
     );
     setState(() {});
@@ -117,9 +116,10 @@ class _MoviesScreenState extends State<MoviesScreen> {
       height: size.height * 0.8,
       child: Stack(
         children: [
-          // Capa de Video bloqueada para gestos (Permite scroll)
+          // 1. CAPA DE VIDEO (Fondo - No interactiva)
           Positioned.fill(
             child: IgnorePointer(
+              ignoring: true,
               child: _ytController != null
                   ? FittedBox(
                       fit: BoxFit.cover,
@@ -132,36 +132,59 @@ class _MoviesScreenState extends State<MoviesScreen> {
                   : Image.network(movie.backdropUrl ?? '', fit: BoxFit.cover),
             ),
           ),
-          // Gradiente
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  Colors.transparent,
-                  Color(0xFF141414),
-                ],
-                stops: [0.0, 0.6, 1.0],
+
+          // 2. ESCUDO TÁCTIL (Permite el scroll sobre el video)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onVerticalDragUpdate: (details) {
+                // Esto redirige el movimiento del dedo/mouse al scroll principal
+                _scrollController.position.moveTo(
+                  _scrollController.offset - details.delta.dy,
+                );
+              },
+              child: Container(color: Colors.transparent),
+            ),
+          ),
+
+          // 3. GRADIENTE (Visual)
+          IgnorePointer(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.transparent,
+                    Color(0xFF141414),
+                  ],
+                  stops: [0.0, 0.6, 1.0],
+                ),
               ),
             ),
           ),
-          // Botones (Fuera del IgnorePointer para que funcionen)
+
+          // 4. CONTENIDO INTERACTIVO (Título y Botones)
           Positioned(
             bottom: 80,
             left: 0,
             right: 0,
             child: Column(
               children: [
-                Text(
-                  movie.title.toUpperCase(),
-                  style: GoogleFonts.bebasNeue(
-                    color: Colors.white,
-                    fontSize: 50,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    movie.title.toUpperCase(),
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.bebasNeue(
+                      color: Colors.white,
+                      fontSize: 60,
+                      height: 1,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 25),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -199,14 +222,19 @@ class _MoviesScreenState extends State<MoviesScreen> {
   ) {
     return ElevatedButton.icon(
       onPressed: () => _navigateToDetails(movie),
-      icon: Icon(icon, color: textCol),
+      icon: Icon(icon, color: textCol, size: 28),
       label: Text(
         text,
-        style: TextStyle(color: textCol, fontWeight: FontWeight.bold),
+        style: TextStyle(
+          color: textCol,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
       ),
       style: ElevatedButton.styleFrom(
         backgroundColor: bg,
-        minimumSize: const Size(150, 45),
+        padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
     );
   }
@@ -230,13 +258,13 @@ class _MoviesScreenState extends State<MoviesScreen> {
             title,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 20,
+              fontSize: 22,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
         SizedBox(
-          height: 200,
+          height: 220,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.only(left: 16),
@@ -259,7 +287,6 @@ class _MoviesScreenState extends State<MoviesScreen> {
   }
 }
 
-// COMPONENTE PARA EL EFECTO HOVER Y POPUP
 class MovieCard extends StatefulWidget {
   final Movie movie;
   final VoidCallback onDetail;
@@ -282,48 +309,32 @@ class _MovieCardState extends State<MovieCard> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           margin: const EdgeInsets.only(right: 12),
-          width: isHovered ? 130 : 110, // Efecto escala
+          width: isHovered ? 140 : 120,
           curve: Curves.easeInOut,
-          child: Stack(
-            clipBehavior: Clip.none,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Image.network(
-                  widget.movie.imageUrl ?? '',
-                  fit: BoxFit.cover,
-                  height: 160,
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Image.network(
+                    widget.movie.imageUrl ?? '',
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                  ),
                 ),
               ),
               if (isHovered)
-                Positioned(
-                  bottom: -40,
-                  left: -10,
-                  right: -10,
-                  child: Material(
-                    elevation: 10,
-                    color: const Color(0xFF1F1F1F),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            widget.movie.title,
-                            maxLines: 1,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Text(
-                            "Ver detalles",
-                            style: TextStyle(color: Colors.red, fontSize: 9),
-                          ),
-                        ],
-                      ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    widget.movie.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
