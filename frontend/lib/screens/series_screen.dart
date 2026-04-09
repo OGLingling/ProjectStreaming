@@ -32,18 +32,14 @@ class _SeriesScreenState extends State<SeriesScreen> {
   Future<void> _loadSeries() async {
     try {
       // Obtenemos los datos desde el servicio
-      final List<dynamic> data = await ApiService.getMoviesByType('Serie');
+      final List<dynamic> data = await ApiService.getMoviesByType('tv');
 
       if (mounted) {
         setState(() {
           // 1. Mapeamos y validamos que el tipo sea 'Serie'
           seriesList = data
               .map((m) => Movie.fromJson(m))
-              .where(
-                (m) =>
-                    m.type?.toLowerCase() == 'serie' ||
-                    m.type?.toLowerCase() == 'tv show',
-              )
+              .where((m) => m.type.toLowerCase() == 'tv')
               .toList();
 
           // 2. Filtramos las 5 series con mejor rating para el banner

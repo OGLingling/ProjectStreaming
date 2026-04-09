@@ -32,7 +32,7 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
   Future<void> _loadMovies() async {
     try {
       // Llamada al servicio (Asegúrate de que ApiService devuelva List<dynamic>)
-      final data = await ApiService.getMoviesByType('Pelicula');
+      final data = await ApiService.getMoviesByType('movie');
 
       if (mounted) {
         setState(() {
@@ -40,11 +40,7 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
           // Ajusta 'Pelicula' o 'Movie' según cómo lo guardes en tu BD
           moviesList = data
               .map((m) => Movie.fromJson(m))
-              .where(
-                (m) =>
-                    m.type?.toLowerCase() == 'pelicula' ||
-                    m.type?.toLowerCase() == 'movie',
-              )
+              .where((m) => m.type.toLowerCase() == 'movie')
               .toList();
 
           // 2. Filtramos las 5 más valoradas para el carrusel
