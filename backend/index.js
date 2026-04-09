@@ -21,81 +21,75 @@ app.use(cors({
 app.use(express.json());
 
 // ==========================================
-//   LÓGICA DE PELÍCULAS (VERSIÓN ULTRA-FAST)
+//   LÓGICA DE PELÍCULAS (MODIFICADA PRO)
 // ==========================================
 
 async function enrichMovieData(movie) {
-    const identifier = movie.tmdb_id || movie.imdb_id;
+    const identifier = movie.tmdbId || movie.imdbId;
+    // Si no hay IDs externos, devolvemos la película tal cual está en Prisma
     if (!identifier) return movie;
 
     try {
         let apiUrl;
-        if (movie.tmdb_id) {
+        if (movie.tmdbId) {
             const path = movie.type === 'tv' ? 'tv' : 'movie';
-            // Usamos append_to_response para traer videos (trailers) de una vez
-            apiUrl = `${TMDB_BASE_URL}/${path}/${movie.tmdb_id}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=videos`;
+            apiUrl = `${TMDB_BASE_URL}/${path}/${movie.tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
         } else {
-            apiUrl = `${TMDB_BASE_URL}/find/${movie.imdb_id}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=es-ES`;
+            apiUrl = `${TMDB_BASE_URL}/find/${movie.imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=es-ES`;
         }
 
-        // Añadimos un timeout de 2 segundos para que la API no se quede colgada
-        const response = await axios.get(apiUrl, { timeout: 2000 });
-        
-        let data = movie.tmdb_id 
+        const response = await axios.get(apiUrl);
+        const data = movie.tmdbId 
             ? response.data 
             : (response.data.movie_results[0] || response.data.tv_results[0]);
 
         if (data) {
-            // Extraer trailer si existe
-            const trailer = data.videos?.results?.find(v => v.type === 'Trailer' && v.site === 'YouTube');
-
             return {
                 ...movie,
                 title: data.title || data.name || movie.title,
                 description: data.overview || movie.description,
+                // Si TMDB no tiene imagen, usamos la que ya tenemos en la DB
                 imageUrl: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : movie.imageUrl,
                 backdropUrl: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : movie.backdropUrl,
                 rating: data.vote_average ? parseFloat(data.vote_average.toFixed(1)) : (movie.rating || 0.0),
-                trailerUrl: trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : null,
             };
         }
     } catch (error) {
-        // Log ligero para no saturar la consola de Railway
-        console.error(`[TMDB Skip] ID ${identifier}: ${error.code || 'Timeout/Error'}`);
+        console.error(`[TMDB Silent Error] ID ${identifier}:`, error.message);
     }
-    return movie; // Siempre devolvemos el original si falla el enriquecimiento
+    // CRÍTICO: Si algo falla, devolvemos la película original para que Flutter no reciba null
+    return movie;
 }
 
 app.get(['/api/movies', '/movies'], async (req, res) => {
+    const { type } = req.query;
     try {
-        const { type } = req.query;
         let whereCondition = {};
-        
         if (type) {
             const normalizedType = type.toLowerCase().trim().replace('s', '');
-            whereCondition = { type: { contains: normalizedType, mode: 'insensitive' } };
+            whereCondition = {
+                type: {
+                    contains: normalizedType,
+                    mode: 'insensitive'
+                }
+            };
         }
 
-        // 1. Obtener de Prisma
+        // Consultamos la DB de Railway (Prisma)
         const content = await prisma.movie.findMany({
             where: whereCondition,
-            orderBy: { createdAt: 'desc' },
-            take: 20 // Limitamos a 20 para asegurar que la carga sea instantánea
+            orderBy: { createdAt: 'desc' }
         });
 
-        if (content.length === 0) {
-            return res.json([]); // Si no hay nada en la DB, enviamos lista vacía rápido
-        }
-
-        // 2. Enriquecer (Si TMDB falla, enrichMovieData devuelve el objeto de la DB original)
+        // Enriquecemos con TMDB en paralelo para máxima velocidad
         const enrichedContent = await Promise.all(
             content.map(movie => enrichMovieData(movie))
         );
 
         res.json(enrichedContent);
     } catch (error) {
-        console.error("Critical Error en /api/movies:", error);
-        res.status(500).json({ error: "Error interno del servidor" });
+        console.error("Error en GET /api/movies:", error);
+        res.status(500).json({ error: "Error al cargar contenido" });
     }
 });
 
