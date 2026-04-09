@@ -1,6 +1,5 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
-import 'package:visibility_detector/visibility_detector.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
 import '../models/movie_model.dart';
@@ -14,35 +13,50 @@ class PeliculasScreen extends StatefulWidget {
   State<PeliculasScreen> createState() => _PeliculasScreenState();
 }
 
-class _PeliculasScreenState extends State<PeliculasScreen>
-    with WidgetsBindingObserver {
-  List<dynamic> moviesList = [];
+class _PeliculasScreenState extends State<PeliculasScreen> {
+  List<Movie> moviesList = [];
+  List<Movie> topRatedMovies = [];
   bool isLoading = true;
-  VideoPlayerController? _videoController;
-  bool _isVideoInitialized = false;
-  bool _isPageInView = false;
 
-  final String movieBannerVideo =
-      "https://zwgxgeoreechcwzizkbz.supabase.co/storage/v1/object/public/Trailers/TheBatman.mp4";
+  // Controles para el carrusel de las Top 5
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+  Timer? _carouselTimer;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _loadMovies();
-    _initVideoBanner();
   }
 
-  // --- LÓGICA DE DATOS ---
   Future<void> _loadMovies() async {
     try {
-      // Intentamos traer contenido con etiqueta 'Pelicula' o 'Movie'
+      // Llamada al servicio (Asegúrate de que ApiService devuelva List<dynamic>)
       final data = await ApiService.getMoviesByType('Pelicula');
+
       if (mounted) {
         setState(() {
-          moviesList = data;
+          // 1. Mapeamos y validamos que solo sean películas
+          // Ajusta 'Pelicula' o 'Movie' según cómo lo guardes en tu BD
+          moviesList = data
+              .map((m) => Movie.fromJson(m))
+              .where(
+                (m) =>
+                    m.type?.toLowerCase() == 'pelicula' ||
+                    m.type?.toLowerCase() == 'movie',
+              )
+              .toList();
+
+          // 2. Filtramos las 5 más valoradas para el carrusel
+          topRatedMovies = List.from(moviesList);
+          topRatedMovies.sort(
+            (a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0),
+          );
+          topRatedMovies = topRatedMovies.take(5).toList();
+
           isLoading = false;
         });
+        _startCarouselTimer();
       }
     } catch (e) {
       debugPrint("Error al cargar películas: $e");
@@ -50,42 +64,18 @@ class _PeliculasScreenState extends State<PeliculasScreen>
     }
   }
 
-  @override
-  void didUpdateWidget(PeliculasScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isActive != oldWidget.isActive) {
-      if (widget.isActive)
-        _playVideo();
-      else
-        _pauseVideo();
-    }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _videoController?.dispose();
-    super.dispose();
-  }
-
-  void _pauseVideo() => _videoController?.pause();
-  void _playVideo() {
-    if (widget.isActive && _isPageInView && _isVideoInitialized) {
-      _videoController?.play();
-    }
-  }
-
-  void _initVideoBanner() {
-    _videoController =
-        VideoPlayerController.networkUrl(Uri.parse(movieBannerVideo))
-          ..initialize().then((_) {
-            if (mounted) {
-              setState(() => _isVideoInitialized = true);
-              _videoController?.setLooping(true);
-              _videoController?.setVolume(1.0);
-              _playVideo();
-            }
-          });
+  void _startCarouselTimer() {
+    _carouselTimer?.cancel();
+    _carouselTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (topRatedMovies.isNotEmpty && _pageController.hasClients) {
+        _currentPage = (_currentPage + 1) % topRatedMovies.length;
+        _pageController.animateToPage(
+          _currentPage,
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   @override
@@ -94,116 +84,153 @@ class _PeliculasScreenState extends State<PeliculasScreen>
       backgroundColor: const Color(0xFF141414),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.red))
-          : VisibilityDetector(
-              key: const Key('peliculas-screen-key'),
-              onVisibilityChanged: (info) {
-                _isPageInView = info.visibleFraction > 0.5;
-                if (!_isPageInView)
-                  _pauseVideo();
-                else
-                  _playVideo();
-              },
-              child: CustomScrollView(
-                slivers: [
-                  SliverToBoxAdapter(child: _buildMovieBanner()),
-                  _buildTitleSection("Películas para ti"),
-                  _buildMovieGrid(),
-                  const SliverToBoxAdapter(child: SizedBox(height: 50)),
-                ],
-              ),
+          : CustomScrollView(
+              slivers: [
+                // 1. CARRUSEL DINÁMICO (BANNER)
+                SliverToBoxAdapter(child: _buildDynamicBanner()),
+
+                // 2. TÍTULO DE SECCIÓN
+                _buildTitleSection("Películas para ti"),
+
+                // 3. GRID DE PELÍCULAS (CON EFECTO POP-UP)
+                _buildMovieGrid(),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 50)),
+              ],
             ),
     );
   }
 
-  Widget _buildMovieBanner() {
-    final double bannerHeight = MediaQuery.of(context).size.height * 0.75;
-    return Stack(
-      children: [
-        Container(
-          height: bannerHeight,
-          width: double.infinity,
-          color: Colors.black,
-          child: _isVideoInitialized
-              ? FittedBox(
-                  fit: BoxFit.cover,
-                  clipBehavior: Clip.hardEdge,
-                  child: SizedBox(
-                    width: _videoController!.value.size.width,
-                    height: _videoController!.value.size.height,
-                    child: VideoPlayer(_videoController!),
+  Widget _buildDynamicBanner() {
+    final size = MediaQuery.of(context).size;
+    if (topRatedMovies.isEmpty) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: size.height * 0.7,
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: topRatedMovies.length,
+            onPageChanged: (index) => setState(() => _currentPage = index),
+            itemBuilder: (context, index) {
+              final movie = topRatedMovies[index];
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    movie.backdropUrl ?? movie.imageUrl ?? '',
+                    fit: BoxFit.cover,
+                    errorBuilder: (c, e, s) => Container(color: Colors.black),
                   ),
-                )
-              : const Center(
-                  child: CircularProgressIndicator(color: Colors.red),
+                  // Gradiente estilo Netflix
+                  Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.transparent,
+                          Color(0xFF141414),
+                        ],
+                        stops: [0.0, 0.5, 1.0],
+                      ),
+                    ),
+                  ),
+                  // Info de la Película
+                  Positioned(
+                    bottom: 60,
+                    left: 20,
+                    right: 20,
+                    child: Column(
+                      children: [
+                        Text(
+                          movie.title.toUpperCase(),
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.bebasNeue(
+                            color: Colors.white,
+                            fontSize: 60,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.star,
+                              color: Colors.amber,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              "${movie.rating} | Tendencia",
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 25),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _HoverButton(
+                              text: "Reproducir",
+                              icon: Icons.play_arrow,
+                              isPrimary: true,
+                              onTap: () => _navigateToDetails(movie),
+                            ),
+                            const SizedBox(width: 15),
+                            _HoverButton(
+                              text: "Información",
+                              icon: Icons.info_outline,
+                              isPrimary: false,
+                              onTap: () => _navigateToDetails(movie),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          // Indicadores (Dots)
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                topRatedMovies.length,
+                (index) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  height: 8,
+                  width: _currentPage == index ? 20 : 8,
+                  decoration: BoxDecoration(
+                    color: _currentPage == index ? Colors.red : Colors.grey,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
-        ),
-        Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.black26, Colors.transparent, Color(0xFF141414)],
-                stops: [0.0, 0.6, 1.0],
               ),
             ),
           ),
-        ),
-        Positioned(
-          bottom: 40,
-          left: 15,
-          right: 0,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "THE BATMAN",
-                style: GoogleFonts.bebasNeue(
-                  color: Colors.white,
-                  fontSize: 70,
-                  height: 0.9,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "Acción • Crimen • Drama\nBatman explora la corrupción en Gotham mientras persigue al Acertijo.",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  shadows: [Shadow(blurRadius: 10, color: Colors.black)],
-                ),
-              ),
-              const SizedBox(height: 25),
-              Row(
-                children: [
-                  _HoverButton(
-                    text: "Reproducir",
-                    icon: Icons.play_arrow,
-                    isPrimary: true,
-                    onTap: () {},
-                  ),
-                  const SizedBox(width: 12),
-                  _HoverButton(
-                    text: "Información",
-                    icon: Icons.info_outline,
-                    isPrimary: false,
-                    onTap: () {},
-                  ),
-                  const Spacer(),
-                  _ageBadge("16+"),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildTitleSection(String title) {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.only(left: 15, top: 25, bottom: 15),
+        padding: const EdgeInsets.only(left: 20, top: 30, bottom: 15),
         child: Text(
           title,
           style: const TextStyle(
@@ -217,24 +244,14 @@ class _PeliculasScreenState extends State<PeliculasScreen>
   }
 
   Widget _buildMovieGrid() {
-    if (moviesList.isEmpty) {
-      return const SliverToBoxAdapter(
-        child: Center(
-          child: Text(
-            "No se encontraron películas",
-            style: TextStyle(color: Colors.grey),
-          ),
-        ),
-      );
-    }
     return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       sliver: SliverGrid(
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 200,
           childAspectRatio: 0.68,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 15,
+          crossAxisSpacing: 15,
+          mainAxisSpacing: 20,
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) => _MoviePosterCard(movie: moviesList[index]),
@@ -244,25 +261,22 @@ class _PeliculasScreenState extends State<PeliculasScreen>
     );
   }
 
-  Widget _ageBadge(String age) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
-      decoration: const BoxDecoration(
-        color: Colors.black45,
-        border: Border(left: BorderSide(color: Colors.white, width: 3)),
-      ),
-      child: Text(
-        age,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+  void _navigateToDetails(Movie movie) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (c) => MovieDetailsScreen(movie: movie)),
     );
+  }
+
+  @override
+  void dispose() {
+    _carouselTimer?.cancel();
+    _pageController.dispose();
+    super.dispose();
   }
 }
 
-// --- WIDGET PARA BOTONES CON HOVER ---
+// --- WIDGET DE BOTONES CON HOVER ---
 class _HoverButton extends StatefulWidget {
   final String text;
   final IconData icon;
@@ -295,13 +309,13 @@ class _HoverButtonState extends State<_HoverButton> {
           scale: _isHovered ? 1.05 : 1.0,
           duration: const Duration(milliseconds: 200),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
             decoration: BoxDecoration(
               color: widget.isPrimary
-                  ? (_isHovered ? Colors.white.withOpacity(0.8) : Colors.white)
+                  ? (_isHovered ? Colors.white.withOpacity(0.9) : Colors.white)
                   : (_isHovered
-                        ? Colors.white.withOpacity(0.4)
-                        : Colors.white.withOpacity(0.2)),
+                        ? Colors.grey.withOpacity(0.5)
+                        : Colors.grey.withOpacity(0.3)),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Row(
@@ -309,7 +323,7 @@ class _HoverButtonState extends State<_HoverButton> {
                 Icon(
                   widget.icon,
                   color: widget.isPrimary ? Colors.black : Colors.white,
-                  size: 28,
+                  size: 26,
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -317,7 +331,7 @@ class _HoverButtonState extends State<_HoverButton> {
                   style: TextStyle(
                     color: widget.isPrimary ? Colors.black : Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontSize: 16,
                   ),
                 ),
               ],
@@ -329,9 +343,9 @@ class _HoverButtonState extends State<_HoverButton> {
   }
 }
 
-// --- WIDGET PARA POSTERS CON HOVER ---
+// --- WIDGET DE POSTER CON EFECTO POP-UP ---
 class _MoviePosterCard extends StatefulWidget {
-  final Map<String, dynamic> movie;
+  final Movie movie;
   const _MoviePosterCard({required this.movie});
 
   @override
@@ -352,49 +366,45 @@ class _MoviePosterCardState extends State<_MoviePosterCard> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) =>
-                  MovieDetailsScreen(movie: Movie.fromJson(widget.movie)),
+              builder: (context) => MovieDetailsScreen(movie: widget.movie),
             ),
           );
         },
-        child: AnimatedScale(
-          scale: _isHovered ? 1.1 : 1.0,
-          duration: const Duration(milliseconds: 200),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: _isHovered
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.5),
-                        blurRadius: 15,
-                        spreadRadius: 2,
-                      ),
-                    ]
-                  : [],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(
-                    widget.movie['imageUrl'] ?? '',
-                    fit: BoxFit.cover,
-                  ),
-                  if (_isHovered)
-                    Positioned.fill(
-                      child: Container(
-                        color: Colors.black.withOpacity(0.2),
-                        child: const Icon(
-                          Icons.play_circle_fill,
-                          color: Colors.white,
-                          size: 50,
-                        ),
-                      ),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          transform: _isHovered
+              ? (Matrix4.identity()..scale(1.1))
+              : Matrix4.identity(),
+          transformAlignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: _isHovered
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.6),
+                      blurRadius: 15,
+                      spreadRadius: 2,
                     ),
-                ],
-              ),
+                  ]
+                : [],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.network(widget.movie.imageUrl ?? '', fit: BoxFit.cover),
+                if (_isHovered)
+                  Container(
+                    color: Colors.black.withOpacity(0.3),
+                    child: const Icon(
+                      Icons.play_circle_fill,
+                      color: Colors.white,
+                      size: 50,
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
