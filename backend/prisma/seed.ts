@@ -7,6 +7,7 @@ async function main() {
   await prisma.movie.deleteMany()
 
   const seriesYpeliculas = [
+    // --- SERIES DE TV EXISTENTES ---
     {
       tmdbId: "76479",
       title: "The Boys",
@@ -96,17 +97,79 @@ async function main() {
       type: "tv",
       category: "Animation",
       releaseDate: "2023-09-29",
+    },
+
+    // --- NUEVAS PELÍCULAS DESDE LA API TMDB ---
+    {
+      tmdbId: "1226863",
+      title: "The Super Mario Galaxy Movie",
+      description: "Having thwarted Bowser's previous plot to marry Princess Peach, Mario and Luigi now face a fresh threat in Bowser Jr...",
+      imageUrl: "https://image.tmdb.org/t/p/w500/eJGWx219ZcEMVQJhAgMiqo8tYY.jpg",
+      backdropUrl: "https://image.tmdb.org/t/p/original/kxQiIJ4gVcD3K6o14MJ72p5yRcE.jpg",
+      type: "movie",
+      category: "Adventure",
+      releaseDate: "2026-04-01",
+    },
+    {
+      tmdbId: "936075",
+      title: "Michael",
+      description: "Discover the story of Michael Jackson, one of the most influential artists the world has ever known, and his life beyond the music...",
+      imageUrl: "https://image.tmdb.org/t/p/w500/3Qud19bBUrrJAzy0Ilm8gRJlJXP.jpg",
+      backdropUrl: "https://image.tmdb.org/t/p/original/xBT0oNq6rsTFv4SxG5uGRIEOrq6.jpg",
+      type: "movie",
+      category: "Music",
+      releaseDate: "2026-04-22",
+    },
+    {
+      tmdbId: "1159831",
+      title: "The Bride!",
+      description: "A lonely Frankenstein travels to 1930s Chicago to ask groundbreaking scientist Dr. Euphronious to create a companion for him.",
+      imageUrl: "https://image.tmdb.org/t/p/w500/lV8YHwGkYZsm6EfIqnhaSz2avKt.jpg",
+      backdropUrl: "https://image.tmdb.org/t/p/original/l8rKKMU2M9dDULO9CEtDNdWAEUJ.jpg",
+      type: "movie",
+      category: "Horror",
+      releaseDate: "2026-03-04",
+    },
+    {
+      tmdbId: "687163",
+      title: "Project Hail Mary",
+      description: "Science teacher Ryland Grace wakes up on a spaceship light years from home with no recollection of who he is...",
+      imageUrl: "https://image.tmdb.org/t/p/w500/yihdXomYb5kTeSivtFndMy5iDmf.jpg",
+      backdropUrl: "https://image.tmdb.org/t/p/original/8Tfys3mDZVp4tNoH2ktm06a0Tau.jpg",
+      type: "movie",
+      category: "Sci-Fi",
+      releaseDate: "2026-03-15",
+    },
+    {
+      tmdbId: "83533",
+      title: "Avatar: Fire and Ash",
+      description: "In the wake of the devastating war against the RDA, Jake Sully and Neytiri face a new threat on Pandora: the Ash People.",
+      imageUrl: "https://image.tmdb.org/t/p/w500/bRBeSHfGHwkEpImlhxPmOcUsaeg.jpg",
+      backdropUrl: "https://image.tmdb.org/t/p/original/iN41Ccw4DctL8npfmYg1j5Tr1eb.jpg",
+      type: "movie",
+      category: "Adventure",
+      releaseDate: "2025-12-17",
+    },
+    {
+      tmdbId: "1084242",
+      title: "Zootopia 2",
+      description: "Rookie cops Judy Hopps and Nick Wilde find themselves on the twisting trail of a great mystery when Gary De'Snake arrives.",
+      imageUrl: "https://image.tmdb.org/t/p/w500/oJ7g2CifqpStmoYQyaLQgEU32qO.jpg",
+      backdropUrl: "https://image.tmdb.org/t/p/original/lgotja3xMoJZbynwHfcQcJAEMWH.jpg",
+      type: "movie",
+      category: "Animation",
+      releaseDate: "2025-11-26",
     }
   ]
 
-  console.log(`--- Insertando ${seriesYpeliculas.length} registros desde TMDB ---`)
+  console.log(`--- Insertando ${seriesYpeliculas.length} registros (Series + Películas) ---`)
 
   for (const item of seriesYpeliculas) {
     const res = await prisma.movie.create({ data: item })
-    console.log(`✅ Registro creado: ${res.title} (TMDB ID: ${res.tmdbId})`)
+    console.log(`✅ Registro creado: ${res.title} (${res.type.toUpperCase()} - TMDB ID: ${res.tmdbId})`)
   }
 
-  console.log('--- SEED FINALIZADO ---')
+  console.log('--- SEED FINALIZADO CON ÉXITO ---')
 }
 
 main()
