@@ -29,11 +29,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // --- LISTA DE SERVIDORES (SIN SUPEREMBED) ---
+  // --- LISTA DE SERVIDORES OPTIMIZADOS PARA WEB ---
   final List<Map<String, String>> _providers = [
+    {"name": "Vidsrc.pro", "baseUrl": "https://vidsrc.pro/embed/"},
+    {"name": "Vidsrc.me", "baseUrl": "https://vidsrc.me/embed/"},
+    {"name": "Embed.su", "baseUrl": "https://embed.su/embed/"},
     {"name": "VidLink", "baseUrl": "https://vidlink.pro/"},
-    {"name": "MoviesAPI", "baseUrl": "https://moviesapi.club/"},
-    {"name": "AutoEmbed", "baseUrl": "https://player.autoembed.cc/"},
   ];
 
   WebUri _generateUrl() {
@@ -42,28 +43,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         widget.type.toLowerCase().contains('serie') ||
         widget.type.toLowerCase().contains('tv');
 
-    String finalUrl = "";
     String providerName = provider['name']!;
-    String mediaType = isTV ? "tv" : "movie";
     String id = widget.tmdbId ?? widget.imdbId ?? "";
+    String mediaType = isTV ? "tv" : "movie";
 
-    if (providerName == "VidLink") {
-      // Formato: https://vidlink.pro/movie/ID o /tv/ID/1/1
-      finalUrl = "${provider['baseUrl']}$mediaType/$id";
-      if (isTV) finalUrl += "/${widget.season}/${widget.episode}";
-    } else if (providerName == "MoviesAPI") {
-      // Formato: https://moviesapi.club/movie/ID o /tv/ID-1-1
-      if (isTV) {
-        finalUrl =
-            "${provider['baseUrl']}tv/$id-${widget.season}-${widget.episode}";
-      } else {
-        finalUrl = "${provider['baseUrl']}movie/$id";
-      }
-    } else if (providerName == "AutoEmbed") {
-      // Formato: https://player.autoembed.cc/movie/ID o /tv/ID/1/1
-      finalUrl = "${provider['baseUrl']}$mediaType/$id";
-      if (isTV) finalUrl += "/${widget.season}/${widget.episode}";
+    // Formato para Vidsrc.pro y Embed.su: /movie/ID o /tv/ID/S/E
+    if (providerName == "Vidsrc.pro" || providerName == "Embed.su") {
+      String path = "$mediaType/$id";
+      if (isTV) path += "/${widget.season}/${widget.episode}";
+      return WebUri("${provider['baseUrl']}$path");
     }
+
+    // Formato para Vidsrc.me: /movie?tmdb=ID
+    if (providerName == "Vidsrc.me") {
+      String path = "$mediaType?tmdb=$id";
+      if (isTV) path += "&season=${widget.season}&episode=${widget.episode}";
+      return WebUri("${provider['baseUrl']}$path");
+    }
+
+    // Fallback para VidLink
+    String finalUrl = "${provider['baseUrl']}$mediaType/$id";
+    if (isTV) finalUrl += "/${widget.season}/${widget.episode}";
 
     return WebUri(finalUrl);
   }
@@ -95,7 +95,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: ActionChip(
-              backgroundColor: Colors.blueAccent.withOpacity(0.9),
+              backgroundColor: Colors.indigoAccent.withOpacity(0.9),
               label: Text(
                 "Server: ${_providers[_currentProviderIndex]['name']}",
                 style: const TextStyle(
@@ -120,7 +120,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               useOnLoadResource: true,
               javaScriptCanOpenWindowsAutomatically: false,
               mediaPlaybackRequiresUserGesture: false,
-              // Mantener UserAgent actualizado para evitar detecciones de bot
+              // UserAgent real para evitar detecciones de bots en Web
               userAgent:
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
             ),
@@ -129,14 +129,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               setState(() => _isLoading = false);
             },
             onCreateWindow: (controller, createWindowAction) async {
-              return false; // Bloqueo de popups publicitarios
+              // Bloqueo de popups publicitarios
+              return false;
             },
           ),
           if (_isLoading)
             Container(
               color: Colors.black,
               child: const Center(
-                child: CircularProgressIndicator(color: Colors.blueAccent),
+                child: CircularProgressIndicator(color: Colors.indigoAccent),
               ),
             ),
         ],
