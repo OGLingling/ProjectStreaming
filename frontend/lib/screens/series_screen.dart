@@ -42,7 +42,6 @@ class _SeriesScreenState extends State<SeriesScreen> {
               .where((m) => m.type.toLowerCase() == 'tv')
               .toList();
 
-          // 2. Filtramos las 5 series con mejor rating para el banner
           topRatedSeries = List.from(seriesList);
           topRatedSeries.sort(
             (a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0),

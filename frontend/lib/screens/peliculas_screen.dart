@@ -36,14 +36,11 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
 
       if (mounted) {
         setState(() {
-          // 1. Mapeamos y validamos que solo sean películas
-          // Ajusta 'Pelicula' o 'Movie' según cómo lo guardes en tu BD
           moviesList = data
               .map((m) => Movie.fromJson(m))
               .where((m) => m.type.toLowerCase() == 'movie')
               .toList();
 
-          // 2. Filtramos las 5 más valoradas para el carrusel
           topRatedMovies = List.from(moviesList);
           topRatedMovies.sort(
             (a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0),
@@ -308,10 +305,12 @@ class _HoverButtonState extends State<_HoverButton> {
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
             decoration: BoxDecoration(
               color: widget.isPrimary
-                  ? (_isHovered ? Colors.white.withOpacity(0.9) : Colors.white)
+                  ? (_isHovered
+                        ? Colors.white.withValues(alpha: 0.9)
+                        : Colors.white)
                   : (_isHovered
-                        ? Colors.grey.withOpacity(0.5)
-                        : Colors.grey.withOpacity(0.3)),
+                        ? Colors.grey.withValues(alpha: 0.5)
+                        : Colors.grey.withValues(alpha: 0.3)),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Row(

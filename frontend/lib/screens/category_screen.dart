@@ -37,14 +37,10 @@ class _CategoryScreenState extends State<CategoryScreen> {
       );
 
       if (response.statusCode == 200) {
-        List<dynamic> data = jsonDecode(response.body);
+        List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
 
         setState(() {
-          movies = data.map((m) => Movie.fromJson(m)).where((movie) {
-            final movieType = movie.type.toLowerCase().trim() ?? '';
-            final targetKey = widget.categoryKey.toLowerCase().trim();
-            return movieType == targetKey;
-          }).toList();
+          movies = data.map((m) => Movie.fromJson(m)).toList();
           isLoading = false;
         });
       } else {

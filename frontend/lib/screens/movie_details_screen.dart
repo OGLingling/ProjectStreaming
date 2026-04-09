@@ -20,8 +20,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
     final String? tmdbId = widget.movie.tmdbId?.toString();
     final String? imdbId = widget.movie.imdbId;
 
-    if ((tmdbId != null && tmdbId != 'null') ||
-        (imdbId != null && imdbId != 'null')) {
+    if (tmdbId != null || imdbId != null) {
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -117,7 +116,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                   Row(
                     children: [
                       Text(
-                        widget.movie.releaseDate.substring(0, 4) ?? "2024",
+                        widget.movie.releaseDate?.substring(0, 4) ?? "2024",
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 14,
