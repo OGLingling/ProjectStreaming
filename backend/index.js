@@ -14,45 +14,41 @@ const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     credentials: true
 }));
 
 app.use(express.json());
 
-// ==========================================
-//   NUEVO: LÓGICA DE PROXY PROPIO
-// ==========================================
-
+// PROXY MEJORADO: Ahora maneja mejor los tiempos de espera (Timeout)
 app.get('/api/proxy-stream', async (req, res) => {
     const targetUrl = req.query.url;
-
-    if (!targetUrl) {
-        return res.status(400).json({ error: "URL de destino requerida" });
-    }
+    if (!targetUrl) return res.status(400).send("Falta la URL");
 
     try {
         const response = await axios.get(targetUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/123.0.0.0 Safari/537.36',
                 'Referer': 'https://vidsrc.pro/',
                 'Origin': 'https://vidsrc.pro/'
             },
-            timeout: 15000 
+            timeout: 8000 // Si el servidor no responde en 8 seg, cortamos para evitar error 500
         });
 
         res.set('Content-Type', 'text/html');
-        res.send(response.data);
+        // Agregamos un pequeño script para intentar romper el sandbox desde adentro
+        const enhancedHtml = response.data.replace('<head>', '<head><base href="' + targetUrl + '">');
+        res.send(enhancedHtml);
 
     } catch (error) {
-        console.error(`[Proxy Error]:`, error.message);
-        res.status(500).send(`
-            <div style="background:#000; color:#fff; height:100vh; display:flex; align-items:center; justify-content:center; font-family:sans-serif; text-align:center; padding:20px;">
-                <div>
+        console.error("Proxy Error:", error.message);
+        res.status(200).send(`
+            <body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
+                <div style="text-align:center;">
                     <p>El servidor de video no respondió (Timeout).</p>
-                    <p style="font-size:12px; color:#666;">Intenta cambiar de servidor en la App MovieWind.</p>
+                    <button onclick="window.location.reload()" style="background:#444;color:#fff;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;">Reintentar</button>
                 </div>
-            </div>
+            </body>
         `);
     }
 });
