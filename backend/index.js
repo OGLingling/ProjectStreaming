@@ -21,12 +21,48 @@ app.use(cors({
 app.use(express.json());
 
 // ==========================================
-//   LÓGICA DE PELÍCULAS (MODIFICADA PRO)
+//   NUEVO: LÓGICA DE PROXY PROPIO
+// ==========================================
+
+app.get('/api/proxy-stream', async (req, res) => {
+    const targetUrl = req.query.url;
+
+    if (!targetUrl) {
+        return res.status(400).json({ error: "URL de destino requerida" });
+    }
+
+    try {
+        const response = await axios.get(targetUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                'Referer': 'https://vidsrc.pro/',
+                'Origin': 'https://vidsrc.pro/'
+            },
+            timeout: 15000 
+        });
+
+        res.set('Content-Type', 'text/html');
+        res.send(response.data);
+
+    } catch (error) {
+        console.error(`[Proxy Error]:`, error.message);
+        res.status(500).send(`
+            <div style="background:#000; color:#fff; height:100vh; display:flex; align-items:center; justify-content:center; font-family:sans-serif; text-align:center; padding:20px;">
+                <div>
+                    <p>El servidor de video no respondió (Timeout).</p>
+                    <p style="font-size:12px; color:#666;">Intenta cambiar de servidor en la App MovieWind.</p>
+                </div>
+            </div>
+        `);
+    }
+});
+
+// ==========================================
+//   LÓGICA DE PELÍCULAS (ORIGINAL)
 // ==========================================
 
 async function enrichMovieData(movie) {
     const identifier = movie.tmdbId || movie.imdbId;
-    // Si no hay IDs externos, devolvemos la película tal cual está en Prisma
     if (!identifier) return movie;
 
     try {
@@ -48,7 +84,6 @@ async function enrichMovieData(movie) {
                 ...movie,
                 title: data.title || data.name || movie.title,
                 description: data.overview || movie.description,
-                // Si TMDB no tiene imagen, usamos la que ya tenemos en la DB
                 imageUrl: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : movie.imageUrl,
                 backdropUrl: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : movie.backdropUrl,
                 rating: data.vote_average ? parseFloat(data.vote_average.toFixed(1)) : (movie.rating || 0.0),
@@ -57,7 +92,6 @@ async function enrichMovieData(movie) {
     } catch (error) {
         console.error(`[TMDB Silent Error] ID ${identifier}:`, error.message);
     }
-    // CRÍTICO: Si algo falla, devolvemos la película original para que Flutter no reciba null
     return movie;
 }
 
@@ -75,13 +109,11 @@ app.get(['/api/movies', '/movies'], async (req, res) => {
             };
         }
 
-        // Consultamos la DB de Railway (Prisma)
         const content = await prisma.movie.findMany({
             where: whereCondition,
             orderBy: { createdAt: 'desc' }
         });
 
-        // Enriquecemos con TMDB en paralelo para máxima velocidad
         const enrichedContent = await Promise.all(
             content.map(movie => enrichMovieData(movie))
         );
