@@ -29,10 +29,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // --- LISTA DE SERVIDORES CON VIDLINK ---
+  // --- LISTA DE SERVIDORES (SIN SUPEREMBED) ---
   final List<Map<String, String>> _providers = [
     {"name": "VidLink", "baseUrl": "https://vidlink.pro/"},
-    {"name": "SuperEmbed", "baseUrl": "https://multiembed.mov/"},
     {"name": "MoviesAPI", "baseUrl": "https://moviesapi.club/"},
     {"name": "AutoEmbed", "baseUrl": "https://player.autoembed.cc/"},
   ];
@@ -49,17 +48,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String id = widget.tmdbId ?? widget.imdbId ?? "";
 
     if (providerName == "VidLink") {
-      // Formato: https://vidlink.pro/movie/ID o https://vidlink.pro/tv/ID/1/1
+      // Formato: https://vidlink.pro/movie/ID o /tv/ID/1/1
       finalUrl = "${provider['baseUrl']}$mediaType/$id";
-      if (isTV) {
-        finalUrl += "/${widget.season}/${widget.episode}";
-      }
-    } else if (providerName == "SuperEmbed") {
-      // Formato: https://multiembed.mov/?video_id=ID&tmdb=1
-      finalUrl = "${provider['baseUrl']}?video_id=$id&tmdb=1";
-      if (isTV) {
-        finalUrl += "&s=${widget.season}&e=${widget.episode}";
-      }
+      if (isTV) finalUrl += "/${widget.season}/${widget.episode}";
     } else if (providerName == "MoviesAPI") {
       // Formato: https://moviesapi.club/movie/ID o /tv/ID-1-1
       if (isTV) {
@@ -71,9 +62,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     } else if (providerName == "AutoEmbed") {
       // Formato: https://player.autoembed.cc/movie/ID o /tv/ID/1/1
       finalUrl = "${provider['baseUrl']}$mediaType/$id";
-      if (isTV) {
-        finalUrl += "/${widget.season}/${widget.episode}";
-      }
+      if (isTV) finalUrl += "/${widget.season}/${widget.episode}";
     }
 
     return WebUri(finalUrl);
@@ -131,7 +120,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               useOnLoadResource: true,
               javaScriptCanOpenWindowsAutomatically: false,
               mediaPlaybackRequiresUserGesture: false,
-              // UserAgent actualizado para evitar bloqueos de bots
+              // Mantener UserAgent actualizado para evitar detecciones de bot
               userAgent:
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
             ),
@@ -140,7 +129,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               setState(() => _isLoading = false);
             },
             onCreateWindow: (controller, createWindowAction) async {
-              return false; // Bloqueo de popups
+              return false; // Bloqueo de popups publicitarios
             },
           ),
           if (_isLoading)
