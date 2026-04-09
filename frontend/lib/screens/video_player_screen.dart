@@ -29,6 +29,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
+  // --- CONFIGURACIÓN DE TU PROXY EN RAILWAY ---
+  final String _proxyBaseUrl =
+      "https://projectstreaming-production.up.railway.app/api/proxy-stream?url=";
+
   final List<Map<String, String>> _providers = [
     {"name": "Vidsrc.pro", "baseUrl": "https://vidsrc.pro/embed/"},
     {"name": "Vidsrc.me", "baseUrl": "https://vidsrc.me/embed/"},
@@ -44,19 +48,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String id = widget.tmdbId ?? widget.imdbId ?? "";
     String mediaType = isTV ? "tv" : "movie";
 
-    if (provider['name'] == "Vidsrc.pro" || provider['name'] == "Embed.su") {
-      return WebUri(
-        "${provider['baseUrl']}$mediaType/$id${isTV ? "/${widget.season}/${widget.episode}" : ""}",
-      );
-    }
+    String rawUrl = "";
+
     if (provider['name'] == "Vidsrc.me") {
-      return WebUri(
-        "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}",
-      );
+      rawUrl =
+          "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
+    } else {
+      rawUrl =
+          "${provider['baseUrl']}$mediaType/$id${isTV ? "/${widget.season}/${widget.episode}" : ""}";
     }
-    return WebUri(
-      "${provider['baseUrl']}$mediaType/$id${isTV ? "/${widget.season}/${widget.episode}" : ""}",
-    );
+
+    // El proxy es vital para que ESET no bloquee la conexión
+    return WebUri("$_proxyBaseUrl${Uri.encodeComponent(rawUrl)}");
   }
 
   @override
@@ -74,18 +77,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          ActionChip(
-            label: Text("Server: ${_providers[_currentProviderIndex]['name']}"),
-            onPressed: () {
-              setState(() {
-                _currentProviderIndex =
-                    (_currentProviderIndex + 1) % _providers.length;
-                _isLoading = true;
-              });
-              _webViewController?.loadUrl(
-                urlRequest: URLRequest(url: _generateUrl()),
-              );
-            },
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: ActionChip(
+              backgroundColor: Colors.indigoAccent,
+              label: Text(
+                "Server: ${_providers[_currentProviderIndex]['name']}",
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+              onPressed: () {
+                setState(() {
+                  _currentProviderIndex =
+                      (_currentProviderIndex + 1) % _providers.length;
+                  _isLoading = true;
+                });
+                _webViewController?.loadUrl(
+                  urlRequest: URLRequest(url: _generateUrl()),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -96,12 +106,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             initialSettings: InAppWebViewSettings(
               javaScriptEnabled: true,
               allowsInlineMediaPlayback: true,
-              // UserAgent es obligatorio para evitar que te detecten como Bot
+              // Eliminamos 'iframeSandbox' para evitar el error de compilación.
+              // Usamos UserAgent de escritorio para saltar protecciones de bots
               userAgent:
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+              // Permitimos el acceso universal para evitar errores de CORS
+              allowUniversalAccessFromFileURLs: true,
+              mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
             ),
             onWebViewCreated: (controller) => _webViewController = controller,
             onLoadStop: (controller, url) => setState(() => _isLoading = false),
+            // Bloqueamos la creación de ventanas nuevas (Popups de publicidad)
             onCreateWindow: (controller, createWindowAction) async => false,
           ),
           if (_isLoading)
