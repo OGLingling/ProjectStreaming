@@ -27,13 +27,12 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
-  String _currentViewType = '';
 
-  // Lista de proveedores corregida para evitar colisiones de rutas
+  // Priorizamos VidSrc.win para el contenido en español
   final List<Map<String, String>> _providers = [
-    {"name": "Español (Pro)", "baseUrl": "https://vidsrc.pro/embed/"},
-    {"name": "VidSrc (V2)", "baseUrl": "https://v2.vidsrc.me/embed/"},
-    {"name": "VidSrc (Cloud)", "baseUrl": "https://vidsrc.cc/vapi/embed/"},
+    {"name": "Español (Omen)", "baseUrl": "https://vidsrc.win/embed/"},
+    {"name": "VidSrc (.ru)", "baseUrl": "https://vsembed.ru/embed/"},
+    {"name": "VidSrc (.su)", "baseUrl": "https://vsembed.su/embed/"},
   ];
 
   @override
@@ -45,12 +44,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _registerIFrame() {
     final String url = _generateUrl();
     final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
+    final String viewType = 'player-$contentId-$_currentProviderIndex';
 
-    // CORRECCIÓN: ID único por cada carga para limpiar errores de IP previos
-    _currentViewType =
-        'player-$contentId-${DateTime.now().millisecondsSinceEpoch}';
-
-    ui.platformViewRegistry.registerViewFactory(_currentViewType, (int viewId) {
+    ui.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
       final iframe = web.HTMLIFrameElement()
         ..src = url
         ..style.border = 'none'
@@ -58,15 +54,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ..style.height = '100%'
         ..allowFullscreen = true;
 
-      // 'no-referrer' es vital para que vidsrc.pro no bloquee la petición
-      iframe.setAttribute('referrerpolicy', 'no-referrer');
+      // referrerpolicy="origin" es vital para evitar el error "The page is disabled"
+      iframe.setAttribute('referrerpolicy', 'origin');
 
-      // Sandbox ajustado para permitir que Omen/Gekko funcionen sin pantalla negra
-      iframe.setAttribute(
-        'sandbox',
-        'allow-forms allow-pointer-lock allow-same-origin allow-scripts allow-top-navigation',
-      );
-
+      // Permisos necesarios para que el reproductor gestione el audio y la calidad
       iframe.setAttribute(
         'allow',
         'autoplay; fullscreen; picture-in-picture; encrypted-media; storage-access',
@@ -86,42 +77,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         widget.type.toLowerCase().contains('serie') ||
         widget.type.toLowerCase().contains('tv');
     String id = widget.tmdbId ?? widget.imdbId ?? "";
+    String mediaType = isTV ? "tv" : "movie";
 
-    // 1. Lógica para VidSrc.pro (Usa rutas: /embed/type/id)
-    if (provider['name'] == "Español (Pro)") {
-      String path = isTV
-          ? "tv/$id/${widget.season}/${widget.episode}"
-          : "movie/$id";
-      return "${provider['baseUrl']}$path?server=omen&ds_lang=es";
+    // LÓGICA ESPECÍFICA PARA FORZAR EL SERVIDOR ESPAÑOL
+    if (provider['name'] == "Español (Omen)") {
+      String url = "${provider['baseUrl']}$mediaType?tmdb=$id";
+      if (isTV) url += "&season=${widget.season}&episode=${widget.episode}";
+
+      // 'server=omen' es el alias directo para el audio español que vimos en tu captura
+      // 'ds_lang=es' ayuda a que los subtítulos también carguen en español por defecto
+      return "$url&server=omen&ds_lang=es";
     }
 
-    // 2. Lógica para VidSrc (V2) (Usa parámetros: ?tmdb=id)
-    if (provider['name'] == "VidSrc (V2)") {
-      String mediaType = isTV ? "tv" : "movie";
-      String seasonEpi = isTV ? "&s=${widget.season}&e=${widget.episode}" : "";
-      return "${provider['baseUrl']}$mediaType?tmdb=$id$seasonEpi";
-    }
-
-    // 3. Lógica para VidSrc (Cloud) (Usa parámetros: ?tmdb=id)
-    if (provider['name'] == "VidSrc (Cloud)") {
-      String mediaType = isTV ? "tv" : "movie";
-      String seasonEpi = isTV
-          ? "&season=${widget.season}&episode=${widget.episode}"
-          : "";
-      return "${provider['baseUrl']}$mediaType?tmdb=$id$seasonEpi";
-    }
-
-    return "";
+    // Formato estándar para los otros mirrors oficiales
+    return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
   }
 
   @override
   Widget build(BuildContext context) {
+    final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
+    final String currentViewType = 'player-$contentId-$_currentProviderIndex';
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
         title: Text(
           widget.title,
           style: const TextStyle(
@@ -134,10 +116,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: ActionChip(
-              backgroundColor: Colors.indigoAccent,
+              backgroundColor: Colors
+                  .redAccent, // Rojo para resaltar que es el servidor de español
               label: Text(
                 _providers[_currentProviderIndex]['name']!,
-                style: const TextStyle(color: Colors.white, fontSize: 11),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               onPressed: () {
                 setState(() {
@@ -153,14 +140,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
       body: Stack(
         children: [
-          // ValueKey asegura que Flutter destruya el iFrame viejo y cree uno nuevo
           HtmlElementView(
-            key: ValueKey(_currentViewType),
-            viewType: _currentViewType,
+            key: ValueKey(currentViewType),
+            viewType: currentViewType,
           ),
           if (_isLoading)
             const Center(
-              child: CircularProgressIndicator(color: Colors.indigoAccent),
+              child: CircularProgressIndicator(color: Colors.redAccent),
             ),
         ],
       ),
