@@ -4,9 +4,9 @@ const express = require('express');
 const cors = require('cors');
 
 // --- IMPORTACIÓN DE RUTAS ---
-const movieRoutes = require('./routes/movie.routes');
-const authRoutes = require('./routes/auth.routes');
-const adminRoutes = require('./routes/admin.routes');
+const movieRoutes = require('./routes/movie_routes');
+const authRoutes = require('./routes/auth_routes');
+const adminRoutes = require('./routes/admin_routes');
 
 const app = express();
 
