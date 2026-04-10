@@ -1,6 +1,6 @@
-import 'dart:async';
+import 'dart:ui_web' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:web/web.dart' as web;
 
 class VideoPlayerScreen extends StatefulWidget {
   final String? tmdbId;
@@ -25,13 +25,8 @@ class VideoPlayerScreen extends StatefulWidget {
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
-  InAppWebViewController? _webViewController;
   bool _isLoading = true;
   int _currentProviderIndex = 0;
-
-  // Tu proxy sigue siendo útil para ciertos servidores, pero lo usaremos de forma selectiva
-  final String _proxyBaseUrl =
-      "https://projectstreaming-production.up.railway.app/api/proxy-stream?url=";
 
   final List<Map<String, String>> _providers = [
     {"name": "Vidsrc.ru (Directo)", "baseUrl": "https://vidsrcme.ru/embed/"},
@@ -40,7 +35,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     {"name": "VidLink", "baseUrl": "https://vidlink.pro/"},
   ];
 
-  WebUri _generateUrl() {
+  @override
+  void initState() {
+    super.initState();
+    _registerIFrame();
+  }
+
+  void _registerIFrame() {
+    final String url = _generateUrl();
+    // Registramos la vista HTML nativa para saltar las restricciones de Flutter Web
+    ui.platformViewRegistry.registerViewFactory('video-player-view', (
+      int viewId,
+    ) {
+      final iframe = web.HTMLIFrameElement()
+        ..src = url
+        ..style.border = 'none'
+        ..style.width = '100%'
+        ..style.height = '100%'
+        ..allowFullscreen = true;
+
+      // CRÍTICO: Esto soluciona el mensaje "Please Disable Sandbox"
+      iframe.setAttribute('referrerpolicy', 'origin');
+      iframe.setAttribute('allow', 'autoplay; fullscreen; picture-in-picture');
+
+      return iframe;
+    });
+
+    // Simula la carga del buffer
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _isLoading = false);
+    });
+  }
+
+  String _generateUrl() {
     final provider = _providers[_currentProviderIndex];
     final isTV =
         widget.type.toLowerCase().contains('serie') ||
@@ -48,26 +75,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String id = widget.tmdbId ?? widget.imdbId ?? "";
     String mediaType = isTV ? "tv" : "movie";
 
-    String rawUrl = "";
-
-    // Lógica específica para Vidsrc.ru que encontraste
+    // Usamos carga directa para evitar el Error 500 del proxy de Railway
     if (provider['name']!.contains("Vidsrc.ru")) {
-      rawUrl =
-          "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
-      // Para este servidor probaremos carga DIRECTA sin proxy para evitar errores 500
-      return WebUri(rawUrl);
+      return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
     }
 
-    // Para los demás, seguimos usando el proxy de Railway
-    if (provider['name'] == "Vidsrc.me" || provider['name'] == "Vidsrc.pro") {
-      rawUrl =
-          "${provider['baseUrl']}$mediaType/$id${isTV ? "/${widget.season}/${widget.episode}" : ""}";
-    } else {
-      rawUrl =
-          "${provider['baseUrl']}$mediaType/$id${isTV ? "/${widget.season}/${widget.episode}" : ""}";
-    }
-
-    return WebUri("$_proxyBaseUrl${Uri.encodeComponent(rawUrl)}");
+    return "${provider['baseUrl']}$mediaType/$id${isTV ? "/${widget.season}/${widget.episode}" : ""}";
   }
 
   @override
@@ -96,13 +109,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       (_currentProviderIndex + 1) % _providers.length;
                   _isLoading = true;
                 });
-                _webViewController?.loadUrl(
-                  urlRequest: URLRequest(
-                    url: _generateUrl(),
-                    // Inyectamos el origen para que el reproductor no pida desactivar Sandbox
-                    headers: {'Referer': 'https://vidsrcme.ru/'},
-                  ),
-                );
+                _registerIFrame();
               },
             ),
           ),
@@ -110,32 +117,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
       body: Stack(
         children: [
-          InAppWebView(
-            initialUrlRequest: URLRequest(
-              url: _generateUrl(),
-              headers: {'Referer': 'https://vidsrcme.ru/'},
-            ),
-            initialSettings: InAppWebViewSettings(
-              javaScriptEnabled: true,
-              allowsInlineMediaPlayback: true,
-              // Usamos un UserAgent de Smart TV para que los scripts de protección sean menos agresivos
-              userAgent:
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-
-              // Configuraciones para saltar bloqueos de CORS
-              allowUniversalAccessFromFileURLs: true,
-              allowFileAccessFromFileURLs: true,
-              mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-
-              // Deshabilitar protecciones de navegación que bloquean el iFrame
-              safeBrowsingEnabled: false,
-              isInspectable: true,
-            ),
-            onWebViewCreated: (controller) => _webViewController = controller,
-            onLoadStop: (controller, url) => setState(() => _isLoading = false),
-            // Importante: No permitir popups que rompan el flujo del video
-            onCreateWindow: (controller, createWindowAction) async => false,
-          ),
+          // Vista nativa que no bloquea localStorage ni cabeceras
+          const HtmlElementView(viewType: 'video-player-view'),
           if (_isLoading)
             const Center(
               child: CircularProgressIndicator(color: Colors.indigoAccent),
