@@ -28,11 +28,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // Lista de proveedores actualizada. Si uno da error de IP, el usuario puede cambiar al siguiente.
+  // Lista de proveedores optimizada para evitar errores de IP y bloqueos
   final List<Map<String, String>> _providers = [
     {"name": "Español (Pro)", "baseUrl": "https://vidsrc.pro/embed/"},
-    {"name": "VidSrc (.su)", "baseUrl": "https://vidsrc.su/embed/"},
-    {"name": "VidSrc (.me)", "baseUrl": "https://vidsrc.me/embed/"},
+    {"name": "VidSrc (V2)", "baseUrl": "https://v2.vidsrc.me/embed/"},
+    {"name": "VidSrc (Cloud)", "baseUrl": "https://vidsrc.cc/vapi/embed/"},
   ];
 
   @override
@@ -44,7 +44,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _registerIFrame() {
     final String url = _generateUrl();
     final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
-    final String viewType = 'player-$contentId-$_currentProviderIndex';
+
+    // ID único para limpiar la instancia previa y evitar solapamiento de audio
+    final String viewType = 'player-${DateTime.now().millisecondsSinceEpoch}';
 
     ui.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
       final iframe = web.HTMLIFrameElement()
@@ -54,10 +56,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ..style.height = '100%'
         ..allowFullscreen = true;
 
-      // "no-referrer" ayuda a que los servidores de video no bloqueen la petición desde localhost o github.io
+      // CAMBIO CLAVE: Usamos 'no-referrer' para que el servidor no bloquee la IP de origen
       iframe.setAttribute('referrerpolicy', 'no-referrer');
 
-      // Permisos esenciales para video y audio
+      // SANDBOX: Permite scripts y carga, pero bloquea popups de "Actualización de Flash"
+      iframe.setAttribute(
+        'sandbox',
+        'allow-forms allow-pointer-lock allow-same-origin allow-scripts allow-top-navigation',
+      );
+
+      // Habilita el acceso al almacenamiento para que el reproductor guarde tu progreso
       iframe.setAttribute(
         'allow',
         'autoplay; fullscreen; picture-in-picture; encrypted-media; storage-access',
@@ -66,7 +74,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return iframe;
     });
 
-    Future.delayed(const Duration(milliseconds: 500), () {
+    Future.delayed(const Duration(milliseconds: 600), () {
       if (mounted) setState(() => _isLoading = false);
     });
   }
@@ -78,39 +86,46 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         widget.type.toLowerCase().contains('tv');
     String id = widget.tmdbId ?? widget.imdbId ?? "";
 
+    // Formato específico para VidSrc.pro (Audio Español: Omen/Gekko)
     if (provider['name'] == "Español (Pro)") {
-      // Formato específico de vidsrc.pro: /embed/movie/ID o /embed/tv/ID/S/E
       String path = isTV
           ? "tv/$id/${widget.season}/${widget.episode}"
           : "movie/$id";
-      // Forzamos el servidor 'omen' que es el que confirmamos que tiene audio español
       return "${provider['baseUrl']}$path?server=omen&ds_lang=es";
     }
 
-    // Formato estándar para otros proveedores
+    // Formato API para mirrors alternativos
     String mediaType = isTV ? "tv" : "movie";
     return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
   }
 
   @override
   Widget build(BuildContext context) {
-    final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
-    final String currentViewType = 'player-$contentId-$_currentProviderIndex';
+    // Generamos un Key basado en el proveedor para forzar el refresco del widget
+    final String playerKey = 'view-${widget.tmdbId}-$_currentProviderIndex';
+    final String viewType = ui.platformViewRegistry
+        .toString(); // Referencia al factory registrado
 
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           widget.title,
-          style: const TextStyle(color: Colors.white, fontSize: 13),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: ActionChip(
-              backgroundColor: Colors.indigoAccent,
+              backgroundColor: Colors.indigoAccent.withOpacity(0.8),
+              side: BorderSide.none,
               label: Text(
                 _providers[_currentProviderIndex]['name']!,
                 style: const TextStyle(color: Colors.white, fontSize: 11),
@@ -129,9 +144,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
       body: Stack(
         children: [
+          // Usamos un Key dinámico para asegurar que Flutter recree el iFrame al cambiar de servidor
           HtmlElementView(
-            key: ValueKey(currentViewType),
-            viewType: currentViewType,
+            key: UniqueKey(),
+            viewType:
+                'player-${DateTime.now().millisecondsSinceEpoch}', // Debe coincidir con el registrado arriba
           ),
           if (_isLoading)
             const Center(
