@@ -28,11 +28,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // Lista de proveedores actualizada. Si uno da error de IP, el usuario puede cambiar al siguiente.
+  // Priorizamos VidSrc.win para el contenido en español
   final List<Map<String, String>> _providers = [
-    {"name": "Español (Pro)", "baseUrl": "https://vidsrc.pro/embed/"},
-    {"name": "VidSrc (.su)", "baseUrl": "https://vidsrc.su/embed/"},
-    {"name": "VidSrc (.me)", "baseUrl": "https://vidsrc.me/embed/"},
+    {"name": "Español (Omen)", "baseUrl": "https://vidsrc.win/embed/"},
+    {"name": "VidSrc (.ru)", "baseUrl": "https://vsembed.ru/embed/"},
+    {"name": "VidSrc (.su)", "baseUrl": "https://vsembed.su/embed/"},
   ];
 
   @override
@@ -54,10 +54,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ..style.height = '100%'
         ..allowFullscreen = true;
 
-      // "no-referrer" ayuda a que los servidores de video no bloqueen la petición desde localhost o github.io
-      iframe.setAttribute('referrerpolicy', 'no-referrer');
+      // referrerpolicy="origin" es vital para evitar el error "The page is disabled"
+      iframe.setAttribute('referrerpolicy', 'origin');
 
-      // Permisos esenciales para video y audio
+      // Permisos necesarios para que el reproductor gestione el audio y la calidad
       iframe.setAttribute(
         'allow',
         'autoplay; fullscreen; picture-in-picture; encrypted-media; storage-access',
@@ -66,7 +66,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return iframe;
     });
 
-    Future.delayed(const Duration(milliseconds: 500), () {
+    Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) setState(() => _isLoading = false);
     });
   }
@@ -77,18 +77,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         widget.type.toLowerCase().contains('serie') ||
         widget.type.toLowerCase().contains('tv');
     String id = widget.tmdbId ?? widget.imdbId ?? "";
+    String mediaType = isTV ? "tv" : "movie";
 
-    if (provider['name'] == "Español (Pro)") {
-      // Formato específico de vidsrc.pro: /embed/movie/ID o /embed/tv/ID/S/E
-      String path = isTV
-          ? "tv/$id/${widget.season}/${widget.episode}"
-          : "movie/$id";
-      // Forzamos el servidor 'omen' que es el que confirmamos que tiene audio español
-      return "${provider['baseUrl']}$path?server=omen&ds_lang=es";
+    // LÓGICA ESPECÍFICA PARA FORZAR EL SERVIDOR ESPAÑOL
+    if (provider['name'] == "Español (Omen)") {
+      String url = "${provider['baseUrl']}$mediaType?tmdb=$id";
+      if (isTV) url += "&season=${widget.season}&episode=${widget.episode}";
+
+      // 'server=omen' es el alias directo para el audio español que vimos en tu captura
+      // 'ds_lang=es' ayuda a que los subtítulos también carguen en español por defecto
+      return "$url&server=omen&ds_lang=es";
     }
 
-    // Formato estándar para otros proveedores
-    String mediaType = isTV ? "tv" : "movie";
+    // Formato estándar para los otros mirrors oficiales
     return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
   }
 
@@ -102,18 +103,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
         title: Text(
           widget.title,
-          style: const TextStyle(color: Colors.white, fontSize: 13),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: ActionChip(
-              backgroundColor: Colors.indigoAccent,
+              backgroundColor: Colors
+                  .redAccent, // Rojo para resaltar que es el servidor de español
               label: Text(
                 _providers[_currentProviderIndex]['name']!,
-                style: const TextStyle(color: Colors.white, fontSize: 11),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               onPressed: () {
                 setState(() {
@@ -135,7 +146,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           ),
           if (_isLoading)
             const Center(
-              child: CircularProgressIndicator(color: Colors.indigoAccent),
+              child: CircularProgressIndicator(color: Colors.redAccent),
             ),
         ],
       ),
