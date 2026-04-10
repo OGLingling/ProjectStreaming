@@ -1,7 +1,7 @@
 // routes/auth.routes.js
 const express = require('express');
 const router = express.Router();
-const authController = require('../controllers/auth.controller');
+const authController = require('../controllers/auth_controller');
 
 // Mapeo de rutas
 router.post('/send-otp', authController.sendOtp);
