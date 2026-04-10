@@ -28,11 +28,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
+  // Lista actualizada con los nuevos dominios oficiales
   final List<Map<String, String>> _providers = [
-    {"name": "Vidsrc.ru (Directo)", "baseUrl": "https://vidsrcme.ru/embed/"},
+    {"name": "VidSrc (.ru)", "baseUrl": "https://vsembed.ru/embed/"},
+    {"name": "VidSrc (.su)", "baseUrl": "https://vsembed.su/embed/"},
     {"name": "Vidsrc.pro", "baseUrl": "https://vidsrc.pro/embed/"},
     {"name": "Embed.su", "baseUrl": "https://embed.su/embed/"},
-    {"name": "VidLink", "baseUrl": "https://vidlink.pro/"},
   ];
 
   @override
@@ -43,10 +44,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _registerIFrame() {
     final String url = _generateUrl();
-    // Registramos la vista HTML nativa para saltar las restricciones de Flutter Web
-    ui.platformViewRegistry.registerViewFactory('video-player-view', (
-      int viewId,
-    ) {
+    // Usamos una clave única basada en el índice para forzar el refresco del iFrame
+    final String viewType = 'video-player-view-$_currentProviderIndex';
+
+    ui.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
       final iframe = web.HTMLIFrameElement()
         ..src = url
         ..style.border = 'none'
@@ -54,15 +55,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ..style.height = '100%'
         ..allowFullscreen = true;
 
-      // CRÍTICO: Esto soluciona el mensaje "Please Disable Sandbox"
+      // CRÍTICO: referrerpolicy="origin" permite que el sitio cargue fuera de sandbox
       iframe.setAttribute('referrerpolicy', 'origin');
-      iframe.setAttribute('allow', 'autoplay; fullscreen; picture-in-picture');
+      // Permite el uso de almacenamiento local necesario para el reproductor
+      iframe.setAttribute(
+        'allow',
+        'autoplay; fullscreen; picture-in-picture; encrypted-media; storage-access',
+      );
 
       return iframe;
     });
 
-    // Simula la carga del buffer
-    Future.delayed(const Duration(seconds: 2), () {
+    Future.delayed(const Duration(seconds: 1), () {
       if (mounted) setState(() => _isLoading = false);
     });
   }
@@ -75,8 +79,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String id = widget.tmdbId ?? widget.imdbId ?? "";
     String mediaType = isTV ? "tv" : "movie";
 
-    // Usamos carga directa para evitar el Error 500 del proxy de Railway
-    if (provider['name']!.contains("Vidsrc.ru")) {
+    // Formato de URL para los nuevos dominios vsembed
+    if (provider['name']!.contains("VidSrc")) {
       return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
     }
 
@@ -117,8 +121,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
       body: Stack(
         children: [
-          // Vista nativa que no bloquea localStorage ni cabeceras
-          const HtmlElementView(viewType: 'video-player-view'),
+          // Usamos la vista dinámica para evitar que el iFrame anterior se quede pegado
+          HtmlElementView(
+            key: ValueKey('player-$_currentProviderIndex'),
+            viewType: 'video-player-view-$_currentProviderIndex',
+          ),
           if (_isLoading)
             const Center(
               child: CircularProgressIndicator(color: Colors.indigoAccent),
