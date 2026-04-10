@@ -28,12 +28,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // Lista actualizada: VidSrc.win con servidor español añadido
+  // Priorizamos VidSrc.win para el contenido en español
   final List<Map<String, String>> _providers = [
-    {"name": "Español (Win)", "baseUrl": "https://vidsrc.win/embed/"},
+    {"name": "Español (Omen)", "baseUrl": "https://vidsrc.win/embed/"},
     {"name": "VidSrc (.ru)", "baseUrl": "https://vsembed.ru/embed/"},
     {"name": "VidSrc (.su)", "baseUrl": "https://vsembed.su/embed/"},
-    {"name": "Vidsrc.pro", "baseUrl": "https://vidsrc.pro/embed/"},
   ];
 
   @override
@@ -44,8 +43,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _registerIFrame() {
     final String url = _generateUrl();
-
-    // USAMOS EL ID DEL CONTENIDO para que no se quede pegada la serie anterior
     final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
     final String viewType = 'player-$contentId-$_currentProviderIndex';
 
@@ -57,10 +54,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ..style.height = '100%'
         ..allowFullscreen = true;
 
-      // CRÍTICO: referrerpolicy="origin" evita el error "Please Disable Sandbox"
+      // referrerpolicy="origin" es vital para evitar el error "The page is disabled"
       iframe.setAttribute('referrerpolicy', 'origin');
 
-      // Permisos para evitar el "SecurityError" en localStorage
+      // Permisos necesarios para que el reproductor gestione el audio y la calidad
       iframe.setAttribute(
         'allow',
         'autoplay; fullscreen; picture-in-picture; encrypted-media; storage-access',
@@ -69,7 +66,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return iframe;
     });
 
-    Future.delayed(const Duration(seconds: 1), () {
+    Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) setState(() => _isLoading = false);
     });
   }
@@ -82,20 +79,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String id = widget.tmdbId ?? widget.imdbId ?? "";
     String mediaType = isTV ? "tv" : "movie";
 
-    // LÓGICA PARA VIDSRC.WIN (ESPAÑOL)
-    if (provider['name'] == "Español (Win)") {
+    // LÓGICA ESPECÍFICA PARA FORZAR EL SERVIDOR ESPAÑOL
+    if (provider['name'] == "Español (Omen)") {
       String url = "${provider['baseUrl']}$mediaType?tmdb=$id";
       if (isTV) url += "&season=${widget.season}&episode=${widget.episode}";
-      // Forzamos el servidor que viste en la captura
-      return "$url&server=spanish";
+
+      // 'server=omen' es el alias directo para el audio español que vimos en tu captura
+      // 'ds_lang=es' ayuda a que los subtítulos también carguen en español por defecto
+      return "$url&server=omen&ds_lang=es";
     }
 
-    // Formato para los nuevos dominios vsembed
-    if (provider['name']!.contains("VidSrc")) {
-      return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
-    }
-
-    return "${provider['baseUrl']}$mediaType/$id${isTV ? "/${widget.season}/${widget.episode}" : ""}";
+    // Formato estándar para los otros mirrors oficiales
+    return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
   }
 
   @override
@@ -108,18 +103,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
         title: Text(
           widget.title,
-          style: const TextStyle(color: Colors.white, fontSize: 13),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: ActionChip(
-              backgroundColor: Colors.indigoAccent,
+              backgroundColor: Colors
+                  .redAccent, // Rojo para resaltar que es el servidor de español
               label: Text(
                 _providers[_currentProviderIndex]['name']!,
-                style: const TextStyle(color: Colors.white, fontSize: 11),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               onPressed: () {
                 setState(() {
@@ -135,14 +140,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
       body: Stack(
         children: [
-          // HtmlElementView con Key única para limpiar la memoria del navegador
           HtmlElementView(
             key: ValueKey(currentViewType),
             viewType: currentViewType,
           ),
           if (_isLoading)
             const Center(
-              child: CircularProgressIndicator(color: Colors.indigoAccent),
+              child: CircularProgressIndicator(color: Colors.redAccent),
             ),
         ],
       ),
