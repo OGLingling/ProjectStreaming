@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
@@ -28,12 +29,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
+  // Tu proxy sigue siendo útil para ciertos servidores, pero lo usaremos de forma selectiva
   final String _proxyBaseUrl =
       "https://projectstreaming-production.up.railway.app/api/proxy-stream?url=";
 
   final List<Map<String, String>> _providers = [
+    {"name": "Vidsrc.ru (Directo)", "baseUrl": "https://vidsrcme.ru/embed/"},
     {"name": "Vidsrc.pro", "baseUrl": "https://vidsrc.pro/embed/"},
-    {"name": "Vidsrc.me", "baseUrl": "https://vidsrc.me/embed/"},
     {"name": "Embed.su", "baseUrl": "https://embed.su/embed/"},
     {"name": "VidLink", "baseUrl": "https://vidlink.pro/"},
   ];
@@ -47,9 +49,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String mediaType = isTV ? "tv" : "movie";
 
     String rawUrl = "";
-    if (provider['name'] == "Vidsrc.me") {
+
+    // Lógica específica para Vidsrc.ru que encontraste
+    if (provider['name']!.contains("Vidsrc.ru")) {
       rawUrl =
           "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
+      // Para este servidor probaremos carga DIRECTA sin proxy para evitar errores 500
+      return WebUri(rawUrl);
+    }
+
+    // Para los demás, seguimos usando el proxy de Railway
+    if (provider['name'] == "Vidsrc.me" || provider['name'] == "Vidsrc.pro") {
+      rawUrl =
+          "${provider['baseUrl']}$mediaType/$id${isTV ? "/${widget.season}/${widget.episode}" : ""}";
     } else {
       rawUrl =
           "${provider['baseUrl']}$mediaType/$id${isTV ? "/${widget.season}/${widget.episode}" : ""}";
@@ -64,22 +76,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           widget.title,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+          style: const TextStyle(color: Colors.white, fontSize: 14),
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: ActionChip(
               backgroundColor: Colors.indigoAccent,
               label: Text(
-                "Server: ${_providers[_currentProviderIndex]['name']}",
-                style: const TextStyle(color: Colors.white, fontSize: 12),
+                _providers[_currentProviderIndex]['name']!,
+                style: const TextStyle(color: Colors.white, fontSize: 11),
               ),
               onPressed: () {
                 setState(() {
@@ -88,7 +97,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   _isLoading = true;
                 });
                 _webViewController?.loadUrl(
-                  urlRequest: URLRequest(url: _generateUrl()),
+                  urlRequest: URLRequest(
+                    url: _generateUrl(),
+                    // Inyectamos el origen para que el reproductor no pida desactivar Sandbox
+                    headers: {'Referer': 'https://vidsrcme.ru/'},
+                  ),
                 );
               },
             ),
@@ -98,26 +111,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       body: Stack(
         children: [
           InAppWebView(
-            initialUrlRequest: URLRequest(url: _generateUrl()),
+            initialUrlRequest: URLRequest(
+              url: _generateUrl(),
+              headers: {'Referer': 'https://vidsrcme.ru/'},
+            ),
             initialSettings: InAppWebViewSettings(
               javaScriptEnabled: true,
               allowsInlineMediaPlayback: true,
-              // CLAVE: Engaño total de UserAgent para saltar el "Please Disable Sandbox"
+              // Usamos un UserAgent de Smart TV para que los scripts de protección sean menos agresivos
               userAgent:
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
 
-              // CONFIGURACIÓN ANTI-BLOQUEO (CORS y SEGURIDAD)
+              // Configuraciones para saltar bloqueos de CORS
               allowUniversalAccessFromFileURLs: true,
               allowFileAccessFromFileURLs: true,
               mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-              safeBrowsingEnabled:
-                  false, // Evita que Google bloquee el sitio por "sospechoso"
-              // Para versiones 6.0+, esto desactiva restricciones internas de Flutter Web
+
+              // Deshabilitar protecciones de navegación que bloquean el iFrame
+              safeBrowsingEnabled: false,
               isInspectable: true,
             ),
             onWebViewCreated: (controller) => _webViewController = controller,
             onLoadStop: (controller, url) => setState(() => _isLoading = false),
-            // Bloqueo estricto de popups de publicidad que rompen el JS
+            // Importante: No permitir popups que rompan el flujo del video
             onCreateWindow: (controller, createWindowAction) async => false,
           ),
           if (_isLoading)
