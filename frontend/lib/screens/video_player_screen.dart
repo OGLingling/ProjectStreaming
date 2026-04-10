@@ -28,13 +28,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // Guardamos el viewType actual para que coincida exactamente en el registro y en la vista
-  String _currentViewType = '';
-
+  // Lista de proveedores actualizada. Si uno da error de IP, el usuario puede cambiar al siguiente.
   final List<Map<String, String>> _providers = [
     {"name": "Español (Pro)", "baseUrl": "https://vidsrc.pro/embed/"},
-    {"name": "VidSrc (V2)", "baseUrl": "https://v2.vidsrc.me/embed/"},
-    {"name": "VidSrc (Cloud)", "baseUrl": "https://vidsrc.cc/vapi/embed/"},
+    {"name": "VidSrc (.su)", "baseUrl": "https://vidsrc.su/embed/"},
+    {"name": "VidSrc (.me)", "baseUrl": "https://vidsrc.me/embed/"},
   ];
 
   @override
@@ -46,12 +44,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _registerIFrame() {
     final String url = _generateUrl();
     final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
+    final String viewType = 'player-$contentId-$_currentProviderIndex';
 
-    // CORRECCIÓN: Generamos el ID una sola vez aquí
-    _currentViewType =
-        'player-$contentId-${DateTime.now().millisecondsSinceEpoch}';
-
-    ui.platformViewRegistry.registerViewFactory(_currentViewType, (int viewId) {
+    ui.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
       final iframe = web.HTMLIFrameElement()
         ..src = url
         ..style.border = 'none'
@@ -59,16 +54,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ..style.height = '100%'
         ..allowFullscreen = true;
 
-      // 'no-referrer' es vital para evitar el bloqueo de IP
+      // "no-referrer" ayuda a que los servidores de video no bloqueen la petición desde localhost o github.io
       iframe.setAttribute('referrerpolicy', 'no-referrer');
 
-      // Ajuste de Sandbox: 'allow-same-origin' es lo que quita la pantalla negra
-      iframe.setAttribute(
-        'sandbox',
-        'allow-forms allow-pointer-lock allow-same-origin allow-scripts allow-top-navigation',
-      );
-
-      // Permisos para Omen/Gekko
+      // Permisos esenciales para video y audio
       iframe.setAttribute(
         'allow',
         'autoplay; fullscreen; picture-in-picture; encrypted-media; storage-access',
@@ -77,7 +66,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return iframe;
     });
 
-    Future.delayed(const Duration(milliseconds: 600), () {
+    Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) setState(() => _isLoading = false);
     });
   }
@@ -90,38 +79,38 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String id = widget.tmdbId ?? widget.imdbId ?? "";
 
     if (provider['name'] == "Español (Pro)") {
+      // Formato específico de vidsrc.pro: /embed/movie/ID o /embed/tv/ID/S/E
       String path = isTV
           ? "tv/$id/${widget.season}/${widget.episode}"
           : "movie/$id";
-      // El servidor Omen es el que tiene el audio que buscas
+      // Forzamos el servidor 'omen' que es el que confirmamos que tiene audio español
       return "${provider['baseUrl']}$path?server=omen&ds_lang=es";
     }
 
+    // Formato estándar para otros proveedores
     String mediaType = isTV ? "tv" : "movie";
     return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
   }
 
   @override
   Widget build(BuildContext context) {
+    final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
+    final String currentViewType = 'player-$contentId-$_currentProviderIndex';
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           widget.title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(color: Colors.white, fontSize: 13),
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: ActionChip(
-              backgroundColor: Colors.indigoAccent.withOpacity(0.8),
+              backgroundColor: Colors.indigoAccent,
               label: Text(
                 _providers[_currentProviderIndex]['name']!,
                 style: const TextStyle(color: Colors.white, fontSize: 11),
@@ -140,10 +129,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
       body: Stack(
         children: [
-          // Usamos el _currentViewType que guardamos al registrar
           HtmlElementView(
-            key: ValueKey(_currentViewType),
-            viewType: _currentViewType,
+            key: ValueKey(currentViewType),
+            viewType: currentViewType,
           ),
           if (_isLoading)
             const Center(
