@@ -28,7 +28,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // Lista de proveedores optimizada para evitar errores de IP y bloqueos
+  // Guardamos el viewType actual para que coincida exactamente en el registro y en la vista
+  String _currentViewType = '';
+
   final List<Map<String, String>> _providers = [
     {"name": "Español (Pro)", "baseUrl": "https://vidsrc.pro/embed/"},
     {"name": "VidSrc (V2)", "baseUrl": "https://v2.vidsrc.me/embed/"},
@@ -45,10 +47,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final String url = _generateUrl();
     final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
 
-    // ID único para limpiar la instancia previa y evitar solapamiento de audio
-    final String viewType = 'player-${DateTime.now().millisecondsSinceEpoch}';
+    // CORRECCIÓN: Generamos el ID una sola vez aquí
+    _currentViewType =
+        'player-$contentId-${DateTime.now().millisecondsSinceEpoch}';
 
-    ui.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
+    ui.platformViewRegistry.registerViewFactory(_currentViewType, (int viewId) {
       final iframe = web.HTMLIFrameElement()
         ..src = url
         ..style.border = 'none'
@@ -56,16 +59,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ..style.height = '100%'
         ..allowFullscreen = true;
 
-      // CAMBIO CLAVE: Usamos 'no-referrer' para que el servidor no bloquee la IP de origen
+      // 'no-referrer' es vital para evitar el bloqueo de IP
       iframe.setAttribute('referrerpolicy', 'no-referrer');
 
-      // SANDBOX: Permite scripts y carga, pero bloquea popups de "Actualización de Flash"
+      // Ajuste de Sandbox: 'allow-same-origin' es lo que quita la pantalla negra
       iframe.setAttribute(
         'sandbox',
         'allow-forms allow-pointer-lock allow-same-origin allow-scripts allow-top-navigation',
       );
 
-      // Habilita el acceso al almacenamiento para que el reproductor guarde tu progreso
+      // Permisos para Omen/Gekko
       iframe.setAttribute(
         'allow',
         'autoplay; fullscreen; picture-in-picture; encrypted-media; storage-access',
@@ -86,26 +89,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         widget.type.toLowerCase().contains('tv');
     String id = widget.tmdbId ?? widget.imdbId ?? "";
 
-    // Formato específico para VidSrc.pro (Audio Español: Omen/Gekko)
     if (provider['name'] == "Español (Pro)") {
       String path = isTV
           ? "tv/$id/${widget.season}/${widget.episode}"
           : "movie/$id";
+      // El servidor Omen es el que tiene el audio que buscas
       return "${provider['baseUrl']}$path?server=omen&ds_lang=es";
     }
 
-    // Formato API para mirrors alternativos
     String mediaType = isTV ? "tv" : "movie";
     return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
   }
 
   @override
   Widget build(BuildContext context) {
-    // Generamos un Key basado en el proveedor para forzar el refresco del widget
-    final String playerKey = 'view-${widget.tmdbId}-$_currentProviderIndex';
-    final String viewType = ui.platformViewRegistry
-        .toString(); // Referencia al factory registrado
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -125,7 +122,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: ActionChip(
               backgroundColor: Colors.indigoAccent.withOpacity(0.8),
-              side: BorderSide.none,
               label: Text(
                 _providers[_currentProviderIndex]['name']!,
                 style: const TextStyle(color: Colors.white, fontSize: 11),
@@ -144,11 +140,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
       body: Stack(
         children: [
-          // Usamos un Key dinámico para asegurar que Flutter recree el iFrame al cambiar de servidor
+          // Usamos el _currentViewType que guardamos al registrar
           HtmlElementView(
-            key: UniqueKey(),
-            viewType:
-                'player-${DateTime.now().millisecondsSinceEpoch}', // Debe coincidir con el registrado arriba
+            key: ValueKey(_currentViewType),
+            viewType: _currentViewType,
           ),
           if (_isLoading)
             const Center(
