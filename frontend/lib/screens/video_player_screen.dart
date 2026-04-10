@@ -28,12 +28,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // Lista actualizada con los nuevos dominios oficiales
+  // Lista actualizada: VidSrc.win con servidor español añadido
   final List<Map<String, String>> _providers = [
+    {"name": "Español (Win)", "baseUrl": "https://vidsrc.win/embed/"},
     {"name": "VidSrc (.ru)", "baseUrl": "https://vsembed.ru/embed/"},
     {"name": "VidSrc (.su)", "baseUrl": "https://vsembed.su/embed/"},
     {"name": "Vidsrc.pro", "baseUrl": "https://vidsrc.pro/embed/"},
-    {"name": "Embed.su", "baseUrl": "https://embed.su/embed/"},
   ];
 
   @override
@@ -44,8 +44,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _registerIFrame() {
     final String url = _generateUrl();
-    // Usamos una clave única basada en el índice para forzar el refresco del iFrame
-    final String viewType = 'video-player-view-$_currentProviderIndex';
+
+    // USAMOS EL ID DEL CONTENIDO para que no se quede pegada la serie anterior
+    final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
+    final String viewType = 'player-$contentId-$_currentProviderIndex';
 
     ui.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
       final iframe = web.HTMLIFrameElement()
@@ -55,9 +57,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ..style.height = '100%'
         ..allowFullscreen = true;
 
-      // CRÍTICO: referrerpolicy="origin" permite que el sitio cargue fuera de sandbox
+      // CRÍTICO: referrerpolicy="origin" evita el error "Please Disable Sandbox"
       iframe.setAttribute('referrerpolicy', 'origin');
-      // Permite el uso de almacenamiento local necesario para el reproductor
+
+      // Permisos para evitar el "SecurityError" en localStorage
       iframe.setAttribute(
         'allow',
         'autoplay; fullscreen; picture-in-picture; encrypted-media; storage-access',
@@ -79,7 +82,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String id = widget.tmdbId ?? widget.imdbId ?? "";
     String mediaType = isTV ? "tv" : "movie";
 
-    // Formato de URL para los nuevos dominios vsembed
+    // LÓGICA PARA VIDSRC.WIN (ESPAÑOL)
+    if (provider['name'] == "Español (Win)") {
+      String url = "${provider['baseUrl']}$mediaType?tmdb=$id";
+      if (isTV) url += "&season=${widget.season}&episode=${widget.episode}";
+      // Forzamos el servidor que viste en la captura
+      return "$url&server=spanish";
+    }
+
+    // Formato para los nuevos dominios vsembed
     if (provider['name']!.contains("VidSrc")) {
       return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
     }
@@ -89,6 +100,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
+    final String currentViewType = 'player-$contentId-$_currentProviderIndex';
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -96,7 +110,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           widget.title,
-          style: const TextStyle(color: Colors.white, fontSize: 14),
+          style: const TextStyle(color: Colors.white, fontSize: 13),
         ),
         actions: [
           Padding(
@@ -121,10 +135,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
       body: Stack(
         children: [
-          // Usamos la vista dinámica para evitar que el iFrame anterior se quede pegado
+          // HtmlElementView con Key única para limpiar la memoria del navegador
           HtmlElementView(
-            key: ValueKey('player-$_currentProviderIndex'),
-            viewType: 'video-player-view-$_currentProviderIndex',
+            key: ValueKey(currentViewType),
+            viewType: currentViewType,
           ),
           if (_isLoading)
             const Center(
