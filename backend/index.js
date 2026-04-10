@@ -7,6 +7,7 @@ const cors = require('cors');
 const movieRoutes = require('./routes/movie_routes');
 const authRoutes = require('./routes/auth_routes');
 const adminRoutes = require('./routes/admin_routes');
+const authController = require('./controllers/auth_controller');
 
 const app = express();
 
