@@ -2,10 +2,14 @@ const axios = require('axios');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// Configuración de TMDB
 const TMDB_API_KEY = 'd8a00b94f5c00821e497b569fec9a61f'; 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// --- ENRICH DATA (Mantiene la lógica pero ahora recibe el objeto completo) ---
+/**
+ * Enriquece los datos básicos de la base de datos con información 
+ * en tiempo real de TMDB (Posters, Backdrops, Ratings actualizados).
+ */
 async function enrichMovieData(movie) {
     const identifier = movie.tmdbId || movie.imdbId;
     if (!identifier) return movie;
@@ -26,7 +30,7 @@ async function enrichMovieData(movie) {
 
         if (data) {
             return {
-                ...movie,
+                ...movie, // Mantiene seasons y episodes traídos por Prisma
                 title: data.title || data.name || movie.title,
                 description: data.overview || movie.description,
                 imageUrl: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : movie.imageUrl,
@@ -35,16 +39,20 @@ async function enrichMovieData(movie) {
             };
         }
     } catch (error) {
-        console.error(`[TMDB Silent Error] ID ${identifier}:`, error.message);
+        console.error(`[TMDB Enriquecimiento Fallido] ID ${identifier}:`, error.message);
     }
     return movie;
 }
 
-// --- GET MOVIES (Aquí incluimos las relaciones) ---
+/**
+ * Obtiene el catálogo de películas y series con sus respectivas 
+ * temporadas y episodios anidados.
+ */
 exports.getMovies = async (req, res) => {
     const { type } = req.query;
     try {
         let whereCondition = {};
+        
         if (type) {
             const normalizedType = type.toLowerCase().trim().replace('s', '');
             whereCondition = {
@@ -55,37 +63,48 @@ exports.getMovies = async (req, res) => {
             };
         }
 
-        // CAMBIO CRÍTICO: Añadimos 'include' para traer temporadas y episodios
+        // CONSULTA MAESTRA: Trae la película + Temporadas + Episodios
         const content = await prisma.movie.findMany({
             where: whereCondition,
             include: {
                 seasons: {
                     include: {
-                        episodes: true // Trae todos los episodios de cada temporada
+                        episodes: {
+                            orderBy: {
+                                episodeNumber: 'asc' // Ordena episodios: 1, 2, 3...
+                            }
+                        }
                     },
                     orderBy: {
-                        seasonNumber: 'asc' // Ordenar temporadas: 1, 2, 3...
+                        seasonNumber: 'asc' // Ordena temporadas: 1, 2, 3...
                     }
                 }
             },
             orderBy: { createdAt: 'desc' }
         });
 
+        // Enriquecemos cada película/serie con datos de TMDB de forma paralela
         const enrichedContent = await Promise.all(
             content.map(movie => enrichMovieData(movie))
         );
 
         res.json(enrichedContent);
     } catch (error) {
-        console.error("Error en GET /api/movies:", error);
-        res.status(500).json({ error: "Error al cargar contenido" });
+        console.error("Error crítico en GET /api/movies:", error);
+        res.status(500).json({ 
+            error: "Error interno al cargar el catálogo",
+            details: error.message 
+        });
     }
 };
 
-// --- PROXY STREAM (Sin cambios) ---
+/**
+ * Proxy para el reproductor de video para evitar bloqueos de CORS 
+ * y manejar rutas relativas de scripts/estilos.
+ */
 exports.proxyStream = async (req, res) => {
     const targetUrl = req.query.url;
-    if (!targetUrl) return res.status(400).send("Falta la URL");
+    if (!targetUrl) return res.status(400).send("URL de streaming requerida");
 
     try {
         const response = await axios.get(targetUrl, {
@@ -94,22 +113,25 @@ exports.proxyStream = async (req, res) => {
                 'Referer': new URL(targetUrl).origin,
                 'Origin': new URL(targetUrl).origin
             },
-            timeout: 12000 
+            timeout: 15000 
         });
 
         res.set('Content-Type', 'text/html');
         let html = response.data;
         const origin = new URL(targetUrl).origin;
+        
+        // Inyectamos la etiqueta <base> para que los assets del iframe carguen correctamente
         html = html.replace('<head>', `<head><base href="${origin}/">`);
+        
         res.send(html);
 
     } catch (error) {
-        console.error("Proxy Error:", error.message);
+        console.error("Error en Proxy Stream:", error.message);
         res.status(200).send(`
-            <body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
-                <div style="text-align:center;font-family:sans-serif;">
-                    <p>El servidor de video no respondió a tiempo.</p>
-                    <button onclick="window.location.reload()" style="background:#E50914;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-weight:bold;">REINTENTAR</button>
+            <body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;">
+                <div style="text-align:center;">
+                    <p style="font-size: 1.2rem;">El servidor de video no está disponible en este momento.</p>
+                    <button onclick="window.location.reload()" style="background:#E50914;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-weight:bold;margin-top:10px;">REINTENTAR</button>
                 </div>
             </body>
         `);
