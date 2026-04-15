@@ -28,8 +28,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
+  // Lista actualizada: VidSrc (.ru) ahora es el principal
   final List<Map<String, String>> _providers = [
-    {"name": "Español (Omen)", "baseUrl": "https://vidsrc.win/embed/"},
     {"name": "VidSrc (.ru)", "baseUrl": "https://vsembed.ru/embed/"},
     {"name": "VidSrc (.su)", "baseUrl": "https://vsembed.su/embed/"},
   ];
@@ -40,7 +40,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _initPlayer();
   }
 
-  // ESTE MÉTODO ES VITAL: Detecta cuando cambias de episodio/temporada desde afuera
   @override
   void didUpdateWidget(covariant VideoPlayerScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -55,7 +54,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() => _isLoading = true);
     _registerIFrame();
 
-    // Pequeño delay para asegurar que el DOM registre la nueva factory
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) setState(() => _isLoading = false);
     });
@@ -65,7 +63,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final String url = _generateUrl();
     final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
 
-    // Incluimos temporada y episodio en el ID de la vista para forzar el refresco total
     final String viewType =
         'player-$contentId-S${widget.season}-E${widget.episode}-$_currentProviderIndex';
 
@@ -95,19 +92,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String id = widget.tmdbId ?? widget.imdbId ?? "";
     String mediaType = isTV ? "tv" : "movie";
 
-    if (provider['name'] == "Español (Omen)") {
-      String url = "${provider['baseUrl']}$mediaType?tmdb=$id";
-      if (isTV) url += "&season=${widget.season}&episode=${widget.episode}";
-      return "$url&server=omen&ds_lang=es";
-    }
-
+    // Lógica simplificada para los proveedores restantes
     return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
   }
 
   @override
   Widget build(BuildContext context) {
     final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
-    // La ViewType debe coincidir exactamente con la registrada en _registerIFrame
     final String currentViewType =
         'player-$contentId-S${widget.season}-E${widget.episode}-$_currentProviderIndex';
 
@@ -140,9 +131,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 style: const TextStyle(color: Colors.white, fontSize: 11),
               ),
               onPressed: () {
-                _currentProviderIndex =
-                    (_currentProviderIndex + 1) % _providers.length;
-                _initPlayer();
+                setState(() {
+                  _currentProviderIndex =
+                      (_currentProviderIndex + 1) % _providers.length;
+                  _initPlayer();
+                });
               },
             ),
           ),
@@ -150,7 +143,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
       body: Stack(
         children: [
-          // ValueKey es CRÍTICO para que Flutter sepa que el widget cambió
           HtmlElementView(
             key: ValueKey(currentViewType),
             viewType: currentViewType,
