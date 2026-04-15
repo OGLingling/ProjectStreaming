@@ -5,13 +5,16 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('--- Iniciando limpieza total ---')
   try {
-    await prisma.movie.deleteMany()
+    // IMPORTANTE: Al borrar Content, el OnDelete: Cascade 
+    // borrará automáticamente Seasons y Episodes.
+    await prisma.content.deleteMany()
+    console.log('✅ Base de datos limpiada.')
   } catch (e) {
-    console.log('No había registros previos.')
+    console.log('No había registros previos o la tabla no existe aún.')
   }
 
   const seriesYpeliculas = [
-    // --- SERIES DE TV (Basado en ratings reales de TMDB/IMDb) ---
+    // --- SERIES DE TV ---
     {
       tmdbId: "76479",
       title: "The Boys",
@@ -54,7 +57,7 @@ async function main() {
       type: "tv",
       category: "Drama",
       releaseDate: "2025-03-04",
-      rating: 8.80, // Estimado por crítica inicial
+      rating: 8.80,
     },
     {
       tmdbId: "37854",
@@ -111,7 +114,7 @@ async function main() {
       type: "movie",
       category: "Adventure",
       releaseDate: "2026-04-01",
-      rating: 7.8, // Estimado
+      rating: 7.8,
     },
     {
       tmdbId: "936075",
@@ -122,7 +125,7 @@ async function main() {
       type: "movie",
       category: "Music",
       releaseDate: "2026-04-22",
-      rating: 8.5, // Altas expectativas
+      rating: 8.5,
     },
     {
       tmdbId: "83533",
@@ -151,8 +154,9 @@ async function main() {
   console.log(`--- Insertando ${seriesYpeliculas.length} registros ---`)
 
   for (const item of seriesYpeliculas) {
-    const res = await prisma.movie.create({ data: item })
-    console.log(`✅ Creado: ${res.title} (Rating: ${res.rating})`)
+    // CAMBIO: Ahora usamos prisma.content
+    const res = await prisma.content.create({ data: item })
+    console.log(`✅ Creado: ${res.title} (Tipo: ${res.type})`)
   }
 
   console.log('--- SEED FINALIZADO CON ÉXITO ---')

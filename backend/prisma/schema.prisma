@@ -7,10 +7,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Movie {
+model Content {
   id           Int      @id @default(autoincrement())
   tmdbId       String?  @unique @map("tmdb_id")
-  imdbId       String?  @unique @map("imdb_id") 
   title        String
   description  String?  @db.Text
   releaseDate  String?
@@ -18,19 +17,60 @@ model Movie {
   // Visuales
   imageUrl     String?
   backdropUrl  String?
-  
-  // NUEVO: Campo para el trailer de YouTube
   trailerUrl   String?  @map("trailer_url")
   
-  // Clasificación
+  // Clasificación y Tipo
   category     String?
-  type         String   @default("movie")
+  type         String   @default("movie") // "movie" o "tv"
   rating       Float    @default(0.0)
   
+  // Relaciones
+  seasons      Season[]
+  watchlist    Watchlist[] // Relación con "Mi Lista"
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt 
 
   @@index([title]) 
+}
+
+// Modelo para "Mi Lista" (Antes Favoritos)
+model Watchlist {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  contentId Int
+  content   Content  @relation(fields: [contentId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, contentId]) // Evita duplicados en la lista
+}
+
+model Season {
+  id           Int       @id @default(autoincrement())
+  seasonNumber Int
+  title        String?
+  tmdbId       String?   @unique @map("tmdb_id")
+  
+  contentId    Int
+  content      Content   @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  episodes     Episode[]
+
+  createdAt    DateTime  @default(now())
+}
+
+model Episode {
+  id            Int      @id @default(autoincrement())
+  episodeNumber Int
+  title         String
+  description   String?  @db.Text
+  stillPath     String?
+  
+  seasonId      Int
+  season        Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
 }
 
 enum PlanType {
@@ -55,4 +95,5 @@ model User {
   maturityLevel     String  @default("18+")
   subtitleSize      String  @default("medium")
   autoPlay          Boolean @default(true)
+  myList        Watchlist[]
 }

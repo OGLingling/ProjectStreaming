@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/movie_model.dart';
 import 'video_player_screen.dart';
+// Importa tu servicio de API aquí (ej: import '../services/api_service.dart';)
 
 class MovieDetailsScreen extends StatefulWidget {
   final Movie movie;
@@ -15,33 +16,77 @@ class MovieDetailsScreen extends StatefulWidget {
 }
 
 class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
-  // Lógica de navegación pro: Maneja ambos IDs y tipos de contenido
-  void _navigateToPlayer(BuildContext context) {
-    final String? tmdbId = widget.movie.tmdbId?.toString();
-    final String? imdbId = widget.movie.imdbId;
+  int _selectedSeasonIndex = 0;
+  bool _isInWatchlist = false; // Estado local para "Mi Lista"
+  bool _isLoadingWatchlist = false;
 
-    if (tmdbId != null || imdbId != null) {
+  @override
+  void initState() {
+    super.initState();
+    // Aquí deberías llamar a una función que verifique si ya está en la lista
+    // _checkIfInWatchlist();
+  }
+
+  // --- LÓGICA DE NAVEGACIÓN ---
+  void _navigateToPlayer({int season = 1, int episode = 1}) {
+    final String? tmdbId = widget.movie.tmdbId?.toString();
+
+    if (tmdbId != null) {
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => VideoPlayerScreen(
             tmdbId: tmdbId,
-            imdbId: imdbId,
             title: widget.movie.title,
-            type: widget.movie.type ?? 'movie',
+            type: widget.movie.type,
+            season: season,
+            episode: episode,
           ),
         ),
       );
     } else {
-      _showErrorSnackBar(context, "Contenido no disponible temporalmente.");
+      _showSnackBar("Contenido no disponible.", Colors.redAccent);
     }
   }
 
-  void _showErrorSnackBar(BuildContext context, String message) {
+  // --- LÓGICA DE MI LISTA (Toggle) ---
+  Future<void> _toggleWatchlist() async {
+    if (widget.user == null) {
+      _showSnackBar(
+        "Inicia sesión para guardar favoritos",
+        Colors.orangeAccent,
+      );
+      return;
+    }
+
+    setState(() => _isLoadingWatchlist = true);
+
+    try {
+      // Simulación de llamada al backend (Prisma)
+      // final response = await ApiService.toggleWatchlist(widget.user!['id'], widget.movie.id);
+
+      await Future.delayed(const Duration(milliseconds: 500)); // Simulación
+      setState(() {
+        _isInWatchlist = !_isInWatchlist;
+        _isLoadingWatchlist = false;
+      });
+
+      _showSnackBar(
+        _isInWatchlist ? "Añadido a Mi Lista" : "Eliminado de Mi Lista",
+        _isInWatchlist ? Colors.green : Colors.grey[800]!,
+      );
+    } catch (e) {
+      setState(() => _isLoadingWatchlist = false);
+      _showSnackBar("Error al actualizar la lista", Colors.redAccent);
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: Colors.redAccent,
+        content: Text(message),
+        backgroundColor: color,
+        duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -50,200 +95,37 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+    final isTV = widget.movie.type == 'tv';
 
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // Header con efecto de colapso profesional
-          SliverAppBar(
-            expandedHeight: size.height * 0.45,
-            backgroundColor: const Color(0xFF141414),
-            elevation: 0,
-            pinned: true,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Hero Image
-                  Image.network(
-                    widget.movie.backdropUrl ?? widget.movie.imageUrl ?? '',
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        Container(color: Colors.grey[900]),
-                  ),
-                  // Gradiente dinámico (Netflix signature)
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black54,
-                          Colors.transparent,
-                          Color(0xFF141414),
-                        ],
-                        stops: [0.0, 0.5, 1.0],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Contenido de la información
+          _buildSliverAppBar(size),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 12),
-                  // Título principal
-                  Text(
-                    widget.movie.title,
-                    style: GoogleFonts.roboto(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Fila de Metadatos (Año, Calificación, Calidad)
-                  Row(
-                    children: [
-                      Text(
-                        widget.movie.releaseDate?.substring(0, 4) ?? "2024",
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[800],
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                        child: const Text(
-                          "16+",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        "4K Ultra HD",
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
-                      ),
-                    ],
-                  ),
+                  _buildHeaderInfo(),
                   const SizedBox(height: 20),
-
-                  // BOTÓN REPRODUCIR (Primario)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _navigateToPlayer(context),
-                      icon: const Icon(Icons.play_arrow, size: 30),
-                      label: const Text(
-                        "Reproducir",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-
-                  // BOTÓN DESCARGAR (Secundario)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showErrorSnackBar(
-                        context,
-                        "Función de descarga no disponible.",
-                      ),
-                      icon: const Icon(Icons.download, size: 24),
-                      label: const Text(
-                        "Descargar",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey[850],
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildPrimaryButtons(),
                   const SizedBox(height: 20),
+                  _buildDescription(),
+                  const SizedBox(height: 25),
+                  _buildActionRow(),
+                  const SizedBox(height: 30),
 
-                  // Sinopsis
-                  Text(
-                    widget.movie.description ?? 'Sin descripción disponible.',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-
-                  // Información de Cast/Género
-                  RichText(
-                    text: TextSpan(
-                      style: const TextStyle(color: Colors.grey, fontSize: 13),
-                      children: [
-                        const TextSpan(
-                          text: "Géneros: ",
-                          style: TextStyle(color: Colors.white60),
-                        ),
-                        TextSpan(
-                          text: widget.movie.category ?? 'Acción, Drama',
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-
-                  // Fila de acciones sociales
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildActionButton(Icons.add, "Mi lista"),
-                      _buildActionButton(
-                        Icons.thumb_up_alt_outlined,
-                        "Calificar",
-                      ),
-                      _buildActionButton(Icons.share, "Compartir"),
-                    ],
-                  ),
+                  // SECCIÓN DE TEMPORADAS Y EPISODIOS
+                  if (isTV &&
+                      widget.movie.seasons != null &&
+                      widget.movie.seasons!.isNotEmpty) ...[
+                    _buildSeasonSelector(),
+                    const SizedBox(height: 15),
+                    _buildEpisodesList(),
+                  ],
                   const SizedBox(height: 50),
                 ],
               ),
@@ -254,14 +136,261 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
     );
   }
 
-  Widget _buildActionButton(IconData icon, String label) {
+  // --- COMPONENTES DE LA INTERFAZ ---
+
+  Widget _buildSliverAppBar(Size size) {
+    return SliverAppBar(
+      expandedHeight: size.height * 0.40,
+      pinned: true,
+      backgroundColor: const Color(0xFF141414),
+      flexibleSpace: FlexibleSpaceBar(
+        background: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              widget.movie.backdropUrl ?? widget.movie.imageUrl ?? '',
+              fit: BoxFit.cover,
+            ),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black54,
+                    Colors.transparent,
+                    Color(0xFF141414),
+                  ],
+                  stops: [0.0, 0.6, 1.0],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderInfo() {
     return Column(
-      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: Colors.white, size: 28),
+        Text(
+          widget.movie.title,
+          style: GoogleFonts.roboto(
+            color: Colors.white,
+            fontSize: 26,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 8),
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        Row(
+          children: [
+            Text(
+              widget.movie.releaseDate.substring(0, 4),
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(width: 15),
+            _buildBadge("16+"),
+            const SizedBox(width: 15),
+            Text(
+              "${widget.movie.rating.toStringAsFixed(1)} ★",
+              style: const TextStyle(color: Colors.amber),
+            ),
+          ],
+        ),
       ],
+    );
+  }
+
+  Widget _buildBadge(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.grey[800],
+        borderRadius: BorderRadius.circular(2),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrimaryButtons() {
+    return Column(
+      children: [
+        _buildLargeButton(
+          onTap: () => _navigateToPlayer(),
+          icon: Icons.play_arrow,
+          label: "Reproducir",
+          isPrimary: true,
+        ),
+        const SizedBox(height: 10),
+        _buildLargeButton(
+          onTap: () {},
+          icon: Icons.download,
+          label: "Descargar",
+          isPrimary: false,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLargeButton({
+    required VoidCallback onTap,
+    required IconData icon,
+    required String label,
+    required bool isPrimary,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      height: 45,
+      child: ElevatedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, color: isPrimary ? Colors.black : Colors.white),
+        label: Text(
+          label,
+          style: TextStyle(
+            color: isPrimary ? Colors.black : Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isPrimary ? Colors.white : Colors.grey[850],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDescription() {
+    return Text(
+      widget.movie.description ?? 'Sin sinopsis disponible.',
+      style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
+    );
+  }
+
+  Widget _buildActionRow() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildActionButton(
+          icon: _isLoadingWatchlist
+              ? Icons.refresh
+              : (_isInWatchlist ? Icons.check : Icons.add),
+          label: "Mi lista",
+          onTap: _isLoadingWatchlist ? null : _toggleWatchlist,
+          color: _isInWatchlist ? Colors.redAccent : Colors.white,
+        ),
+        _buildActionButton(
+          icon: Icons.thumb_up_alt_outlined,
+          label: "Calificar",
+          onTap: () {},
+        ),
+        _buildActionButton(icon: Icons.share, label: "Compartir", onTap: () {}),
+      ],
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+    Color color = Colors.white,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 26),
+          const SizedBox(height: 6),
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+
+  // --- SELECTOR DE TEMPORADAS ---
+  Widget _buildSeasonSelector() {
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<int>(
+        value: _selectedSeasonIndex,
+        dropdownColor: Colors.grey[900],
+        items: List.generate(widget.movie.seasons!.length, (index) {
+          return DropdownMenuItem(
+            value: index,
+            child: Text(
+              "Temporada ${widget.movie.seasons![index].seasonNumber}",
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          );
+        }),
+        onChanged: (val) => setState(() => _selectedSeasonIndex = val!),
+      ),
+    );
+  }
+
+  // --- LISTA DE EPISODIOS ---
+  Widget _buildEpisodesList() {
+    final episodes = widget.movie.seasons![_selectedSeasonIndex].episodes ?? [];
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: episodes.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 15),
+      itemBuilder: (context, index) {
+        final ep = episodes[index];
+        return InkWell(
+          onTap: () => _navigateToPlayer(
+            season: widget.movie.seasons![_selectedSeasonIndex].seasonNumber,
+            episode: ep.episodeNumber,
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.network(
+                  ep.stillPath ?? widget.movie.imageUrl ?? '',
+                  width: 120,
+                  height: 70,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      Container(width: 120, height: 70, color: Colors.white10),
+                ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "${ep.episodeNumber}. ${ep.title}",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const Text(
+                      "45 min",
+                      style: TextStyle(color: Colors.white38, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.play_circle_outline, color: Colors.white70),
+            ],
+          ),
+        );
+      },
     );
   }
 }
