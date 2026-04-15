@@ -45,6 +45,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
             movies = allContent.where((m) => m.type == 'movie').toList();
             series = allContent.where((m) => m.type == 'tv').toList();
 
+            // Lógica de respaldo por si la API no devuelve tipos claros
             if (series.isEmpty && allContent.length > 5) {
               series = allContent.sublist(allContent.length ~/ 2);
             }
@@ -61,7 +62,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
         }
       }
     } catch (e) {
-      debugPrint("Error: $e");
+      debugPrint("Error al cargar datos: $e");
     }
   }
 
@@ -88,6 +89,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+    final bool isMobile = size.width < 600;
 
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
@@ -96,22 +98,25 @@ class _MoviesScreenState extends State<MoviesScreen> {
           : ListView(
               padding: EdgeInsets.zero,
               children: [
-                _buildAutoCarousel(size),
-                const SizedBox(height: 30),
-                _buildSection("Películas para ti", movies),
-                const SizedBox(height: 30),
-                _buildSection("Series Populares", series),
+                _buildAutoCarousel(size, isMobile),
+                SizedBox(height: isMobile ? 15 : 30),
+                _buildSection("Películas para ti", movies, isMobile),
+                SizedBox(height: isMobile ? 15 : 30),
+                _buildSection("Series Populares", series, isMobile),
                 const SizedBox(height: 100),
               ],
             ),
     );
   }
 
-  // --- DISEÑO DE BANNER ACTUALIZADO (ESTILO SEGUNDA FOTO) ---
-  Widget _buildAutoCarousel(Size size) {
+  Widget _buildAutoCarousel(Size size, bool isMobile) {
     if (topRatedMovies.isEmpty) return const SizedBox.shrink();
+
+    // Altura ajustada para no dominar todo el scroll en móvil
+    final carouselHeight = isMobile ? size.height * 0.65 : size.height * 0.80;
+
     return SizedBox(
-      height: size.height * 0.75,
+      height: carouselHeight,
       child: Stack(
         children: [
           PageView.builder(
@@ -123,30 +128,35 @@ class _MoviesScreenState extends State<MoviesScreen> {
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(movie.backdropUrl ?? '', fit: BoxFit.cover),
+                  // En móvil usamos el póster vertical para mejor impacto visual
+                  Image.network(
+                    isMobile
+                        ? (movie.imageUrl ?? '')
+                        : (movie.backdropUrl ?? ''),
+                    fit: BoxFit.cover,
+                  ),
 
-                  // Gradiente profundo para estilo cinematográfico
+                  // Gradiente dinámico
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.black.withOpacity(0.3),
+                          Colors.black.withOpacity(0.2),
                           Colors.transparent,
-                          Colors.black.withOpacity(0.7),
+                          Colors.black.withOpacity(0.8),
                           const Color(0xFF141414),
                         ],
-                        stops: const [0.0, 0.3, 0.8, 1.0],
+                        stops: const [0.0, 0.4, 0.8, 1.0],
                       ),
                     ),
                   ),
 
-                  // Contenido Centralizado
                   Positioned(
-                    bottom: 60,
-                    left: 0,
-                    right: 0,
+                    bottom: isMobile ? 40 : 60,
+                    left: 20,
+                    right: 20,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -155,36 +165,38 @@ class _MoviesScreenState extends State<MoviesScreen> {
                           textAlign: TextAlign.center,
                           style: GoogleFonts.bebasNeue(
                             color: Colors.white,
-                            fontSize: 75,
+                            fontSize: isMobile ? 45 : 80,
                             letterSpacing: 2,
+                            height: 1.1,
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
 
-                        // Badge de calificación
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.stars,
                               color: Colors.blueAccent,
-                              size: 20,
+                              size: isMobile ? 16 : 22,
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             Text(
-                              "${movie.rating} | Top de la Semana",
-                              style: const TextStyle(
+                              "${movie.rating} | Destacado",
+                              style: TextStyle(
                                 color: Colors.white,
-                                fontSize: 16,
+                                fontSize: isMobile ? 13 : 17,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 25),
+                        SizedBox(height: isMobile ? 20 : 30),
 
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          alignment: WrapAlignment.center,
                           children: [
                             _netflixButton(
                               Icons.play_arrow,
@@ -192,14 +204,15 @@ class _MoviesScreenState extends State<MoviesScreen> {
                               Colors.white,
                               Colors.black,
                               movie,
+                              isMobile,
                             ),
-                            const SizedBox(width: 20),
                             _netflixButton(
                               Icons.info_outline,
-                              "Más detalles",
+                              "Detalles",
                               Colors.white.withOpacity(0.2),
                               Colors.white,
                               movie,
+                              isMobile,
                             ),
                           ],
                         ),
@@ -211,9 +224,9 @@ class _MoviesScreenState extends State<MoviesScreen> {
             },
           ),
 
-          // Indicadores de carrusel (Puntos)
+          // Paginación (Dots)
           Positioned(
-            bottom: 20,
+            bottom: 15,
             left: 0,
             right: 0,
             child: Row(
@@ -224,9 +237,11 @@ class _MoviesScreenState extends State<MoviesScreen> {
                   duration: const Duration(milliseconds: 300),
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                   height: 4,
-                  width: _currentPage == index ? 20 : 8,
+                  width: _currentPage == index ? 22 : 8,
                   decoration: BoxDecoration(
-                    color: _currentPage == index ? Colors.red : Colors.grey,
+                    color: _currentPage == index
+                        ? Colors.red
+                        : Colors.grey.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -244,17 +259,18 @@ class _MoviesScreenState extends State<MoviesScreen> {
     Color bg,
     Color textCol,
     Movie movie,
+    bool isMobile,
   ) {
     return SizedBox(
-      height: 48, // Un poco más de altura para comodidad táctil
+      height: isMobile ? 42 : 50,
       child: ElevatedButton.icon(
         onPressed: () => _navigateToDetails(movie),
-        icon: Icon(icon, color: textCol, size: 24),
+        icon: Icon(icon, color: textCol, size: isMobile ? 20 : 26),
         label: Text(
           text,
           style: TextStyle(
             color: textCol,
-            fontSize: 15,
+            fontSize: isMobile ? 14 : 16,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -262,10 +278,46 @@ class _MoviesScreenState extends State<MoviesScreen> {
           backgroundColor: bg,
           foregroundColor: textCol,
           elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 25),
+          padding: EdgeInsets.symmetric(horizontal: isMobile ? 20 : 30),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
         ),
       ),
+    );
+  }
+
+  Widget _buildSection(String title, List<Movie> list, bool isMobile) {
+    if (list.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 15 : 40,
+            vertical: 10,
+          ),
+          child: Text(
+            title,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: isMobile ? 20 : 26,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: isMobile ? 190 : 260,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.symmetric(horizontal: isMobile ? 15 : 40),
+            itemCount: list.length,
+            itemBuilder: (context, i) => MovieCard(
+              movie: list[i],
+              onDetail: () => _navigateToDetails(list[i]),
+              isMobile: isMobile,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -275,37 +327,6 @@ class _MoviesScreenState extends State<MoviesScreen> {
       MaterialPageRoute(
         builder: (c) => MovieDetailsScreen(movie: movie, user: widget.user),
       ),
-    );
-  }
-
-  Widget _buildSection(String title, List<Movie> list) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 10),
-          child: Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        SizedBox(
-          height: 250,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            itemCount: list.length,
-            itemBuilder: (context, i) => MovieCard(
-              movie: list[i],
-              onDetail: () => _navigateToDetails(list[i]),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -320,7 +341,13 @@ class _MoviesScreenState extends State<MoviesScreen> {
 class MovieCard extends StatefulWidget {
   final Movie movie;
   final VoidCallback onDetail;
-  const MovieCard({super.key, required this.movie, required this.onDetail});
+  final bool isMobile;
+  const MovieCard({
+    super.key,
+    required this.movie,
+    required this.onDetail,
+    required this.isMobile,
+  });
 
   @override
   State<MovieCard> createState() => _MovieCardState();
@@ -331,61 +358,40 @@ class _MovieCardState extends State<MovieCard> {
 
   @override
   Widget build(BuildContext context) {
+    final double width = widget.isMobile ? 125 : 160;
+
     return MouseRegion(
       onEnter: (_) => setState(() => isHovered = true),
       onExit: (_) => setState(() => isHovered = false),
       child: GestureDetector(
         onTap: widget.onDetail,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-          margin: const EdgeInsets.only(right: 15),
-          width: 150,
-          transform: isHovered
-              ? (Matrix4.identity()..scale(1.15))
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.only(right: 12),
+          width: width,
+          transform: (isHovered && !widget.isMobile)
+              ? (Matrix4.identity()..scale(1.08))
               : Matrix4.identity(),
           transformAlignment: Alignment.center,
-          child: Column(
-            children: [
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: isHovered
-                        ? [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.5),
-                              blurRadius: 15,
-                              spreadRadius: 2,
-                            ),
-                          ]
-                        : [],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      widget.movie.imageUrl ?? '',
-                      fit: BoxFit.cover,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: AspectRatio(
+              aspectRatio: 2 / 3,
+              child: Image.network(
+                widget.movie.imageUrl ?? '',
+                fit: BoxFit.cover,
+                // Placeholder mientras carga la imagen
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    color: Colors.white10,
+                    child: const Center(
+                      child: Icon(Icons.movie, color: Colors.white24),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
-              if (isHovered)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Text(
-                    widget.movie.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-            ],
+            ),
           ),
         ),
       ),
