@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// Tus imports existentes
 import 'movies_screen.dart';
 import 'peliculas_screen.dart';
 import 'series_screen.dart';
@@ -33,6 +32,28 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _currentProfile = widget.userData ?? {};
   }
 
+  // --- LÓGICA DE PERFILES ---
+  List<Map<String, String>> _getVisibleProfiles() {
+    final String plan = (_currentProfile['plan'] ?? 'basico')
+        .toString()
+        .toLowerCase();
+    int maxProfiles = plan == 'premium' ? 4 : (plan == 'estandar' ? 2 : 1);
+
+    final List<Map<String, String>> allProfiles = [
+      {
+        "name":
+            widget.userData?['name']?.toString().toUpperCase() ?? "USUARIO 1",
+        "image":
+            widget.userData?['profilePic'] ?? "assets/avatars/usuario5.webp",
+      },
+      {"name": "USUARIO 2", "image": "assets/avatars/usuario6.webp"},
+      {"name": "USUARIO 3", "image": "assets/avatars/usuario2.jpg"},
+      {"name": "USUARIO 4", "image": "assets/avatars/usuario3.jpg"},
+    ];
+
+    return allProfiles.take(maxProfiles).toList();
+  }
+
   void _switchProfile(Map<String, dynamic> newProfile) {
     _tooltipController.hide();
     setState(() {
@@ -54,7 +75,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final bool isMobile = size.width < 800; // Breakpoint para móvil
+    final bool isMobile = size.width < 800;
+
+    // 1. Obtenemos los perfiles aquí
+    final visibleProfiles = _getVisibleProfiles();
 
     final List<Widget> screens = [
       MoviesScreen(user: _currentProfile),
@@ -67,19 +91,23 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     ];
 
     return Scaffold(
-      extendBodyBehindAppBar: true, // Esto hace que el banner suba hasta arriba
+      extendBodyBehindAppBar: true,
       backgroundColor: Colors.black,
-      appBar: _buildAppBar(isMobile),
+      // 2. PASAMOS visibleProfiles al AppBar
+      appBar: _buildAdaptiveAppBar(isMobile, visibleProfiles),
       body: IndexedStack(index: _selectedIndex, children: screens),
-      // Solo mostramos navegación inferior en móviles
-      bottomNavigationBar: isMobile ? _buildBottomNavBar() : null,
+      bottomNavigationBar: isMobile ? _buildMobileBottomNav() : null,
     );
   }
 
-  // --- APPBAR ADAPTATIVO ---
-  PreferredSizeWidget _buildAppBar(bool isMobile) {
+  // --- APPBAR RESPONSIVE (Recibe visibleProfiles como parámetro) ---
+  PreferredSizeWidget _buildAdaptiveAppBar(
+    bool isMobile,
+    List<Map<String, String>> visibleProfiles,
+  ) {
     return AppBar(
-      backgroundColor: Colors.transparent, // Transparente para ver el banner
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       flexibleSpace: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -89,54 +117,51 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
         ),
       ),
-      elevation: 0,
-      title: isMobile
-          ? Image.asset(
-              'assets/logo_moviewind.png', // Usa tu logo pequeño aquí
-              height: 30,
-              errorBuilder: (c, e, s) => Text(
-                "MW",
-                style: GoogleFonts.montserrat(
-                  color: const Color(0xFFE50914),
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            )
-          : Row(
-              children: [
-                Text(
-                  "MOVIEWIND",
-                  style: GoogleFonts.montserrat(
-                    color: const Color(0xFFE50914),
-                    fontWeight: FontWeight.w900,
-                    fontSize: 20,
-                  ),
-                ),
-                const SizedBox(width: 30),
-                _navItem("Inicio", 0),
-                _navItem("Series", 1),
-                _navItem("Películas", 2),
-                _navItem("Mi lista", 5),
-              ],
+      title: Row(
+        children: [
+          Text(
+            "MOVIEWIND",
+            style: GoogleFonts.montserrat(
+              color: const Color(0xFFE50914),
+              fontWeight: FontWeight.w900,
+              fontSize: isMobile ? 18 : 22,
             ),
+          ),
+          if (!isMobile) ...[
+            const SizedBox(width: 30),
+            _navItem("Inicio", 0),
+            _navItem("Series", 1),
+            _navItem("Películas", 2),
+            _navItem("Novedades", 4),
+            _navItem("Mi lista", 5),
+          ],
+        ],
+      ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.search, color: Colors.white, size: 24),
+          icon: const Icon(Icons.search, color: Colors.white, size: 26),
           onPressed: () => _onItemTapped(6),
         ),
-        _buildProfileAvatar(),
+        const SizedBox(width: 10),
+        // 3. PASAMOS visibleProfiles al Icono de Perfil
+        _buildProfileIcon(visibleProfiles),
+        SizedBox(width: isMobile ? 10 : 40),
       ],
     );
   }
 
-  // --- NAVIGATION BAR PARA MÓVIL ---
-  Widget _buildBottomNavBar() {
+  Widget _buildMobileBottomNav() {
     return BottomNavigationBar(
-      currentIndex: _selectedIndex > 4
-          ? 0
-          : _selectedIndex, // Reset si está en búsqueda
-      onTap: _onItemTapped,
-      backgroundColor: Colors.black.withOpacity(0.9),
+      currentIndex: _selectedIndex > 5 ? 0 : _selectedIndex,
+      onTap: (index) {
+        if (index == 3)
+          _onItemTapped(4);
+        else if (index == 4)
+          _onItemTapped(5);
+        else
+          _onItemTapped(index);
+      },
+      backgroundColor: Colors.black.withOpacity(0.95),
       type: BottomNavigationBarType.fixed,
       selectedItemColor: Colors.white,
       unselectedItemColor: Colors.grey,
@@ -156,29 +181,29 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           label: "Películas",
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.grid_view_rounded),
+          icon: Icon(Icons.auto_awesome_motion_outlined),
           label: "Novedades",
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.download_for_offline_outlined),
-          label: "Descargas",
+          icon: Icon(Icons.bookmark_border),
+          label: "Mi lista",
         ),
       ],
     );
   }
 
-  Widget _buildProfileAvatar() {
+  // --- PERFIL Y MENÚ POPUP ---
+  Widget _buildProfileIcon(List<Map<String, String>> visibleProfiles) {
     return CompositedTransformTarget(
       link: _linkLayer,
       child: OverlayPortal(
         controller: _tooltipController,
-        overlayChildBuilder: (context) => _buildDropdownMenu(),
+        overlayChildBuilder: (context) => _buildDropdownMenu(visibleProfiles),
         child: GestureDetector(
           onTap: _tooltipController.toggle,
           child: Container(
-            margin: const EdgeInsets.only(right: 15, left: 10),
-            width: 28,
-            height: 28,
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(4),
               image: DecorationImage(
@@ -195,35 +220,51 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- REUTILIZACIÓN DE TUS MÉTODOS EXISTENTES ---
-  Widget _navItem(String title, int index) {
-    bool isSelected = _selectedIndex == index;
-    return TextButton(
-      onPressed: () => _onItemTapped(index),
-      child: Text(
-        title,
-        style: TextStyle(
-          color: isSelected ? Colors.white : Colors.grey.shade400,
-          fontSize: 13,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.w400,
-        ),
-      ),
-    );
-  }
+  Widget _buildDropdownMenu(List<Map<String, String>> availableProfiles) {
+    final String currentActiveName =
+        (_currentProfile['selectedName'] ??
+                widget.userData?['name'] ??
+                "USUARIO 1")
+            .toString()
+            .toUpperCase();
 
-  Widget _buildDropdownMenu() {
-    // Aquí puedes pegar toda la lógica de tu _buildDropdownMenu original
-    // incluyendo la lista de perfiles y el botón de Cerrar Sesión.
+    final otherProfiles = availableProfiles
+        .where((p) => p['name']!.toUpperCase() != currentActiveName)
+        .toList();
+
     return Positioned(
-      width: 200,
+      width: 220,
       child: CompositedTransformFollower(
         link: _linkLayer,
-        offset: const Offset(-160, 45),
+        offset: const Offset(-180, 40),
         child: Container(
-          color: Colors.black.withOpacity(0.95),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.95),
+            border: Border.all(color: Colors.white12),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const SizedBox(height: 10),
+              ...otherProfiles.map(
+                (profile) => _profileDropdownItem(
+                  profile['name']!,
+                  profile['image']!,
+                  () => _switchProfile(profile),
+                ),
+              ),
+              const Divider(color: Colors.white24),
+              _dropdownItem(Icons.edit_outlined, "Administrar perfiles", () {
+                _tooltipController.hide();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (c) =>
+                        ManageProfilesScreen(profileData: _currentProfile),
+                  ),
+                );
+              }),
+              _dropdownItem(Icons.swap_horiz, "Transferir perfil", () {}),
               _dropdownItem(Icons.account_circle_outlined, "Cuenta", () {
                 _tooltipController.hide();
                 Navigator.push(
@@ -231,11 +272,45 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   MaterialPageRoute(builder: (c) => const AccountScreen()),
                 );
               }),
-              _dropdownItem(null, "Cerrar sesión", () {
+              _dropdownItem(Icons.help_outline, "Centro de ayuda", () {}),
+              const Divider(color: Colors.white24),
+              _dropdownItem(null, "Cerrar sesión en MovieWind", () {
                 Navigator.pushReplacementNamed(context, '/auth');
               }, isBold: true),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _profileDropdownItem(
+    String name,
+    String imagePath,
+    VoidCallback onTap,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                image: DecorationImage(
+                  image: _getImageProvider(imagePath),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              name,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ],
         ),
       ),
     );
@@ -247,17 +322,43 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     VoidCallback onTap, {
     bool isBold = false,
   }) {
-    return ListTile(
-      leading: icon != null ? Icon(icon, color: Colors.white, size: 20) : null,
-      title: Text(
-        text,
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            if (icon != null) Icon(icon, color: Colors.white70, size: 20),
+            if (icon != null) const SizedBox(width: 10),
+            Text(
+              text,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
         ),
       ),
-      onTap: onTap,
+    );
+  }
+
+  Widget _navItem(String title, int index) {
+    bool isSelected = _selectedIndex == index;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: InkWell(
+        onTap: () => _onItemTapped(index),
+        child: Text(
+          title,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.grey.shade400,
+            fontSize: 14,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w400,
+          ),
+        ),
+      ),
     );
   }
 
