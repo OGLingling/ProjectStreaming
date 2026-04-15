@@ -66,6 +66,8 @@ model Episode {
   title         String
   description   String?  @db.Text
   stillPath     String?
+  videoUrl      String?
+  duration      String?
   
   seasonId      Int
   season        Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)

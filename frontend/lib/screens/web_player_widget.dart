@@ -1,13 +1,21 @@
-import 'dart:ui_web' as ui; // Importante para Flutter 3.19+
+import 'dart:ui_web' as ui;
 import 'package:flutter/material.dart';
-import 'package:web/web.dart' as web; // Paquete 'web' oficial
+import 'package:web/web.dart' as web;
 
 class WebVideoPlayer extends StatelessWidget {
   final String url;
+  final String
+  contentId; // Necesitamos un ID único (ej. tmdbId + temporada + episodio)
 
-  WebVideoPlayer({required this.url}) {
-    // Registramos la vista del iFrame con las políticas que saltan el Sandbox
-    ui.platformViewRegistry.registerViewFactory('video-iframe', (int viewId) {
+  const WebVideoPlayer({super.key, required this.url, required this.contentId});
+
+  @override
+  Widget build(BuildContext context) {
+    // Creamos un ID de vista único basado en el contenido y la URL
+    // Esto fuerza a Flutter a registrar una nueva factoría si algo cambia
+    final String viewType = 'video-player-$contentId';
+
+    ui.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
       final iframe = web.HTMLIFrameElement()
         ..src = url
         ..style.border = 'none'
@@ -15,17 +23,19 @@ class WebVideoPlayer extends StatelessWidget {
         ..style.height = '100%'
         ..allowFullscreen = true;
 
-      // Esta es la clave que encontraste en vidsrc:
-      // permite que el reproductor sepa de dónde viene sin bloquearse
+      // Configuraciones de seguridad y compatibilidad
       iframe.setAttribute('referrerpolicy', 'origin');
-      iframe.setAttribute('allow', 'autoplay; fullscreen; picture-in-picture');
+      iframe.setAttribute(
+        'allow',
+        'autoplay; fullscreen; picture-in-picture; encrypted-media',
+      );
 
       return iframe;
     });
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    return HtmlElementView(viewType: 'video-iframe');
+    return HtmlElementView(
+      key: ValueKey(viewType), // La key es vital para el refresco en Web
+      viewType: viewType,
+    );
   }
 }

@@ -28,7 +28,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
 
-  // Priorizamos VidSrc.win para el contenido en español
   final List<Map<String, String>> _providers = [
     {"name": "Español (Omen)", "baseUrl": "https://vidsrc.win/embed/"},
     {"name": "VidSrc (.ru)", "baseUrl": "https://vsembed.ru/embed/"},
@@ -38,13 +37,37 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    _initPlayer();
+  }
+
+  // ESTE MÉTODO ES VITAL: Detecta cuando cambias de episodio/temporada desde afuera
+  @override
+  void didUpdateWidget(covariant VideoPlayerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.season != widget.season ||
+        oldWidget.episode != widget.episode ||
+        oldWidget.tmdbId != widget.tmdbId) {
+      _initPlayer();
+    }
+  }
+
+  void _initPlayer() {
+    setState(() => _isLoading = true);
     _registerIFrame();
+
+    // Pequeño delay para asegurar que el DOM registre la nueva factory
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) setState(() => _isLoading = false);
+    });
   }
 
   void _registerIFrame() {
     final String url = _generateUrl();
     final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
-    final String viewType = 'player-$contentId-$_currentProviderIndex';
+
+    // Incluimos temporada y episodio en el ID de la vista para forzar el refresco total
+    final String viewType =
+        'player-$contentId-S${widget.season}-E${widget.episode}-$_currentProviderIndex';
 
     ui.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
       final iframe = web.HTMLIFrameElement()
@@ -54,20 +77,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ..style.height = '100%'
         ..allowFullscreen = true;
 
-      // referrerpolicy="origin" es vital para evitar el error "The page is disabled"
       iframe.setAttribute('referrerpolicy', 'origin');
-
-      // Permisos necesarios para que el reproductor gestione el audio y la calidad
       iframe.setAttribute(
         'allow',
         'autoplay; fullscreen; picture-in-picture; encrypted-media; storage-access',
       );
 
       return iframe;
-    });
-
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) setState(() => _isLoading = false);
     });
   }
 
@@ -79,60 +95,54 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String id = widget.tmdbId ?? widget.imdbId ?? "";
     String mediaType = isTV ? "tv" : "movie";
 
-    // LÓGICA ESPECÍFICA PARA FORZAR EL SERVIDOR ESPAÑOL
     if (provider['name'] == "Español (Omen)") {
       String url = "${provider['baseUrl']}$mediaType?tmdb=$id";
       if (isTV) url += "&season=${widget.season}&episode=${widget.episode}";
-
-      // 'server=omen' es el alias directo para el audio español que vimos en tu captura
-      // 'ds_lang=es' ayuda a que los subtítulos también carguen en español por defecto
       return "$url&server=omen&ds_lang=es";
     }
 
-    // Formato estándar para los otros mirrors oficiales
     return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
   }
 
   @override
   Widget build(BuildContext context) {
     final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
-    final String currentViewType = 'player-$contentId-$_currentProviderIndex';
+    // La ViewType debe coincidir exactamente con la registrada en _registerIFrame
+    final String currentViewType =
+        'player-$contentId-S${widget.season}-E${widget.episode}-$_currentProviderIndex';
 
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 0,
-        title: Text(
-          widget.title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-          ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.title,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+            ),
+            if (widget.type.toLowerCase().contains('tv'))
+              Text(
+                "T${widget.season} • E${widget.episode}",
+                style: const TextStyle(color: Colors.grey, fontSize: 10),
+              ),
+          ],
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.all(8.0),
             child: ActionChip(
-              backgroundColor: Colors
-                  .redAccent, // Rojo para resaltar que es el servidor de español
+              backgroundColor: Colors.redAccent,
               label: Text(
                 _providers[_currentProviderIndex]['name']!,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: const TextStyle(color: Colors.white, fontSize: 11),
               ),
               onPressed: () {
-                setState(() {
-                  _currentProviderIndex =
-                      (_currentProviderIndex + 1) % _providers.length;
-                  _isLoading = true;
-                });
-                _registerIFrame();
+                _currentProviderIndex =
+                    (_currentProviderIndex + 1) % _providers.length;
+                _initPlayer();
               },
             ),
           ),
@@ -140,6 +150,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
       body: Stack(
         children: [
+          // ValueKey es CRÍTICO para que Flutter sepa que el widget cambió
           HtmlElementView(
             key: ValueKey(currentViewType),
             viewType: currentViewType,
