@@ -2,11 +2,10 @@ const axios = require('axios');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// --- TUS CONFIGURACIONES ORIGINALES ---
 const TMDB_API_KEY = 'd8a00b94f5c00821e497b569fec9a61f'; 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// --- TU FUNCIÓN ENRICH (IDÉNTICA) ---
+// --- ENRICH DATA (Mantiene la lógica pero ahora recibe el objeto completo) ---
 async function enrichMovieData(movie) {
     const identifier = movie.tmdbId || movie.imdbId;
     if (!identifier) return movie;
@@ -41,7 +40,7 @@ async function enrichMovieData(movie) {
     return movie;
 }
 
-// --- TU LÓGICA DE GET /MOVIES ---
+// --- GET MOVIES (Aquí incluimos las relaciones) ---
 exports.getMovies = async (req, res) => {
     const { type } = req.query;
     try {
@@ -56,8 +55,19 @@ exports.getMovies = async (req, res) => {
             };
         }
 
+        // CAMBIO CRÍTICO: Añadimos 'include' para traer temporadas y episodios
         const content = await prisma.movie.findMany({
             where: whereCondition,
+            include: {
+                seasons: {
+                    include: {
+                        episodes: true // Trae todos los episodios de cada temporada
+                    },
+                    orderBy: {
+                        seasonNumber: 'asc' // Ordenar temporadas: 1, 2, 3...
+                    }
+                }
+            },
             orderBy: { createdAt: 'desc' }
         });
 
@@ -72,7 +82,7 @@ exports.getMovies = async (req, res) => {
     }
 };
 
-// --- TU LÓGICA DE PROXY STREAM (CON LA INYECCIÓN DE <BASE>) ---
+// --- PROXY STREAM (Sin cambios) ---
 exports.proxyStream = async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send("Falta la URL");
@@ -88,12 +98,9 @@ exports.proxyStream = async (req, res) => {
         });
 
         res.set('Content-Type', 'text/html');
-        
         let html = response.data;
         const origin = new URL(targetUrl).origin;
-        // Mantenemos tu corrección crítica para los 404 de scripts
         html = html.replace('<head>', `<head><base href="${origin}/">`);
-        
         res.send(html);
 
     } catch (error) {
