@@ -10,42 +10,43 @@ const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
  * Enriquece los datos básicos de la base de datos con información 
  * en tiempo real de TMDB (Posters, Backdrops, Ratings actualizados).
  */
-async function enrichMovieData(movie) {
-    const identifier = movie.tmdbId || movie.imdbId;
-    if (!identifier) return movie;
+async function enrichMovieData(contentItem) {
+    const identifier = contentItem.tmdbId || contentItem.imdbId;
+    if (!identifier) return contentItem;
 
     try {
         let apiUrl;
-        if (movie.tmdbId) {
-            const path = movie.type === 'tv' ? 'tv' : 'movie';
-            apiUrl = `${TMDB_BASE_URL}/${path}/${movie.tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
+        if (contentItem.tmdbId) {
+            // Se usa el campo 'type' para diferenciar entre serie (tv) o película (movie)
+            const path = contentItem.type === 'tv' ? 'tv' : 'movie';
+            apiUrl = `${TMDB_BASE_URL}/${path}/${contentItem.tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
         } else {
-            apiUrl = `${TMDB_BASE_URL}/find/${movie.imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=es-ES`;
+            apiUrl = `${TMDB_BASE_URL}/find/${contentItem.imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=es-ES`;
         }
 
         const response = await axios.get(apiUrl);
-        const data = movie.tmdbId 
+        const data = contentItem.tmdbId 
             ? response.data 
             : (response.data.movie_results[0] || response.data.tv_results[0]);
 
         if (data) {
             return {
-                ...movie, // Mantiene seasons y episodes traídos por Prisma
-                title: data.title || data.name || movie.title,
-                description: data.overview || movie.description,
-                imageUrl: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : movie.imageUrl,
-                backdropUrl: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : movie.backdropUrl,
-                rating: data.vote_average ? parseFloat(data.vote_average.toFixed(1)) : (movie.rating || 0.0),
+                ...contentItem, // Mantiene seasons y episodes traídos por Prisma
+                title: data.title || data.name || contentItem.title,
+                description: data.overview || contentItem.description,
+                imageUrl: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : contentItem.imageUrl,
+                backdropUrl: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : contentItem.backdropUrl,
+                rating: data.vote_average ? parseFloat(data.vote_average.toFixed(1)) : (contentItem.rating || 0.0),
             };
         }
     } catch (error) {
         console.error(`[TMDB Enriquecimiento Fallido] ID ${identifier}:`, error.message);
     }
-    return movie;
+    return contentItem;
 }
 
 /**
- * Obtiene el catálogo de películas y series con sus respectivas 
+ * Obtiene el catálogo de contenidos (películas y series) con sus respectivas 
  * temporadas y episodios anidados.
  */
 exports.getMovies = async (req, res) => {
@@ -63,29 +64,29 @@ exports.getMovies = async (req, res) => {
             };
         }
 
-        // CONSULTA MAESTRA: Trae la película + Temporadas + Episodios
-        const content = await prisma.movie.findMany({
+        // --- CAMBIO CLAVE: prisma.content en lugar de prisma.movie ---
+        const contents = await prisma.content.findMany({
             where: whereCondition,
             include: {
                 seasons: {
                     include: {
                         episodes: {
                             orderBy: {
-                                episodeNumber: 'asc' // Ordena episodios: 1, 2, 3...
+                                episodeNumber: 'asc' 
                             }
                         }
                     },
                     orderBy: {
-                        seasonNumber: 'asc' // Ordena temporadas: 1, 2, 3...
+                        seasonNumber: 'asc'
                     }
                 }
             },
             orderBy: { createdAt: 'desc' }
         });
 
-        // Enriquecemos cada película/serie con datos de TMDB de forma paralela
+        // Enriquecemos cada item de contenido con datos de TMDB de forma paralela
         const enrichedContent = await Promise.all(
-            content.map(movie => enrichMovieData(movie))
+            contents.map(item => enrichMovieData(item))
         );
 
         res.json(enrichedContent);
@@ -99,8 +100,7 @@ exports.getMovies = async (req, res) => {
 };
 
 /**
- * Proxy para el reproductor de video para evitar bloqueos de CORS 
- * y manejar rutas relativas de scripts/estilos.
+ * Proxy para el reproductor de video para evitar bloqueos de CORS.
  */
 exports.proxyStream = async (req, res) => {
     const targetUrl = req.query.url;
@@ -120,7 +120,7 @@ exports.proxyStream = async (req, res) => {
         let html = response.data;
         const origin = new URL(targetUrl).origin;
         
-        // Inyectamos la etiqueta <base> para que los assets del iframe carguen correctamente
+        // Inyectamos la etiqueta <base>
         html = html.replace('<head>', `<head><base href="${origin}/">`);
         
         res.send(html);
