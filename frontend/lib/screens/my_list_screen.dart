@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/movie_model.dart';
+import 'movie_details_screen.dart';
 import 'watchlist_providers.dart';
 
 class MyListScreen extends StatelessWidget {
-  final String userId; // Necesitamos el ID para filtrar en la BD
-  const MyListScreen({super.key, required this.userId});
+  final String userId;
+  final Map<String, dynamic>? user;
+
+  const MyListScreen({super.key, required this.userId, this.user});
 
   @override
   Widget build(BuildContext context) {
@@ -33,49 +37,83 @@ class MyListScreen extends StatelessWidget {
           : GridView.builder(
               padding: const EdgeInsets.all(10),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 2 / 3, // Ajustado para posters
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
+                crossAxisCount: 3, // Posters pequeños como en el inicio
+                childAspectRatio: 0.68, // Proporción vertical correcta
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
               ),
               itemCount: watchlist.length,
               itemBuilder: (context, index) {
-                final movie = watchlist[index];
-                return Stack(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        image: DecorationImage(
-                          image: NetworkImage(movie['image'] ?? ''),
+                final item = watchlist[index];
+
+                // --- CONVERSIÓN SEGURA SEGÚN TU MODELO ---
+                // 1. Extraemos el ID numérico
+                final int? rawId = int.tryParse(item['id'].toString());
+
+                final movie = Movie(
+                  id: rawId, // Es int? según tu modelo
+                  tmdbId: rawId?.toString(), // Es String? según tu modelo
+                  title: item['title'] ?? '',
+                  description: '', // Opcional
+                  releaseDate: '2024',
+                  imageUrl: item['image'] ?? '',
+                  backdropUrl: item['image'] ?? '',
+                  rating: 0.0,
+                  type: item['type'] ?? 'tv', // 'tv' o 'movie'
+                  seasons: [], // Lista vacía por defecto
+                );
+
+                return InkWell(
+                  onTap: () {
+                    // Navegación para visualizar y reproducir
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            MovieDetailsScreen(movie: movie, user: user),
+                      ),
+                    );
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Poster
+                        Image.network(
+                          movie.imageUrl ?? '',
                           fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              Container(color: Colors.grey[900]),
                         ),
-                      ),
-                    ),
-                    Positioned(
-                      top: 5,
-                      right: 5,
-                      child: GestureDetector(
-                        onTap: () => provider.toggleWatchlist(
-                          movie['id'] ?? 0,
-                          movie['title'] ?? '',
-                          movie['image'] ?? '',
-                          userId,
-                        ),
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
+                        // Botón de eliminar
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () => provider.toggleWatchlist(
+                              userId,
+                              movie.id ?? 0,
+                              movie.title,
+                              movie.imageUrl ?? '',
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 20,
-                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 );
               },
             ),
