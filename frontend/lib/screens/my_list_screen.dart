@@ -12,15 +12,15 @@ class MyListScreen extends StatelessWidget {
 
   const MyListScreen({super.key, required this.userId, this.user});
 
-  // Función crítica: Obtiene la data real de TMDB usando el ID guardado en tu DB
-  Future<Movie?> _fetchFullMovieData(dynamic rawId, String? rawType) async {
+  // Función para obtener la data completa desde la API de TMDB
+  Future<Movie?> _fetchFullMovieData(dynamic rawTmdbId, String? rawType) async {
     const String apiKey = 'd8a00b94f5c00821e497b569fec9a61f';
 
-    // 1. Limpieza de ID: Aseguramos que sea un entero puro
-    final int? movieId = int.tryParse(rawId.toString());
-    if (movieId == null) return null;
+    // 1. Validación y limpieza del ID de TMDB
+    final String tmdbId = rawTmdbId?.toString() ?? '';
+    if (tmdbId.isEmpty) return null;
 
-    // 2. Normalización de Tipo: TMDB solo entiende 'movie' o 'tv'
+    // 2. Determinar si es película o serie para la URL de la API
     String type = 'movie';
     if (rawType != null) {
       String t = rawType.toLowerCase();
@@ -28,7 +28,7 @@ class MyListScreen extends StatelessWidget {
     }
 
     final url = Uri.parse(
-      'https://api.themoviedb.org/3/$type/$movieId?api_key=$apiKey&language=es-ES&append_to_response=videos,credits,images,seasons',
+      'https://api.themoviedb.org/3/$type/$tmdbId?api_key=$apiKey&language=es-ES&append_to_response=videos,credits,images,seasons',
     );
 
     try {
@@ -36,10 +36,10 @@ class MyListScreen extends StatelessWidget {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
 
-        // Mapeo manual completo para que la pantalla de detalles tenga TODO
+        // Creamos el objeto Movie con todos los datos necesarios para reproducir
         return Movie(
-          id: data['id'],
-          tmdbId: data['id'].toString(),
+          id: data['id'] ?? 0,
+          tmdbId: data['id']?.toString() ?? '',
           title: data['title'] ?? data['name'] ?? 'Sin título',
           description: data['overview'] ?? 'Sin sinopsis disponible',
           releaseDate: data['release_date'] ?? data['first_air_date'] ?? '',
@@ -52,7 +52,7 @@ class MyListScreen extends StatelessWidget {
         );
       }
     } catch (e) {
-      debugPrint("Error cargando desde Mi Lista: $e");
+      debugPrint("Error obteniendo datos de TMDB: $e");
     }
     return null;
   }
@@ -66,6 +66,7 @@ class MyListScreen extends StatelessWidget {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
+        elevation: 0,
         title: const Text("Mi lista", style: TextStyle(color: Colors.white)),
       ),
       body: provider.isLoading
@@ -74,7 +75,7 @@ class MyListScreen extends StatelessWidget {
           ? const Center(
               child: Text(
                 "Tu lista está vacía",
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: Colors.white60, fontSize: 16),
               ),
             )
           : GridView.builder(
@@ -89,24 +90,27 @@ class MyListScreen extends StatelessWidget {
               itemBuilder: (context, index) {
                 final item = watchlist[index];
 
+                // IMPORTANTE: Usamos el campo tmdb_id que viene de tu base de datos Neon
+                final dynamic tmdbIdFromDb = item['tmdb_id'] ?? item['tmdbId'];
+
                 return InkWell(
                   onTap: () async {
-                    // Mostrar loading mientras consultamos TMDB
+                    // Mostramos un indicador de carga mientras bajamos la info de la API
                     showDialog(
                       context: context,
                       barrierDismissible: false,
-                      builder: (context) =>
-                          const Center(child: CircularProgressIndicator()),
+                      builder: (context) => const Center(
+                        child: CircularProgressIndicator(color: Colors.red),
+                      ),
                     );
 
-                    // Buscamos la info real usando el ID y Tipo de tu DB
                     final movie = await _fetchFullMovieData(
-                      item['contentId'],
+                      tmdbIdFromDb,
                       item['type'],
                     );
 
                     if (context.mounted) {
-                      Navigator.pop(context); // Quitar loading
+                      Navigator.pop(context); // Quitar el loading
                       if (movie != null) {
                         Navigator.push(
                           context,
@@ -115,14 +119,21 @@ class MyListScreen extends StatelessWidget {
                                 MovieDetailsScreen(movie: movie, user: user),
                           ),
                         );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("No se pudo cargar la información"),
+                          ),
+                        );
                       }
                     }
                   },
-                  child: Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.network(
                           item['image']?.toString().startsWith('http') == true
                               ? item['image']
                               : 'https://image.tmdb.org/t/p/w500${item['image']}',
@@ -132,30 +143,36 @@ class MyListScreen extends StatelessWidget {
                                 color: Colors.grey[900],
                                 child: const Icon(
                                   Icons.movie,
-                                  color: Colors.white,
+                                  color: Colors.white24,
                                 ),
                               ),
                         ),
-                      ),
-                      // Botón eliminar
-                      Positioned(
-                        top: 5,
-                        right: 5,
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          onPressed: () => provider.toggleWatchlist(
-                            userId,
-                            int.parse(item['contentId'].toString()),
-                            item['title'],
-                            item['image'],
+                        // Botón para eliminar de la lista directamente
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () => provider.toggleWatchlist(
+                              userId,
+                              int.parse(tmdbIdFromDb.toString()),
+                              item['title'],
+                              item['image'],
+                            ),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 );
               },
