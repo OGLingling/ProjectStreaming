@@ -10,7 +10,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
+  "type": "commonjs",
   "dependencies": {
     "@consumet/extensions": "^1.8.8",
     "@prisma/client": "^6.19.2",

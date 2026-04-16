@@ -1,7 +1,7 @@
 // routes/auth.routes.js
-import express from 'express';
+const express = require('express');
 const router = express.Router();
-import authController from '../controllers/auth_controller.js';
+const authController = require('../controllers/auth_controller');
 
 // Mapeo de rutas
 router.post('/send-otp', authController.sendOtp);
@@ -10,4 +10,4 @@ router.post('/register', authController.register);
 router.get('/users', authController.getUserByEmail); // Cambié la ruta a /user para ser más descriptivo
 router.put('/users/:id', authController.updateUser);
 
-export default router;
+module.exports = router;

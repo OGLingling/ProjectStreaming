@@ -1,31 +1,35 @@
-import { PrismaClient } from '@prisma/client';
+const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-export const getWatchlist = async (req, res) => {
+const getWatchlist = async (req, res) => {
     const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: "userId requerido" });
+
     try {
         const list = await prisma.watchlist.findMany({
             where: { userId: userId },
-            // Si tienes relación con la tabla Content, puedes incluirla
             include: { content: true } 
         });
-        // Mapeamos para que el frontend reciba el formato que espera
+
         const formattedList = list.map(item => ({
             id: item.contentId,
             title: item.content?.title || "Sin título",
             image: item.content?.posterPath || ""
         }));
+
         res.status(200).json(formattedList);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 };
 
-export const toggleWatchlist = async (req, res) => {
+const toggleWatchlist = async (req, res) => {
     const { userId, contentId } = req.body;
+    if (!userId || !contentId) return res.status(400).json({ error: "Datos incompletos" });
+
     try {
         const existing = await prisma.watchlist.findFirst({
-            where: { userId, contentId }
+            where: { userId, contentId: parseInt(contentId) }
         });
 
         if (existing) {
@@ -33,11 +37,17 @@ export const toggleWatchlist = async (req, res) => {
             return res.status(200).json({ message: "Eliminado" });
         } else {
             const newItem = await prisma.watchlist.create({
-                data: { userId, contentId }
+                data: { userId, contentId: parseInt(contentId) }
             });
             return res.status(201).json(newItem);
         }
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+};
+
+// Exportación estilo CommonJS
+module.exports = {
+    getWatchlist,
+    toggleWatchlist
 };

@@ -1,9 +1,9 @@
-import express from 'express';
-import { getWatchlist, toggleWatchlist } from '../controllers/watchlist_controller.js';
+const express = require('express');
+const { getWatchlist, toggleWatchlist } = require('../controllers/watchlist_controller');
 
 const router = express.Router();
 
 router.get('/', getWatchlist);
 router.post('/toggle', toggleWatchlist);
 
-export default router;
+module.exports = router;
