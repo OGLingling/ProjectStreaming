@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'movies_screen.dart';
 import 'peliculas_screen.dart';
 import 'series_screen.dart';
-import 'games_screen.dart';
 import 'novedades_screen.dart';
 import 'manage_profiles_screen.dart';
 import 'search_screen.dart';
@@ -84,9 +83,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       MoviesScreen(user: _currentProfile),
       SeriesScreen(isActive: _selectedIndex == 1),
       PeliculasScreen(isActive: _selectedIndex == 2),
-      const GamesScreen(),
       const NovedadesScreen(),
-      MyListScreen(favoriteMovies: const []),
+      MyListScreen(),
       const SearchScreen(),
     ];
 

@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart'; // 1. Importa Provider
 
 // Asegúrate de que estas rutas sean las correctas en tu proyecto
 import 'screens/auth_screen.dart';
 import 'screens/profiles_screen.dart';
 import 'screens/main_navigation_screen.dart';
+import 'screens/watchlist_providers.dart'; // 2. Importa tu WatchlistProvider
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Inicialización de Firebase (Opcional si usas Supabase, pero la app lo importa)
+
   try {
     await Firebase.initializeApp(
       options: const FirebaseOptions(
@@ -26,7 +27,13 @@ void main() async {
     debugPrint("Firebase ya estaba inicializado o error: $e");
   }
 
-  runApp(const MyApp());
+  // 3. Envolvemos la App con MultiProvider
+  runApp(
+    MultiProvider(
+      providers: [ChangeNotifierProvider(create: (_) => WatchlistProvider())],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -42,7 +49,6 @@ class MyApp extends StatelessWidget {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF141414),
         primaryColor: const Color(0xFFE50914),
-        // Aplicamos Bebas Neue de forma global para títulos si lo deseas
         textTheme: GoogleFonts.openSansTextTheme(
           ThemeData.dark().textTheme,
         ).copyWith(bodyMedium: const TextStyle(color: Colors.white)),
@@ -59,7 +65,6 @@ class MyApp extends StatelessWidget {
         '/auth': (context) => const AuthScreen(),
 
         '/profiles': (context) {
-          // Manejo seguro de argumentos para evitar el error de "null as Map"
           final args = ModalRoute.of(context)?.settings.arguments;
           final userData = args is Map<String, dynamic>
               ? args
