@@ -1,8 +1,8 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+import { PrismaClient } from '@prisma/client';
+export const prisma = new PrismaClient();
 
 // --- FUNCIÓN PRIVADA: ENVÍO DE EMAIL VÍA BREVO ---
-async function sendEmail(to, subject, htmlContent) {
+export async function sendEmail(to, subject, htmlContent) {
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: {
@@ -54,7 +54,7 @@ exports.sendOtp = async (req, res) => {
 };
 
 // --- 2. VERIFICAR OTP ---
-exports.verifyOtp = async (req, res) => {
+export const verifyOtp = async (req, res) => {
     const { email, code } = req.body;
     if (!email || !code) return res.status(400).json({ error: "Email y código requeridos" });
 
@@ -78,7 +78,7 @@ exports.verifyOtp = async (req, res) => {
 };
 
 // --- 3. OBTENER USUARIO POR EMAIL ---
-exports.getUserByEmail = async (req, res) => {
+export const getUserByEmail = async (req, res) => {
     const { email } = req.query;
     if (!email) return res.status(400).json({ error: "Email requerido" });
 
@@ -93,7 +93,7 @@ exports.getUserByEmail = async (req, res) => {
 };
 
 // --- 4. REGISTRO (UPSERT) ---
-exports.register = async (req, res) => {
+export const register = async (req, res) => {
     const { email, name, password, plan } = req.body;
     if (!email) return res.status(400).json({ error: "Email requerido" });
 
@@ -115,7 +115,7 @@ exports.register = async (req, res) => {
 };
 
 // --- 5. ACTUALIZAR PERFIL (PUT) ---
-exports.updateUser = async (req, res) => {
+export const updateUser = async (req, res) => {
     const { id } = req.params;
     const { name, profilePic, plan } = req.body;
 

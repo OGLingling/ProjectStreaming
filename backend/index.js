@@ -1,12 +1,13 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
 
-// --- IMPORTACIÓN DE RUTAS ---
-const movieRoutes = require('./routes/movie_routes');
-const authRoutes = require('./routes/auth_routes');
-const adminRoutes = require('./routes/admin_routes');
-const authController = require('./controllers/auth_controller');
+// --- IMPORTACIÓN DE RUTAS (Ahora con sintaxis import) ---
+// Nota: Es importante incluir la extensión .js al final de los archivos locales
+import movieRoutes from './routes/movie_routes.js';
+import authRoutes from './routes/auth_routes.js';
+import adminRoutes from './routes/admin_routes.js';
+import * as authController from './controllers/auth_controller.js';
 import watchlistRoutes from './routes/watchlist_routes.js';
 
 const app = express();
@@ -22,15 +23,14 @@ app.use(cors({
 app.use(express.json());
 
 // 2. DEFINICIÓN DE PUNTOS DE ENTRADA (ENDPOINTS)
-// Aquí conectamos los prefijos de las URLs con tus archivos de rutas
-app.use('/api/movies', movieRoutes);  // Maneja películas y proxy
-app.use('/api/auth', authRoutes);    // Maneja OTP, Registro y Perfil
-app.use('/api/admin', adminRoutes);  // Maneja supervisión de admin
-app.use('/api/watchlist', watchlistRoutes); // Maneja watchlist
+app.use('/api/movies', movieRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/watchlist', watchlistRoutes);
 
 app.get('/api/users', authController.getUserByEmail);
 
-// 3. RUTA DE SALUD (Opcional, útil para ver si el server vive)
+// 3. RUTA DE SALUD
 app.get('/', (req, res) => {
     res.send('Servidor MOVIEWIND Activo 🚀');
 });

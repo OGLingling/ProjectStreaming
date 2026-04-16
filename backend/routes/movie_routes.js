@@ -1,8 +1,8 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const movieController = require('../controllers/movie_controller');
+import movieController from '../controllers/movie_controller.js';
 
 router.get('/', movieController.getMovies);
 router.get('/proxy-stream', movieController.proxyStream);
 
-module.exports = router;
+export default router;

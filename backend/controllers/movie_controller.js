@@ -1,16 +1,16 @@
-const axios = require('axios');
-const { PrismaClient } = require('@prisma/client');
+import axios from 'axios';
+import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 // Configuración de TMDB
-const TMDB_API_KEY = 'd8a00b94f5c00821e497b569fec9a61f'; 
-const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+export const TMDB_API_KEY = 'd8a00b94f5c00821e497b569fec9a61f'; 
+export const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
 /**
  * Enriquece los datos básicos de la base de datos con información 
  * en tiempo real de TMDB (Posters, Backdrops, Ratings actualizados).
  */
-async function enrichMovieData(contentItem) {
+export async function enrichMovieData(contentItem) {
     const identifier = contentItem.tmdbId || contentItem.imdbId;
     if (!identifier) return contentItem;
 
@@ -49,7 +49,7 @@ async function enrichMovieData(contentItem) {
  * Obtiene el catálogo de contenidos (películas y series) con sus respectivas 
  * temporadas y episodios anidados.
  */
-exports.getMovies = async (req, res) => {
+export const getMovies = async (req, res) => {
     const { type } = req.query;
     try {
         let whereCondition = {};
@@ -102,7 +102,7 @@ exports.getMovies = async (req, res) => {
 /**
  * Proxy para el reproductor de video para evitar bloqueos de CORS.
  */
-exports.proxyStream = async (req, res) => {
+export const proxyStream = async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send("URL de streaming requerida");
 
