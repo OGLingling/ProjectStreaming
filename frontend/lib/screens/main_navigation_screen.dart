@@ -75,30 +75,31 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final bool isMobile = size.width < 800;
-
-    // 1. Obtenemos los perfiles aquí
     final visibleProfiles = _getVisibleProfiles();
 
+    // ORDEN DE ÍNDICES CORREGIDO:
+    // 0: Inicio, 1: Series, 2: Películas, 3: Novedades, 4: Mi lista, 5: Buscador
     final List<Widget> screens = [
       MoviesScreen(user: _currentProfile),
       SeriesScreen(isActive: _selectedIndex == 1),
       PeliculasScreen(isActive: _selectedIndex == 2),
       const NovedadesScreen(),
-      MyListScreen(),
+      const MyListScreen(), // Sin parámetros si usas Provider
       const SearchScreen(),
     ];
 
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.black,
-      // 2. PASAMOS visibleProfiles al AppBar
       appBar: _buildAdaptiveAppBar(isMobile, visibleProfiles),
-      body: IndexedStack(index: _selectedIndex, children: screens),
+      body: IndexedStack(
+        index: _selectedIndex >= screens.length ? 0 : _selectedIndex,
+        children: screens,
+      ),
       bottomNavigationBar: isMobile ? _buildMobileBottomNav() : null,
     );
   }
 
-  // --- APPBAR RESPONSIVE (Recibe visibleProfiles como parámetro) ---
   PreferredSizeWidget _buildAdaptiveAppBar(
     bool isMobile,
     List<Map<String, String>> visibleProfiles,
@@ -130,18 +131,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             _navItem("Inicio", 0),
             _navItem("Series", 1),
             _navItem("Películas", 2),
-            _navItem("Novedades", 4),
-            _navItem("Mi lista", 5),
+            _navItem("Novedades", 3), // Antes era 4 (incorrecto)
+            _navItem("Mi lista", 4), // Antes era 5 (incorrecto)
           ],
         ],
       ),
       actions: [
         IconButton(
           icon: const Icon(Icons.search, color: Colors.white, size: 26),
-          onPressed: () => _onItemTapped(6),
+          onPressed: () => _onItemTapped(5), // Buscador es el índice 5
         ),
         const SizedBox(width: 10),
-        // 3. PASAMOS visibleProfiles al Icono de Perfil
         _buildProfileIcon(visibleProfiles),
         SizedBox(width: isMobile ? 10 : 40),
       ],
@@ -150,15 +150,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Widget _buildMobileBottomNav() {
     return BottomNavigationBar(
-      currentIndex: _selectedIndex > 5 ? 0 : _selectedIndex,
-      onTap: (index) {
-        if (index == 3)
-          _onItemTapped(4);
-        else if (index == 4)
-          _onItemTapped(5);
-        else
-          _onItemTapped(index);
-      },
+      currentIndex: _selectedIndex >= 5
+          ? 0
+          : _selectedIndex, // Reset si está en buscador
+      onTap: _onItemTapped,
       backgroundColor: Colors.black.withOpacity(0.95),
       type: BottomNavigationBarType.fixed,
       selectedItemColor: Colors.white,
@@ -190,7 +185,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- PERFIL Y MENÚ POPUP ---
+  // --- PERFIL Y MENÚ POPUP (Sin cambios mayores, solo corregida la lógica de paso de datos) ---
   Widget _buildProfileIcon(List<Map<String, String>> visibleProfiles) {
     return CompositedTransformTarget(
       link: _linkLayer,
@@ -225,7 +220,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 "USUARIO 1")
             .toString()
             .toUpperCase();
-
     final otherProfiles = availableProfiles
         .where((p) => p['name']!.toUpperCase() != currentActiveName)
         .toList();
@@ -262,7 +256,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                 );
               }),
-              _dropdownItem(Icons.swap_horiz, "Transferir perfil", () {}),
               _dropdownItem(Icons.account_circle_outlined, "Cuenta", () {
                 _tooltipController.hide();
                 Navigator.push(
@@ -270,7 +263,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   MaterialPageRoute(builder: (c) => const AccountScreen()),
                 );
               }),
-              _dropdownItem(Icons.help_outline, "Centro de ayuda", () {}),
               const Divider(color: Colors.white24),
               _dropdownItem(null, "Cerrar sesión en MovieWind", () {
                 Navigator.pushReplacementNamed(context, '/auth');
@@ -282,6 +274,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
+  // --- MÉTODOS AUXILIARES ---
   Widget _profileDropdownItem(
     String name,
     String imagePath,
