@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart'; // Importante para la comunicación con el backend
 
 import 'movies_screen.dart';
 import 'peliculas_screen.dart';
@@ -9,6 +10,7 @@ import 'manage_profiles_screen.dart';
 import 'search_screen.dart';
 import 'my_list_screen.dart';
 import 'account_screen.dart';
+import 'watchlist_providers.dart'; // Asegúrate de que el nombre del archivo coincida
 
 class MainNavigationScreen extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -29,6 +31,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void initState() {
     super.initState();
     _currentProfile = widget.userData ?? {};
+
+    // DISPARADOR PARA EL BACKEND:
+    // Al iniciar, pedimos al Provider que traiga la lista de la base de datos.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final String userId = _currentProfile['id']?.toString() ?? "invitado";
+      Provider.of<WatchlistProvider>(
+        context,
+        listen: false,
+      ).loadWatchlist(userId);
+    });
   }
 
   // --- LÓGICA DE PERFILES ---
@@ -77,14 +89,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final bool isMobile = size.width < 800;
     final visibleProfiles = _getVisibleProfiles();
 
-    // ORDEN DE ÍNDICES CORREGIDO:
+    // Obtenemos el ID para pasarlo a la pantalla de "Mi Lista"
+    final String currentUserId =
+        _currentProfile['id']?.toString() ?? "invitado";
+
+    // ORDEN DE ÍNDICES:
     // 0: Inicio, 1: Series, 2: Películas, 3: Novedades, 4: Mi lista, 5: Buscador
     final List<Widget> screens = [
       MoviesScreen(user: _currentProfile),
       SeriesScreen(isActive: _selectedIndex == 1),
       PeliculasScreen(isActive: _selectedIndex == 2),
       const NovedadesScreen(),
-      const MyListScreen(), // Sin parámetros si usas Provider
+      MyListScreen(userId: currentUserId), // Ahora recibe el userId del backend
       const SearchScreen(),
     ];
 
@@ -131,15 +147,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             _navItem("Inicio", 0),
             _navItem("Series", 1),
             _navItem("Películas", 2),
-            _navItem("Novedades", 3), // Antes era 4 (incorrecto)
-            _navItem("Mi lista", 4), // Antes era 5 (incorrecto)
+            _navItem("Novedades", 3),
+            _navItem("Mi lista", 4),
           ],
         ],
       ),
       actions: [
         IconButton(
           icon: const Icon(Icons.search, color: Colors.white, size: 26),
-          onPressed: () => _onItemTapped(5), // Buscador es el índice 5
+          onPressed: () => _onItemTapped(5),
         ),
         const SizedBox(width: 10),
         _buildProfileIcon(visibleProfiles),
@@ -150,9 +166,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Widget _buildMobileBottomNav() {
     return BottomNavigationBar(
-      currentIndex: _selectedIndex >= 5
-          ? 0
-          : _selectedIndex, // Reset si está en buscador
+      currentIndex: _selectedIndex >= 5 ? 0 : _selectedIndex,
       onTap: _onItemTapped,
       backgroundColor: Colors.black.withOpacity(0.95),
       type: BottomNavigationBarType.fixed,
@@ -185,7 +199,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- PERFIL Y MENÚ POPUP (Sin cambios mayores, solo corregida la lógica de paso de datos) ---
   Widget _buildProfileIcon(List<Map<String, String>> visibleProfiles) {
     return CompositedTransformTarget(
       link: _linkLayer,
@@ -220,6 +233,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 "USUARIO 1")
             .toString()
             .toUpperCase();
+
     final otherProfiles = availableProfiles
         .where((p) => p['name']!.toUpperCase() != currentActiveName)
         .toList();
@@ -274,7 +288,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- MÉTODOS AUXILIARES ---
   Widget _profileDropdownItem(
     String name,
     String imagePath,

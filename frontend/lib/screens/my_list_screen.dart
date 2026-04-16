@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // Importante
+import 'package:provider/provider.dart';
 import 'watchlist_providers.dart';
 
 class MyListScreen extends StatelessWidget {
-  const MyListScreen({
-    super.key,
-  }); // Ya no necesita recibir la lista por constructor
+  final String userId; // Necesitamos el ID para filtrar en la BD
+  const MyListScreen({super.key, required this.userId});
 
   @override
   Widget build(BuildContext context) {
-    // Obtenemos la lista directamente del Provider
-    final watchlist = Provider.of<WatchlistProvider>(context).favoriteMovies;
+    final provider = Provider.of<WatchlistProvider>(context);
+    final watchlist = provider.favoriteMovies;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -22,7 +21,9 @@ class MyListScreen extends StatelessWidget {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
-      body: watchlist.isEmpty
+      body: provider.isLoading
+          ? const Center(child: CircularProgressIndicator(color: Colors.red))
+          : watchlist.isEmpty
           ? const Center(
               child: Text(
                 "Aún no tienes nada en tu lista",
@@ -33,7 +34,7 @@ class MyListScreen extends StatelessWidget {
               padding: const EdgeInsets.all(10),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
-                childAspectRatio: 16 / 9,
+                childAspectRatio: 2 / 3, // Ajustado para posters
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
               ),
@@ -46,24 +47,26 @@ class MyListScreen extends StatelessWidget {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(8),
                         image: DecorationImage(
-                          image: NetworkImage(movie['image']!),
+                          image: NetworkImage(movie['image'] ?? ''),
                           fit: BoxFit.cover,
                         ),
                       ),
                     ),
-                    // Opcional: Botón para eliminar directamente desde aquí
                     Positioned(
                       top: 5,
                       right: 5,
                       child: GestureDetector(
-                        onTap: () => Provider.of<WatchlistProvider>(
-                          context,
-                          listen: false,
-                        ).toggleFavorite(movie),
-                        child: const Icon(
-                          Icons.close,
-                          color: Colors.white,
-                          size: 20,
+                        onTap: () => provider.toggleFavorite(movie, userId),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                         ),
                       ),
                     ),

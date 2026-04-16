@@ -1,5 +1,4 @@
-// index.js
-require('dotenv').config(); // Carga variables de entorno (Railway lo hace solo, pero sirve para local)
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 
@@ -8,6 +7,7 @@ const movieRoutes = require('./routes/movie_routes');
 const authRoutes = require('./routes/auth_routes');
 const adminRoutes = require('./routes/admin_routes');
 const authController = require('./controllers/auth_controller');
+import watchlistRoutes from './routes/watchlist_routes.js';
 
 const app = express();
 
@@ -26,6 +26,7 @@ app.use(express.json());
 app.use('/api/movies', movieRoutes);  // Maneja películas y proxy
 app.use('/api/auth', authRoutes);    // Maneja OTP, Registro y Perfil
 app.use('/api/admin', adminRoutes);  // Maneja supervisión de admin
+app.use('/api/watchlist', watchlistRoutes); // Maneja watchlist
 
 app.get('/api/users', authController.getUserByEmail);
 
