@@ -34,104 +34,104 @@ class MyListScreen extends StatelessWidget {
                 style: TextStyle(color: Colors.grey, fontSize: 16),
               ),
             )
-          : GridView.builder(
-              // Ajustamos padding para que no se pegue a los bordes
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3, // 3 columnas para posters pequeños
-                childAspectRatio:
-                    0.65, // FIX: Proporción vertical delgada (como tu foto de referencia)
-                crossAxisSpacing: 10, // Espaciado horizontal entre posters
-                mainAxisSpacing: 12, // Espaciado vertical entre filas
-              ),
-              itemCount: watchlist.length,
-              itemBuilder: (context, index) {
-                final item = watchlist[index];
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                // Calculamos columnas según el ancho para que siempre sean pequeños
+                // En Web (ancho > 1200) pondrá 7 columnas, en móvil 3.
+                int crossAxisCount = constraints.maxWidth > 1200
+                    ? 7
+                    : constraints.maxWidth > 800
+                    ? 5
+                    : 3;
 
-                // --- CONVERSIÓN SEGURA DE DATOS ---
-                final int? rawId = int.tryParse(item['id'].toString());
-                final String imageUrl = item['image'] ?? '';
+                return GridView.builder(
+                  padding: const EdgeInsets.all(15),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    childAspectRatio:
+                        0.67, // Proporción vertical exacta de poster
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 15,
+                  ),
+                  itemCount: watchlist.length,
+                  itemBuilder: (context, index) {
+                    final item = watchlist[index];
+                    final int? rawId = int.tryParse(item['id'].toString());
+                    final String imageUrl = item['image'] ?? '';
 
-                final movie = Movie(
-                  id: rawId,
-                  tmdbId: rawId?.toString(),
-                  title: item['title'] ?? '',
-                  description: '',
-                  releaseDate: '2024',
-                  imageUrl: imageUrl, // URL de la imagen
-                  backdropUrl: imageUrl,
-                  rating: 0.0,
-                  type: item['type'] ?? 'tv',
-                  seasons: [],
-                );
-
-                return InkWell(
-                  onTap: () {
-                    // Navegación funcional para reproducir
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            MovieDetailsScreen(movie: movie, user: user),
-                      ),
+                    final movie = Movie(
+                      id: rawId,
+                      tmdbId: rawId?.toString(),
+                      title: item['title'] ?? '',
+                      releaseDate: '2024',
+                      imageUrl: imageUrl,
+                      backdropUrl: imageUrl,
+                      rating: 0.0,
+                      type: item['type'] ?? 'tv',
                     );
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(
-                      4,
-                    ), // Esquinas ligeramente redondeadas
-                    child: Stack(
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // --- FIX: VISUALIZACIÓN DE IMAGEN ---
-                        // Usamos Positioned.fill para que la imagen ocupe todo el espacio del GridTile
-                        Positioned.fill(
-                          child: Image.network(
-                            movie.imageUrl ?? '',
-                            fit: BoxFit
-                                .cover, // Importante para que la imagen se adapte sin deformarse
-                            errorBuilder: (context, error, stackTrace) =>
-                                Container(
-                                  color: Colors.grey[900],
-                                  child: const Icon(
-                                    Icons.image_not_supported,
-                                    color: Colors.white24,
-                                  ),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => MovieDetailsScreen(
+                                  movie: movie,
+                                  user: user,
                                 ),
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Container(color: Colors.grey[900]);
-                            },
-                          ),
-                        ),
-                        // Botón de eliminar (X) más pequeño y estético
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: GestureDetector(
-                            onTap: () => provider.toggleWatchlist(
-                              userId,
-                              movie.id ?? 0,
-                              movie.title,
-                              movie.imageUrl ?? '',
-                            ),
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(
-                                color: Colors
-                                    .black87, // Fondo más oscuro para contraste
-                                shape: BoxShape.circle,
                               ),
-                              child: const Icon(
-                                Icons.close,
-                                color: Colors.white,
-                                size: 16, // Tamaño del icono reducido
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: Image.network(
+                                      movie.imageUrl ?? '',
+                                      fit: BoxFit.cover,
+                                      errorBuilder:
+                                          (context, error, stackTrace) =>
+                                              Container(
+                                                color: Colors.grey[900],
+                                              ),
+                                    ),
+                                  ),
+                                  // Botón X pequeño
+                                  Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: GestureDetector(
+                                      onTap: () => provider.toggleWatchlist(
+                                        userId,
+                                        movie.id ?? 0,
+                                        movie.title,
+                                        movie.imageUrl ?? '',
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.black54,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.close,
+                                          color: Colors.white,
+                                          size: 14,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         ),
                       ],
-                    ),
-                  ),
+                    );
+                  },
                 );
               },
             ),
