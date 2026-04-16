@@ -12,10 +12,11 @@ class MyListScreen extends StatelessWidget {
 
   const MyListScreen({super.key, required this.userId, this.user});
 
-  // Función para obtener los datos detallados de TMDB
+  // Función para obtener los datos reales de TMDB usando el ID guardado
   Future<Movie?> _fetchFullMovieData(int id, String type) async {
     const String apiKey = 'd8a00b94f5c00821e497b569fec9a61f';
-    final String category = type == 'tv' ? 'tv' : 'movie';
+    final String category = (type == 'tv' || type == 'serie') ? 'tv' : 'movie';
+
     final url = Uri.parse(
       'https://api.themoviedb.org/3/$category/$id?api_key=$apiKey&language=es-ES&append_to_response=videos,credits,images,seasons',
     );
@@ -25,23 +26,25 @@ class MyListScreen extends StatelessWidget {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
 
-        // Mapeo manual para evitar errores de argumentos en el constructor
+        // Construimos el objeto Movie con todos los campos que necesita MovieDetailsScreen
         return Movie(
           id: data['id'],
           tmdbId: data['id'].toString(),
-          title: data['title'] ?? data['name'] ?? '',
+          title: data['title'] ?? data['name'] ?? 'Sin título',
           description: data['overview'] ?? 'Sin sinopsis disponible',
           releaseDate: data['release_date'] ?? data['first_air_date'] ?? '',
           imageUrl: data['poster_path'] ?? '',
           backdropUrl: data['backdrop_path'] ?? '',
-          rating: (data['vote_average'] as num).toDouble(),
+          rating: (data['vote_average'] as num?)?.toDouble() ?? 0.0,
           category: '',
-          type: type, // Asignamos el tipo (movie/tv) correctamente
-          seasons: [], // Si tu modelo maneja temporadas, podrías mapearlas aquí
+          type: type,
+          seasons: data['seasons'] ?? [], // Importante para series como Re:Zero
         );
+      } else {
+        debugPrint("Error en API TMDB: ${response.statusCode}");
       }
     } catch (e) {
-      debugPrint("Error en Mi Lista: $e");
+      debugPrint("Error de conexión en Mi Lista: $e");
     }
     return null;
   }
@@ -72,33 +75,37 @@ class MyListScreen extends StatelessWidget {
             )
           : LayoutBuilder(
               builder: (context, constraints) {
-                // Configuración para posters pequeños (7 en web, 3 en móvil)
+                // Ajuste de columnas: 7 en pantallas grandes, 3 en móviles
                 int crossAxisCount = constraints.maxWidth > 1200 ? 7 : 3;
 
                 return GridView.builder(
                   padding: const EdgeInsets.all(15),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: crossAxisCount,
-                    childAspectRatio: 0.67, // Proporción vertical estética
+                    childAspectRatio: 0.67,
                     crossAxisSpacing: 10,
                     mainAxisSpacing: 15,
                   ),
                   itemCount: watchlist.length,
                   itemBuilder: (context, index) {
                     final item = watchlist[index];
+
+                    // Validamos el ID para que no sea null
                     final int movieId =
-                        int.tryParse(item['id'].toString()) ?? 0;
+                        int.tryParse(item['id'].toString()) ??
+                        int.tryParse(item['contentId'].toString()) ??
+                        0;
                     final String type = item['type'] ?? 'tv';
 
-                    // Construcción de la URL de imagen para evitar posters vacíos
+                    // Corregimos la URL de la imagen si viene incompleta
                     String imageUrl = item['image'] ?? '';
-                    if (!imageUrl.startsWith('http') && imageUrl.isNotEmpty) {
+                    if (imageUrl.isNotEmpty && !imageUrl.startsWith('http')) {
                       imageUrl = 'https://image.tmdb.org/t/p/w500$imageUrl';
                     }
 
                     return InkWell(
                       onTap: () async {
-                        // Indicador de carga antes de navegar
+                        // 1. Mostrar loading
                         showDialog(
                           context: context,
                           barrierDismissible: false,
@@ -107,13 +114,15 @@ class MyListScreen extends StatelessWidget {
                           ),
                         );
 
+                        // 2. Obtener datos reales
                         final fullMovie = await _fetchFullMovieData(
                           movieId,
                           type,
                         );
 
                         if (context.mounted) {
-                          Navigator.pop(context); // Quitar el diálogo de carga
+                          Navigator.pop(context); // Quitar loading
+
                           if (fullMovie != null) {
                             Navigator.push(
                               context,
@@ -121,6 +130,14 @@ class MyListScreen extends StatelessWidget {
                                 builder: (context) => MovieDetailsScreen(
                                   movie: fullMovie,
                                   user: user,
+                                ),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  "No se pudo cargar la información",
                                 ),
                               ),
                             );
@@ -132,29 +149,35 @@ class MyListScreen extends StatelessWidget {
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
-                            // Imagen del poster
+                            // El Poster
                             imageUrl.isNotEmpty
                                 ? Image.network(
                                     imageUrl,
                                     fit: BoxFit.cover,
                                     errorBuilder:
                                         (context, error, stackTrace) =>
-                                            Container(color: Colors.grey[900]),
+                                            Container(
+                                              color: Colors.grey[900],
+                                              child: const Icon(
+                                                Icons.movie,
+                                                color: Colors.white24,
+                                              ),
+                                            ),
                                   )
                                 : Container(color: Colors.grey[900]),
-                            // Botón para eliminar de la lista
+
+                            // Botón X para eliminar
                             Positioned(
-                              top: 4,
-                              right: 4,
+                              top: 5,
+                              right: 5,
                               child: GestureDetector(
                                 onTap: () => provider.toggleWatchlist(
                                   userId,
                                   movieId,
                                   item['title'] ?? '',
-                                  imageUrl,
+                                  item['image'] ?? '',
                                 ),
                                 child: Container(
-                                  padding: const EdgeInsets.all(2),
                                   decoration: const BoxDecoration(
                                     color: Colors.black54,
                                     shape: BoxShape.circle,
@@ -162,7 +185,7 @@ class MyListScreen extends StatelessWidget {
                                   child: const Icon(
                                     Icons.close,
                                     color: Colors.white,
-                                    size: 14,
+                                    size: 18,
                                   ),
                                 ),
                               ),
