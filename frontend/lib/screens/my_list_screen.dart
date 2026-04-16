@@ -35,37 +35,39 @@ class MyListScreen extends StatelessWidget {
               ),
             )
           : GridView.builder(
-              padding: const EdgeInsets.all(10),
+              // Ajustamos padding para que no se pegue a los bordes
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3, // Posters pequeños como en el inicio
-                childAspectRatio: 0.68, // Proporción vertical correcta
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
+                crossAxisCount: 3, // 3 columnas para posters pequeños
+                childAspectRatio:
+                    0.65, // FIX: Proporción vertical delgada (como tu foto de referencia)
+                crossAxisSpacing: 10, // Espaciado horizontal entre posters
+                mainAxisSpacing: 12, // Espaciado vertical entre filas
               ),
               itemCount: watchlist.length,
               itemBuilder: (context, index) {
                 final item = watchlist[index];
 
-                // --- CONVERSIÓN SEGURA SEGÚN TU MODELO ---
-                // 1. Extraemos el ID numérico
+                // --- CONVERSIÓN SEGURA DE DATOS ---
                 final int? rawId = int.tryParse(item['id'].toString());
+                final String imageUrl = item['image'] ?? '';
 
                 final movie = Movie(
-                  id: rawId, // Es int? según tu modelo
-                  tmdbId: rawId?.toString(), // Es String? según tu modelo
+                  id: rawId,
+                  tmdbId: rawId?.toString(),
                   title: item['title'] ?? '',
-                  description: '', // Opcional
+                  description: '',
                   releaseDate: '2024',
-                  imageUrl: item['image'] ?? '',
-                  backdropUrl: item['image'] ?? '',
+                  imageUrl: imageUrl, // URL de la imagen
+                  backdropUrl: imageUrl,
                   rating: 0.0,
-                  type: item['type'] ?? 'tv', // 'tv' o 'movie'
-                  seasons: [], // Lista vacía por defecto
+                  type: item['type'] ?? 'tv',
+                  seasons: [],
                 );
 
                 return InkWell(
                   onTap: () {
-                    // Navegación para visualizar y reproducir
+                    // Navegación funcional para reproducir
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -75,18 +77,33 @@ class MyListScreen extends StatelessWidget {
                     );
                   },
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(
+                      4,
+                    ), // Esquinas ligeramente redondeadas
                     child: Stack(
-                      fit: StackFit.expand,
                       children: [
-                        // Poster
-                        Image.network(
-                          movie.imageUrl ?? '',
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              Container(color: Colors.grey[900]),
+                        // --- FIX: VISUALIZACIÓN DE IMAGEN ---
+                        // Usamos Positioned.fill para que la imagen ocupe todo el espacio del GridTile
+                        Positioned.fill(
+                          child: Image.network(
+                            movie.imageUrl ?? '',
+                            fit: BoxFit
+                                .cover, // Importante para que la imagen se adapte sin deformarse
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
+                                  color: Colors.grey[900],
+                                  child: const Icon(
+                                    Icons.image_not_supported,
+                                    color: Colors.white24,
+                                  ),
+                                ),
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(color: Colors.grey[900]);
+                            },
+                          ),
                         ),
-                        // Botón de eliminar
+                        // Botón de eliminar (X) más pequeño y estético
                         Positioned(
                           top: 4,
                           right: 4,
@@ -100,13 +117,14 @@ class MyListScreen extends StatelessWidget {
                             child: Container(
                               padding: const EdgeInsets.all(2),
                               decoration: const BoxDecoration(
-                                color: Colors.black54,
+                                color: Colors
+                                    .black87, // Fondo más oscuro para contraste
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(
                                 Icons.close,
                                 color: Colors.white,
-                                size: 16,
+                                size: 16, // Tamaño del icono reducido
                               ),
                             ),
                           ),
