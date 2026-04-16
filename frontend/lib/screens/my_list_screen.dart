@@ -13,14 +13,14 @@ class MyListScreen extends StatelessWidget {
   const MyListScreen({super.key, required this.userId, this.user});
 
   // Función para obtener la data completa desde la API de TMDB
-  Future<Movie?> _fetchFullMovieData(dynamic rawTmdbId, String? rawType) async {
+  Future<Movie?> _fetchFullMovieData(dynamic rawId, String? rawType) async {
     const String apiKey = 'd8a00b94f5c00821e497b569fec9a61f';
 
-    // 1. Validación y limpieza del ID de TMDB
-    final String tmdbId = rawTmdbId?.toString() ?? '';
-    if (tmdbId.isEmpty) return null;
+    // 1. Limpieza y validación del ID
+    final String idString = rawId?.toString() ?? '';
+    if (idString.isEmpty || idString == 'null') return null;
 
-    // 2. Determinar si es película o serie para la URL de la API
+    // 2. Normalización de Tipo (movie o tv)
     String type = 'movie';
     if (rawType != null) {
       String t = rawType.toLowerCase();
@@ -28,18 +28,18 @@ class MyListScreen extends StatelessWidget {
     }
 
     final url = Uri.parse(
-      'https://api.themoviedb.org/3/$type/$tmdbId?api_key=$apiKey&language=es-ES&append_to_response=videos,credits,images,seasons',
+      'https://api.themoviedb.org/3/$type/$idString?api_key=$apiKey&language=es-ES&append_to_response=videos,credits,images,seasons',
     );
 
     try {
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
 
-        // Creamos el objeto Movie con todos los datos necesarios para reproducir
+        // Mapeo manual para asegurar que MovieDetailsScreen tenga todo para reproducir
         return Movie(
           id: data['id'] ?? 0,
-          tmdbId: data['id']?.toString() ?? '',
+          tmdbId: data['id']?.toString() ?? idString,
           title: data['title'] ?? data['name'] ?? 'Sin título',
           description: data['overview'] ?? 'Sin sinopsis disponible',
           releaseDate: data['release_date'] ?? data['first_air_date'] ?? '',
@@ -52,7 +52,7 @@ class MyListScreen extends StatelessWidget {
         );
       }
     } catch (e) {
-      debugPrint("Error obteniendo datos de TMDB: $e");
+      debugPrint("Error al consultar TMDB: $e");
     }
     return null;
   }
@@ -67,7 +67,10 @@ class MyListScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
-        title: const Text("Mi lista", style: TextStyle(color: Colors.white)),
+        title: const Text(
+          "Mi lista",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
       ),
       body: provider.isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.red))
@@ -75,105 +78,116 @@ class MyListScreen extends StatelessWidget {
           ? const Center(
               child: Text(
                 "Tu lista está vacía",
-                style: TextStyle(color: Colors.white60, fontSize: 16),
+                style: TextStyle(color: Colors.white60),
               ),
             )
-          : GridView.builder(
-              padding: const EdgeInsets.all(10),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 0.7,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: watchlist.length,
-              itemBuilder: (context, index) {
-                final item = watchlist[index];
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                // Diseño de posters pequeños (7 en web, 3 en móvil)
+                int crossAxisCount = constraints.maxWidth > 1200 ? 7 : 3;
 
-                // IMPORTANTE: Usamos el campo tmdb_id que viene de tu base de datos Neon
-                final dynamic tmdbIdFromDb = item['tmdb_id'] ?? item['tmdbId'];
+                return GridView.builder(
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    childAspectRatio: 0.67,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: watchlist.length,
+                  itemBuilder: (context, index) {
+                    final item = watchlist[index];
 
-                return InkWell(
-                  onTap: () async {
-                    // Mostramos un indicador de carga mientras bajamos la info de la API
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (context) => const Center(
-                        child: CircularProgressIndicator(color: Colors.red),
-                      ),
-                    );
+                    // PRIORIDAD DE ID: Intentamos tmdb_id primero, luego contentId
+                    final dynamic tmdbId =
+                        item['tmdb_id'] ?? item['tmdbId'] ?? item['contentId'];
+                    final String type = item['type'] ?? 'tv';
 
-                    final movie = await _fetchFullMovieData(
-                      tmdbIdFromDb,
-                      item['type'],
-                    );
-
-                    if (context.mounted) {
-                      Navigator.pop(context); // Quitar el loading
-                      if (movie != null) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                MovieDetailsScreen(movie: movie, user: user),
+                    return InkWell(
+                      onTap: () async {
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (context) => const Center(
+                            child: CircularProgressIndicator(color: Colors.red),
                           ),
                         );
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("No se pudo cargar la información"),
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image.network(
-                          item['image']?.toString().startsWith('http') == true
-                              ? item['image']
-                              : 'https://image.tmdb.org/t/p/w500${item['image']}',
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              Container(
-                                color: Colors.grey[900],
-                                child: const Icon(
-                                  Icons.movie,
-                                  color: Colors.white24,
+
+                        final movie = await _fetchFullMovieData(tmdbId, type);
+
+                        if (context.mounted) {
+                          Navigator.pop(context); // Cierra el loading
+                          if (movie != null) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => MovieDetailsScreen(
+                                  movie: movie,
+                                  user: user,
                                 ),
                               ),
-                        ),
-                        // Botón para eliminar de la lista directamente
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: GestureDetector(
-                            onTap: () => provider.toggleWatchlist(
-                              userId,
-                              int.parse(tmdbIdFromDb.toString()),
-                              item['title'],
-                              item['image'],
-                            ),
-                            child: Container(
-                              decoration: const BoxDecoration(
-                                color: Colors.black54,
-                                shape: BoxShape.circle,
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  "Error: El ID de la serie no es válido",
+                                ),
                               ),
-                              child: const Icon(
-                                Icons.close,
-                                color: Colors.white,
-                                size: 18,
+                            );
+                          }
+                        }
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.network(
+                              item['image']?.toString().startsWith('http') ==
+                                      true
+                                  ? item['image']
+                                  : 'https://image.tmdb.org/t/p/w500${item['image']}',
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(
+                                    color: Colors.grey[900],
+                                    child: const Icon(
+                                      Icons.movie,
+                                      color: Colors.white24,
+                                    ),
+                                  ),
+                            ),
+                            // Botón para eliminar
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: GestureDetector(
+                                onTap: () => provider.toggleWatchlist(
+                                  userId,
+                                  int.tryParse(tmdbId.toString()) ?? 0,
+                                  item['title'] ?? '',
+                                  item['image'] ?? '',
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black54,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 );
               },
             ),
