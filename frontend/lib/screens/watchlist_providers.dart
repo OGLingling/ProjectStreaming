@@ -1,75 +1,69 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 class WatchlistProvider with ChangeNotifier {
-  final List<Map<String, dynamic>> _list = [];
+  List<Map<String, dynamic>> _watchlist = [];
   bool _isLoading = false;
 
-  List<Map<String, dynamic>> get favoriteMovies => _list;
+  List<Map<String, dynamic>> get watchlist => _watchlist;
   bool get isLoading => _isLoading;
 
-  // URL de tu API (Cámbiala por la real de tu backend)
-  final String apiUrl = "https://tu-api-en-production.com/api/watchlist";
+  // Cambia esta URL por la de tu servidor en Railway
+  final String baseUrl =
+      "https://projectstreaming-production.up.railway.app/api/watchlist";
 
-  // Cargar lista desde la base de datos (Neon)
+  // Cargar la lista desde Neon
   Future<void> loadWatchlist(String userId) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      final response = await http.get(Uri.parse('$apiUrl?userId=$userId'));
+      final response = await http.get(Uri.parse('$baseUrl?userId=$userId'));
+
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        _list.clear();
-        _list.addAll(data.map((item) => item as Map<String, dynamic>));
+        _watchlist = List<Map<String, dynamic>>.from(data);
       }
     } catch (e) {
-      debugPrint("Error cargando watchlist: $e");
+      print("Error cargando watchlist: $e");
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // Guardar o eliminar de la base de datos
-  Future<void> toggleFavorite(Map<String, dynamic> movie, String userId) async {
-    final bool exists = isFavorite(movie['title'] ?? '');
-
+  // Guardar o eliminar (Toggle)
+  Future<void> toggleWatchlist(
+    String userId,
+    int contentId,
+    String title,
+    String image,
+  ) async {
     try {
-      if (exists) {
-        // Lógica para eliminar (DELETE)
-        final response = await http.delete(
-          Uri.parse(apiUrl),
-          headers: {"Content-Type": "application/json"},
-          body: jsonEncode({"userId": userId, "contentId": movie['id']}),
-        );
-        if (response.statusCode == 200) {
-          _list.removeWhere((item) => item['title'] == movie['title']);
+      final response = await http.post(
+        Uri.parse('$baseUrl/toggle'),
+        headers: {"Content-Type": "application/json"},
+        body: json.encode({"userId": userId, "contentId": contentId}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Actualizamos la lista local para que la UI cambie instantáneamente
+        if (isInWatchlist(contentId)) {
+          _watchlist.removeWhere((item) => item['id'] == contentId);
+        } else {
+          _watchlist.add({'id': contentId, 'title': title, 'image': image});
         }
-      } else {
-        // Lógica para agregar (POST)
-        final response = await http.post(
-          Uri.parse(apiUrl),
-          headers: {"Content-Type": "application/json"},
-          body: jsonEncode({
-            "userId": userId,
-            "contentId": movie['id'],
-            "title": movie['title'],
-            "image": movie['image'],
-          }),
-        );
-        if (response.statusCode == 201 || response.statusCode == 200) {
-          _list.add(movie);
-        }
+        notifyListeners();
       }
     } catch (e) {
-      debugPrint("Error en comunicación con backend: $e");
+      print("Error en toggleWatchlist: $e");
+      rethrow;
     }
-    notifyListeners();
   }
 
-  bool isFavorite(String title) {
-    return _list.any((item) => item['title'] == title);
+  // Verificar si un ID ya está en la lista
+  bool isInWatchlist(int contentId) {
+    return _watchlist.any((item) => item['id'] == contentId);
   }
 }

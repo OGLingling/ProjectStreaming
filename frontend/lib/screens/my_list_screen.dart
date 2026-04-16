@@ -9,7 +9,7 @@ class MyListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<WatchlistProvider>(context);
-    final watchlist = provider.favoriteMovies;
+    final watchlist = provider.watchlist;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -56,7 +56,12 @@ class MyListScreen extends StatelessWidget {
                       top: 5,
                       right: 5,
                       child: GestureDetector(
-                        onTap: () => provider.toggleFavorite(movie, userId),
+                        onTap: () => provider.toggleWatchlist(
+                          movie['id'] ?? 0,
+                          movie['title'] ?? '',
+                          movie['image'] ?? '',
+                          userId,
+                        ),
                         child: Container(
                           decoration: const BoxDecoration(
                             color: Colors.black54,
