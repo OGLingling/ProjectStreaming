@@ -11,7 +11,7 @@ class WatchlistProvider with ChangeNotifier {
 
   // Cambia esta URL por la de tu servidor en Railway
   final String baseUrl =
-      "https://projectstreaming-production.app.railway.app/api/watchlist";
+      "https://projectstreaming-production.up.railway.app/api/watchlist";
 
   // Cargar la lista desde Neon
   Future<void> loadWatchlist(String userId) async {
