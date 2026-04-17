@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 import 'dart:convert'; // Para json.encode
-import 'package:http/http.dart'
-    as http; // Necesitas agregar http al pubspec.yaml
+import 'package:http/http.dart' as http;
 
 class AvatarPickerScreen extends StatefulWidget {
   final String profileName;
   final String? currentAvatar;
-  final String userId; // Añadimos el ID del usuario para el backend
+  final String userId;
 
   const AvatarPickerScreen({
     super.key,
     this.profileName = "Usuario",
     this.currentAvatar,
-    required this.userId, // El ID es obligatorio para actualizar
+    required this.userId,
   });
 
   @override
@@ -21,8 +20,9 @@ class AvatarPickerScreen extends StatefulWidget {
 
 class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
   final ScrollController _scrollController = ScrollController();
-  bool _isUpdating = false; // Estado para mostrar un cargando
+  bool _isUpdating = false;
 
+  // Lista de avatares disponibles
   static const List<String> _avatars = [
     "assets/avatars/usuario4.webp",
     "assets/avatars/usuario3.jpg",
@@ -32,26 +32,32 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
     "assets/avatars/usuarioprueba.jpg",
   ];
 
-  // --- FUNCIÓN PARA GUARDAR EN EL BACKEND ---
+  // --- FUNCIÓN CORREGIDA PARA ELIMINAR EL ERROR 404 ---
   Future<void> _handleAvatarSelection(String avatarPath) async {
     setState(() => _isUpdating = true);
 
     try {
-      // URL de tu API en Railway
+      // Ajustamos la URL para que incluya el ID al final (/api/users/ID)
+      // Esto coincide con tu ruta: router.put('/users/:id', ...)
       final url = Uri.parse(
-        'https://projectstreaming-production.up.railway.app/api/users/update-profile',
+        'https://projectstreaming-production.up.railway.app/api/users/${widget.userId}',
       );
 
       final response = await http.put(
         url,
         headers: {"Content-Type": "application/json"},
-        body: json.encode({"id": widget.userId, "profilePic": avatarPath}),
+        // Enviamos solo el profilePic en el cuerpo, ya que el ID va en la URL
+        body: json.encode({"profilePic": avatarPath}),
       );
 
       if (response.statusCode == 200) {
-        // Si el backend confirma el cambio, volvemos con la nueva ruta
+        // Si el backend confirma el cambio (status 200), cerramos la pantalla
         if (mounted) Navigator.pop(context, avatarPath);
       } else {
+        // Imprime el error en consola para depuración si no es 200
+        debugPrint(
+          "Error del servidor: ${response.statusCode} - ${response.body}",
+        );
         throw Exception("Error del servidor: ${response.statusCode}");
       }
     } catch (e) {
@@ -84,7 +90,6 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black),
-        // Mostramos un indicador si se está guardando
         actions: _isUpdating
             ? [
                 const Center(
@@ -167,6 +172,7 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
                           );
                         },
                       ),
+                      // Botón para scroll a la derecha
                       Positioned(
                         right: 0,
                         top: 0,
@@ -241,7 +247,7 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
               ],
             ),
           ),
-          // Capa de bloqueo durante la actualización
+          // Capa de carga bloqueante
           if (_isUpdating)
             Container(
               color: Colors.black12,
@@ -252,7 +258,7 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
     );
   }
 
-  // --- FUNCIONES DE UTILIDAD MANTENIDAS ---
+  // --- FUNCIONES DE AYUDA ---
   bool _isValidPath(String? path) {
     final normalized = path?.trim();
     return normalized != null &&
@@ -262,8 +268,9 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
 
   ImageProvider _getImageProvider(String? path) {
     final normalized = path?.trim();
-    if (!_isValidPath(normalized))
+    if (!_isValidPath(normalized)) {
       return const AssetImage("assets/avatars/usuario5.webp");
+    }
     if (normalized!.startsWith('http')) return NetworkImage(normalized);
     return AssetImage(normalized);
   }

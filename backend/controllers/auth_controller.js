@@ -116,16 +116,22 @@ exports.register = async (req, res) => {
 
 // --- 5. ACTUALIZAR PERFIL (PUT) ---
 exports.updateUser = async (req, res) => {
-    const { id } = req.params;
-    const { name, profilePic, plan } = req.body;
+    const { id } = req.params; // Captura el ID de la URL
+    const { name, profilePic, plan } = req.body; // Captura los datos del cuerpo
 
     try {
         const userUpdated = await prisma.user.update({
             where: { id: id },
-            data: { name, profilePic, plan },
+            data: { 
+                // Usamos validaciones simples para no sobreescribir con null
+                ...(name && { name }), 
+                ...(profilePic && { profilePic }),
+                ...(plan && { plan }),
+            },
         });
         res.json(userUpdated);
     } catch (error) {
-        res.status(500).json({ error: "Error al actualizar" });
+        console.error("Error en Prisma:", error);
+        res.status(500).json({ error: "Error al actualizar el perfil" });
     }
 };
