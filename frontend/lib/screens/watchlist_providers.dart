@@ -12,7 +12,7 @@ class WatchlistProvider with ChangeNotifier {
   final String baseUrl =
       "https://projectstreaming-production.up.railway.app/api/watchlist";
 
-  // Cargar la lista desde Neon
+  // 1. Cargar lista: Forzamos que los datos se guarden como Strings para comparar fácil
   Future<void> loadWatchlist(String userId) async {
     _isLoading = true;
     notifyListeners();
@@ -24,8 +24,8 @@ class WatchlistProvider with ChangeNotifier {
         final List<dynamic> data = json.decode(response.body);
         _watchlist = List<Map<String, dynamic>>.from(data);
 
-        // Debug para verificar que los datos traigan 'tmdb_id'
-        debugPrint("Watchlist sincronizada: $_watchlist");
+        // Imprime esto en consola para ver qué llaves llegan realmente de Railway
+        debugPrint("DATOS RECIBIDOS DE NEON: $_watchlist");
       }
     } catch (e) {
       debugPrint("Error cargando watchlist: $e");
@@ -35,15 +35,14 @@ class WatchlistProvider with ChangeNotifier {
     }
   }
 
-  // Guardar o eliminar (Toggle) usando estrictamente TMDB ID
+  // 2. Toggle: Enviamos y comparamos usando el nombre de tu columna en Neon: 'tmdb_id'
   Future<void> toggleWatchlist(
     String userId,
-    dynamic tmdbId, // Aceptamos dynamic para evitar errores de tipo
+    dynamic tmdbId,
     String title,
     String image,
   ) async {
-    // Normalizamos el ID a String para la comparación local y envío
-    final String cleanId = tmdbId.toString();
+    final String idString = tmdbId.toString();
 
     try {
       final response = await http.post(
@@ -51,43 +50,37 @@ class WatchlistProvider with ChangeNotifier {
         headers: {"Content-Type": "application/json"},
         body: json.encode({
           "userId": userId,
-          "tmdbId": cleanId, // Enviamos el ID de TMDB (980431)
+          "tmdbId": idString, // Tu API debe esperar 'tmdbId' o 'tmdb_id'
         }),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        if (isInWatchlist(cleanId)) {
-          // Si ya estaba, lo removemos localmente buscando por tmdb_id
-          _watchlist.removeWhere(
-            (item) =>
-                (item['tmdb_id']?.toString() == cleanId) ||
-                (item['tmdbId']?.toString() == cleanId),
-          );
+        if (isInWatchlist(idString)) {
+          // Si ya está, lo quitamos de la lista local
+          _watchlist.removeWhere((item) => _getIdFromItem(item) == idString);
         } else {
-          // Si no estaba, lo agregamos localmente con la llave correcta
-          _watchlist.add({'tmdb_id': cleanId, 'title': title, 'image': image});
+          // Si es nuevo, lo agregamos con la llave 'tmdb_id' igual que en Neon
+          _watchlist.add({'tmdb_id': idString, 'title': title, 'image': image});
         }
         notifyListeners();
       }
     } catch (e) {
       debugPrint("Error en toggleWatchlist: $e");
-      rethrow;
     }
   }
 
-  // VERIFICACIÓN CORREGIDA: Compara solo contra IDs de TMDB
+  // 3. Verificación: Esta es la función que decide si sale "+" o "Check"
   bool isInWatchlist(dynamic tmdbId) {
     if (tmdbId == null || tmdbId == 'null') return false;
-
     final String idToSearch = tmdbId.toString();
 
     return _watchlist.any((item) {
-      // Priorizamos 'tmdb_id' que es como aparece en tu tabla Content de Neon
-      final String? itemTmdbId =
-          item['tmdb_id']?.toString() ?? item['tmdbId']?.toString();
-
-      // Solo devolvemos true si el ID coincide exactamente con el ID de TMDB
-      return itemTmdbId == idToSearch;
+      return _getIdFromItem(item) == idToSearch;
     });
+  }
+
+  // Función auxiliar para extraer el ID sin importar si la API manda 'tmdb_id' o 'tmdbId'
+  String? _getIdFromItem(Map<String, dynamic> item) {
+    return item['tmdb_id']?.toString() ?? item['tmdbId']?.toString();
   }
 }
