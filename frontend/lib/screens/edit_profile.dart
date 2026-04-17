@@ -62,7 +62,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final String newName = _nameController.text.trim();
       final url = Uri.parse(
-        'https://projectstreaming-production.up.railway.app/api/users/${widget.userId}',
+        'https://projectstreaming-production.up.railway.app/api/auth/users/${widget.userId}',
       );
 
       debugPrint("🟡 Enviando PUT a: $url");

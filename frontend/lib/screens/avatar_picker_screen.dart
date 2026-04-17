@@ -55,7 +55,7 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
       // Usamos .trim() para asegurar que no haya espacios accidentales en el ID
       final cleanId = widget.userId.trim();
       final url = Uri.parse(
-        'https://projectstreaming-production.up.railway.app/api/users/$cleanId',
+        'https://projectstreaming-production.up.railway.app/api/auth/users/$cleanId',
       );
 
       final response = await http.put(
