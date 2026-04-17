@@ -100522,7 +100522,7 @@ s=q}for(;;)switch(s){case 0:n.b=!0
 n.aa()
 q=3
 s=6
-return A.r(A.LT(A.dQ("https://projectstreaming-production.app.railway.app/api/watchlist?userId="+a,0,null),null),$async$Ds)
+return A.r(A.LT(A.dQ("https://projectstreaming-production.up.railway.app/api/watchlist?userId="+a,0,null),null),$async$Ds)
 case 6:m=c
 if(m.b===200){j=m
 l=B.aJ.dq(A.nt(A.ns(j.e)).dq(j.w))
@@ -100549,7 +100549,7 @@ yh(a,b,c,d){return this.aCu(a,b,c,d)},
 aCu(a,b,c,d){var s=0,r=A.x(t.H),q=1,p=[],o=this,n,m,l,k,j,i,h
 var $async$yh=A.y(function(e,f){if(e===1){p.push(f)
 s=q}for(;;)switch(s){case 0:q=3
-l=A.dQ("https://projectstreaming-production.app.railway.app/api/watchlist/toggle",0,null)
+l=A.dQ("https://projectstreaming-production.up.railway.app/api/watchlist/toggle",0,null)
 k=t.N
 j=A.V(["Content-Type","application/json"],k,k)
 s=6
