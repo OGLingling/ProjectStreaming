@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'dart:convert'; // Para json.encode
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class AvatarPickerScreen extends StatefulWidget {
@@ -22,7 +22,6 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isUpdating = false;
 
-  // Lista de avatares disponibles
   static const List<String> _avatars = [
     "assets/avatars/usuario4.webp",
     "assets/avatars/usuario3.jpg",
@@ -32,45 +31,60 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
     "assets/avatars/usuarioprueba.jpg",
   ];
 
-  // --- FUNCIÓN CORREGIDA PARA ELIMINAR EL ERROR 404 ---
+  // --- CORRECCIÓN 1: VALIDACIÓN PREVENTIVA DE ID ---
   Future<void> _handleAvatarSelection(String avatarPath) async {
+    // Si el ID es nulo, está vacío o es la cadena "null", abortamos antes de llamar al servidor
+    if (widget.userId.isEmpty || widget.userId.trim().toLowerCase() == 'null') {
+      debugPrint(
+        "ALERTA: Se intentó actualizar un avatar con un userId inválido: '${widget.userId}'",
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Error: No se encontró tu sesión de usuario"),
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _isUpdating = true);
 
     try {
-      // Ajustamos la URL para que incluya el ID al final (/api/users/ID)
-      // Esto coincide con tu ruta: router.put('/users/:id', ...)
+      // --- CORRECCIÓN 2: LIMPIEZA DE URL ---
+      // Usamos .trim() para asegurar que no haya espacios accidentales en el ID
+      final cleanId = widget.userId.trim();
       final url = Uri.parse(
-        'https://projectstreaming-production.up.railway.app/api/users/${widget.userId}',
+        'https://projectstreaming-production.up.railway.app/api/users/$cleanId',
       );
 
       final response = await http.put(
         url,
         headers: {"Content-Type": "application/json"},
-        // Enviamos solo el profilePic en el cuerpo, ya que el ID va en la URL
         body: json.encode({"profilePic": avatarPath}),
       );
 
-      if (response.statusCode == 200) {
-        // Si el backend confirma el cambio (status 200), cerramos la pantalla
+      // --- CORRECCIÓN 3: MANEJO DE RESPUESTA ---
+      if (response.statusCode == 200 || response.statusCode == 201) {
         if (mounted) Navigator.pop(context, avatarPath);
       } else {
-        // Imprime el error en consola para depuración si no es 200
-        debugPrint(
-          "Error del servidor: ${response.statusCode} - ${response.body}",
-        );
-        throw Exception("Error del servidor: ${response.statusCode}");
+        debugPrint("Error 404/500 detectado: ${response.statusCode}");
+        debugPrint("Cuerpo de respuesta: ${response.body}");
+        throw Exception("Status: ${response.statusCode}");
       }
     } catch (e) {
-      debugPrint("Error al actualizar avatar: $e");
+      debugPrint("Excepción en la petición: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("No se pudo guardar la foto de perfil")),
+          const SnackBar(content: Text("Error al conectar con el servidor")),
         );
       }
     } finally {
       if (mounted) setState(() => _isUpdating = false);
     }
   }
+
+  // ... (Resto del código de build y funciones de ayuda se mantiene igual)
 
   @override
   void dispose() {
@@ -172,7 +186,6 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
                           );
                         },
                       ),
-                      // Botón para scroll a la derecha
                       Positioned(
                         right: 0,
                         top: 0,
@@ -247,7 +260,6 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
               ],
             ),
           ),
-          // Capa de carga bloqueante
           if (_isUpdating)
             Container(
               color: Colors.black12,
@@ -258,7 +270,6 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
     );
   }
 
-  // --- FUNCIONES DE AYUDA ---
   bool _isValidPath(String? path) {
     final normalized = path?.trim();
     return normalized != null &&
