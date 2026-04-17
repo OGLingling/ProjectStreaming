@@ -12,15 +12,13 @@ class MyListScreen extends StatelessWidget {
 
   const MyListScreen({super.key, required this.userId, this.user});
 
-  // Esta función es la que hace la magia de conectar con TMDB
+  // Función para obtener los detalles completos desde TMDB
   Future<Movie?> _fetchFullMovieData(dynamic tmdbId, String? rawType) async {
     const String apiKey = 'd8a00b94f5c00821e497b569fec9a61f';
 
-    // Validamos que el ID de TMDB no sea el de ubicación (ej. que no sea 36, sino 980431)
     final String id = tmdbId?.toString() ?? '';
     if (id.isEmpty || id == 'null') return null;
 
-    // Normalizamos el tipo para la API
     String type = 'movie';
     if (rawType != null) {
       String t = rawType.toLowerCase();
@@ -36,7 +34,6 @@ class MyListScreen extends StatelessWidget {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
 
-        // Creamos el objeto Movie completo para que el reproductor funcione
         return Movie(
           id: data['id'] ?? 0,
           tmdbId: data['id']?.toString() ?? id,
@@ -66,6 +63,7 @@ class MyListScreen extends StatelessWidget {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
           "Mi lista",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -96,11 +94,10 @@ class MyListScreen extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final item = watchlist[index];
 
-                    // --- CONFIGURACIÓN CLAVE ---
-                    // Aquí forzamos a que tome 'tmdb_id' que es la columna de tu tabla content
+                    // Extraemos el ID correcto (tmdb_id de Neon o tmdbId de la lista local)
                     final dynamic idParaTMDB =
                         item['tmdb_id'] ?? item['tmdbId'];
-                    final String type = item['type'] ?? 'tv';
+                    final String type = item['type'] ?? 'movie';
 
                     return InkWell(
                       onTap: () async {
@@ -112,7 +109,6 @@ class MyListScreen extends StatelessWidget {
                           ),
                         );
 
-                        // Pasamos el tmdb_id a la función
                         final movie = await _fetchFullMovieData(
                           idParaTMDB,
                           type,
@@ -134,7 +130,7 @@ class MyListScreen extends StatelessWidget {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
-                                  "ID de TMDB no encontrado ($idParaTMDB)",
+                                  "No se pudo cargar la información ($idParaTMDB)",
                                 ),
                               ),
                             );
@@ -165,23 +161,24 @@ class MyListScreen extends StatelessWidget {
                               top: 4,
                               right: 4,
                               child: GestureDetector(
+                                // CORRECCIÓN: Uso de argumentos nombrados para coincidir con el Provider
                                 onTap: () => provider.toggleWatchlist(
-                                  userId,
-                                  // Para eliminar, usamos el tmdbId
-                                  int.tryParse(idParaTMDB.toString()) ?? 0,
-                                  item['title'] ?? '',
-                                  item['image'] ?? '',
+                                  userId: userId,
+                                  tmdbId: idParaTMDB,
+                                  title: item['title'] ?? '',
+                                  image: item['image'] ?? '',
+                                  type: type,
                                 ),
                                 child: Container(
-                                  padding: const EdgeInsets.all(2),
+                                  padding: const EdgeInsets.all(4),
                                   decoration: const BoxDecoration(
-                                    color: Colors.black54,
+                                    color: Colors.black87,
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(
                                     Icons.close,
                                     color: Colors.white,
-                                    size: 16,
+                                    size: 18,
                                   ),
                                 ),
                               ),
