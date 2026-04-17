@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'avatar_picker_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final String name;
   final String image;
+  final String userId; // Agregado: ID necesario para la API
 
-  const EditProfileScreen({super.key, required this.name, required this.image});
+  const EditProfileScreen({
+    super.key,
+    required this.name,
+    required this.image,
+    required this.userId, // Requerido
+  });
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -15,6 +23,7 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _nameController;
   late String _selectedImage;
+  bool _isSaving = false; // Estado para el botón guardar
 
   @override
   void initState() {
@@ -23,21 +32,65 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _selectedImage = widget.image;
   }
 
+  // --- LÓGICA PARA GUARDAR CAMBIOS (NOMBRE) EN BACKEND ---
+  Future<void> _saveProfileChanges() async {
+    setState(() => _isSaving = true);
+
+    try {
+      final String newName = _nameController.text.trim();
+
+      // Llamada a tu API en Railway para actualizar el nombre
+      final url = Uri.parse(
+        'https://projectstreaming-production.up.railway.app/api/users/update-profile',
+      );
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: json.encode({
+          "id": widget.userId,
+          "name": newName,
+          "profilePic":
+              _selectedImage, // Enviamos ambos para asegurar consistencia
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          Navigator.pop(context, {'name': newName, 'image': _selectedImage});
+        }
+      } else {
+        throw Exception("Error al guardar");
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Error al conectar con el servidor")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   Future<void> _openAvatarPicker() async {
     final nameForPicker = _nameController.text.trim().isEmpty
         ? "Usuario"
         : _nameController.text.trim();
+
+    // CORRECCIÓN: Ahora pasamos el userId obligatorio
     final String? selectedPath = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => AvatarPickerScreen(
           profileName: nameForPicker,
           currentAvatar: _selectedImage,
+          userId: widget.userId, // Pasamos el ID al picker
         ),
       ),
     );
 
     if (!mounted) return;
+    // Si el picker guardó la foto exitosamente en el backend, actualizamos la UI aquí
     if (selectedPath != null && selectedPath.trim().isNotEmpty) {
       setState(() => _selectedImage = selectedPath);
     }
@@ -51,7 +104,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-        // CORRECCIÓN: Logo MovieWind en texto como en tu login
         title: Text(
           "MOVIEWIND",
           style: GoogleFonts.montserrat(
@@ -65,26 +117,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context, {
-                'name': _nameController.text.trim(),
-                'image': _selectedImage,
-              });
-            },
-            child: const Text(
-              "GUARDAR",
-              style: TextStyle(
-                color: Colors.blue,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-          ),
+          _isSaving
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 15),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : TextButton(
+                  onPressed:
+                      _saveProfileChanges, // Ahora llama a la función con API
+                  child: const Text(
+                    "GUARDAR",
+                    style: TextStyle(
+                      color: Colors.blue,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
         ],
       ),
       body: SingleChildScrollView(
-        // Añadido para evitar errores de overflow en pantallas pequeñas
         child: Center(
           child: Container(
             constraints: const BoxConstraints(maxWidth: 600),
@@ -104,7 +158,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Avatar con el Lápiz de edición
                     GestureDetector(
                       onTap: _openAvatarPicker,
                       child: Stack(
@@ -144,7 +197,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ),
                     ),
                     const SizedBox(width: 20),
-                    // Input del nombre
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,10 +219,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             decoration: const InputDecoration(
                               filled: true,
                               fillColor: Color(0xFFF0F0F0),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 15,
-                                vertical: 15,
-                              ),
+                              contentPadding: EdgeInsets.all(15),
                               enabledBorder: OutlineInputBorder(
                                 borderSide: BorderSide(
                                   color: Colors.transparent,
@@ -253,7 +302,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return const AssetImage("assets/avatars/usuario5.webp");
     }
     if (normalized.startsWith('http')) return NetworkImage(normalized);
-    if (normalized.startsWith('assets/')) return AssetImage(normalized);
-    return const AssetImage("assets/avatars/usuario5.webp");
+    return AssetImage(normalized);
   }
 }

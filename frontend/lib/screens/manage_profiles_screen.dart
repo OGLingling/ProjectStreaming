@@ -35,8 +35,11 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            EditProfileScreen(name: currentName, image: currentImg),
+        builder: (context) => EditProfileScreen(
+          name: currentName,
+          image: currentImg,
+          userId: widget.profileData['userId'],
+        ),
       ),
     );
 
