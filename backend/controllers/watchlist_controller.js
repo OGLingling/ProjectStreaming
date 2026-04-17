@@ -8,17 +8,31 @@ const getWatchlist = async (req, res) => {
     try {
         const list = await prisma.watchlist.findMany({
             where: { userId: userId },
-            include: { content: true } 
+            include: { 
+                content: true // Realiza el JOIN con la tabla Content en Neon
+            } 
         });
 
         const formattedList = list.map(item => ({
-            id: item.contentId,
+            // 1. ID INTERNO: Necesario para que el botón de eliminar (X) funcione
+            id: item.contentId, 
+
+            // 2. ID DE TMDB: El campo que falta en tu error actual
+            // Extraído directamente de la relación con 'Content'
+            tmdb_id: item.content?.tmdb_id, 
+
+            // 3. METADATOS: Para mostrar correctamente el poster y título
             title: item.content?.title || "Sin título",
-            image: item.content?.posterPath || ""
+            image: item.content?.image || item.content?.posterPath || "",
+            
+            // 4. TIPO: Importante para que TMDB sepa si buscar 'movie' o 'tv'
+            type: item.content?.type || "movie" 
         }));
 
         res.status(200).json(formattedList);
     } catch (error) {
+        // Log para depuración en Railway
+        console.error("Error en getWatchlist:", error);
         res.status(500).json({ error: error.message });
     }
 };

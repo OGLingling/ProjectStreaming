@@ -9,7 +9,6 @@ class WatchlistProvider with ChangeNotifier {
   List<Map<String, dynamic>> get watchlist => _watchlist;
   bool get isLoading => _isLoading;
 
-  // Cambia esta URL por la de tu servidor en Railway
   final String baseUrl =
       "https://projectstreaming-production.up.railway.app/api/watchlist";
 
@@ -23,10 +22,11 @@ class WatchlistProvider with ChangeNotifier {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
+        // Ahora cargamos la lista completa con tmdb_id y type
         _watchlist = List<Map<String, dynamic>>.from(data);
       }
     } catch (e) {
-      print("Error cargando watchlist: $e");
+      debugPrint("Error cargando watchlist: $e");
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -38,8 +38,10 @@ class WatchlistProvider with ChangeNotifier {
     String userId,
     int contentId,
     String title,
-    String image,
-  ) async {
+    String image, {
+    String? tmdbId, // Agregamos estos para actualizar la UI localmente
+    String? type,
+  }) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/toggle'),
@@ -48,21 +50,29 @@ class WatchlistProvider with ChangeNotifier {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // Actualizamos la lista local para que la UI cambie instantáneamente
+        // Buscamos si ya existe usando el internal ID (ej: 36)
         if (isInWatchlist(contentId)) {
           _watchlist.removeWhere((item) => item['id'] == contentId);
         } else {
-          _watchlist.add({'id': contentId, 'title': title, 'image': image});
+          // Al agregar, guardamos todos los datos necesarios para que
+          // el frontend no dé error al intentar abrir la serie recién agregada
+          _watchlist.add({
+            'id': contentId,
+            'tmdb_id': tmdbId, // Fundamental para evitar el error 'null'
+            'title': title,
+            'image': image,
+            'type': type ?? 'movie',
+          });
         }
         notifyListeners();
       }
     } catch (e) {
-      print("Error en toggleWatchlist: $e");
+      debugPrint("Error en toggleWatchlist: $e");
       rethrow;
     }
   }
 
-  // Verificar si un ID ya está en la lista
+  // Verificar si un ID ya está en la lista (Usa el ID de la DB interna)
   bool isInWatchlist(int contentId) {
     return _watchlist.any((item) => item['id'] == contentId);
   }
