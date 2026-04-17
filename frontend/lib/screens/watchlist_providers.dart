@@ -9,7 +9,6 @@ class WatchlistProvider with ChangeNotifier {
   List<Map<String, dynamic>> get watchlist => _watchlist;
   bool get isLoading => _isLoading;
 
-  // Cambia esta URL por la de tu servidor en Railway
   final String baseUrl =
       "https://projectstreaming-production.up.railway.app/api/watchlist";
 
@@ -23,47 +22,68 @@ class WatchlistProvider with ChangeNotifier {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
+        // Mapeamos asegurándonos de que tmdb_id sea tratado como String o int según prefieras
         _watchlist = List<Map<String, dynamic>>.from(data);
+        debugPrint("Watchlist cargada: $_watchlist");
       }
     } catch (e) {
-      print("Error cargando watchlist: $e");
+      debugPrint("Error cargando watchlist: $e");
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // Guardar o eliminar (Toggle)
+  // Guardar o eliminar (Toggle) usando TMDB ID
   Future<void> toggleWatchlist(
     String userId,
-    int contentId,
+    int tmdbId, // <--- Ahora pasamos el ID de TMDB (ej. 980431)
     String title,
     String image,
   ) async {
     try {
+      // Nota: Tu backend debe estar preparado para recibir el tmdb_id
+      // y buscar el contentId correspondiente para insertar en la tabla intermedia.
       final response = await http.post(
         Uri.parse('$baseUrl/toggle'),
         headers: {"Content-Type": "application/json"},
-        body: json.encode({"userId": userId, "contentId": contentId}),
+        body: json.encode({
+          "userId": userId,
+          "tmdbId": tmdbId, // Enviamos tmdbId al servidor
+        }),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // Actualizamos la lista local para que la UI cambie instantáneamente
-        if (isInWatchlist(contentId)) {
-          _watchlist.removeWhere((item) => item['id'] == contentId);
+        if (isInWatchlist(tmdbId)) {
+          // Removamos comparando contra el ID de TMDB
+          _watchlist.removeWhere(
+            (item) =>
+                (item['tmdb_id']?.toString() == tmdbId.toString()) ||
+                (item['id']?.toString() == tmdbId.toString()),
+          );
         } else {
-          _watchlist.add({'id': contentId, 'title': title, 'image': image});
+          // Agregamos con la estructura correcta para que la UI lo lea
+          _watchlist.add({'tmdb_id': tmdbId, 'title': title, 'image': image});
         }
         notifyListeners();
       }
     } catch (e) {
-      print("Error en toggleWatchlist: $e");
+      debugPrint("Error en toggleWatchlist: $e");
       rethrow;
     }
   }
 
-  // Verificar si un ID ya está en la lista
-  bool isInWatchlist(int contentId) {
-    return _watchlist.any((item) => item['id'] == contentId);
+  // Verificar si un ID de TMDB ya está en la lista
+  bool isInWatchlist(dynamic tmdbId) {
+    if (tmdbId == null) return false;
+    String idToSearch = tmdbId.toString();
+
+    return _watchlist.any((item) {
+      // Buscamos en todas las posibles llaves donde pueda estar el ID de TMDB
+      return item['tmdb_id']?.toString() == idToSearch ||
+          item['tmdbId']?.toString() == idToSearch ||
+          item['id']?.toString() ==
+              idToSearch; // A veces el backend lo manda como 'id'
+    });
   }
 }
