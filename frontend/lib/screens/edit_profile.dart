@@ -7,13 +7,13 @@ import 'avatar_picker_screen.dart';
 class EditProfileScreen extends StatefulWidget {
   final String name;
   final String image;
-  final String userId; // Agregado: ID necesario para la API
+  final String userId;
 
   const EditProfileScreen({
     super.key,
     required this.name,
     required this.image,
-    required this.userId, // Requerido
+    required this.userId,
   });
 
   @override
@@ -23,7 +23,7 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _nameController;
   late String _selectedImage;
-  bool _isSaving = false; // Estado para el botón guardar
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -32,36 +32,45 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _selectedImage = widget.image;
   }
 
-  // --- LÓGICA PARA GUARDAR CAMBIOS (NOMBRE) EN BACKEND ---
+  // --- LÓGICA CORREGIDA PARA GUARDAR CAMBIOS ---
   Future<void> _saveProfileChanges() async {
+    // Validación de seguridad para evitar enviar "null" al servidor
+    if (widget.userId.isEmpty || widget.userId == "null") {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Error: ID de usuario no válido")),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
       final String newName = _nameController.text.trim();
 
-      // Llamada a tu API en Railway para actualizar el nombre
+      // CORRECCIÓN: URL dinámica que incluye el ID al final según tu backend
       final url = Uri.parse(
-        'https://projectstreaming-production.up.railway.app/api/users/update-profile',
+        'https://projectstreaming-production.up.railway.app/api/users/${widget.userId}',
       );
+
       final response = await http.put(
         url,
         headers: {"Content-Type": "application/json"},
-        body: json.encode({
-          "id": widget.userId,
-          "name": newName,
-          "profilePic":
-              _selectedImage, // Enviamos ambos para asegurar consistencia
-        }),
+        body: json.encode({"name": newName, "profilePic": _selectedImage}),
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         if (mounted) {
+          // Retornamos los datos a la pantalla anterior
           Navigator.pop(context, {'name': newName, 'image': _selectedImage});
         }
       } else {
+        debugPrint(
+          "Fallo del servidor: ${response.statusCode} - ${response.body}",
+        );
         throw Exception("Error al guardar");
       }
     } catch (e) {
+      debugPrint("Excepción en el guardado: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Error al conectar con el servidor")),
@@ -77,20 +86,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ? "Usuario"
         : _nameController.text.trim();
 
-    // CORRECCIÓN: Ahora pasamos el userId obligatorio
     final String? selectedPath = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => AvatarPickerScreen(
           profileName: nameForPicker,
           currentAvatar: _selectedImage,
-          userId: widget.userId, // Pasamos el ID al picker
+          userId: widget.userId,
         ),
       ),
     );
 
     if (!mounted) return;
-    // Si el picker guardó la foto exitosamente en el backend, actualizamos la UI aquí
+
     if (selectedPath != null && selectedPath.trim().isNotEmpty) {
       setState(() => _selectedImage = selectedPath);
     }
@@ -121,12 +129,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ? const Center(
                   child: Padding(
                     padding: EdgeInsets.symmetric(horizontal: 15),
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   ),
                 )
               : TextButton(
-                  onPressed:
-                      _saveProfileChanges, // Ahora llama a la función con API
+                  onPressed: _saveProfileChanges,
                   child: const Text(
                     "GUARDAR",
                     style: TextStyle(
