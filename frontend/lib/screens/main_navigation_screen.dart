@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart'; // Importante para la comunicación con el backend
+import 'package:provider/provider.dart';
 
 import 'movies_screen.dart';
 import 'peliculas_screen.dart';
@@ -10,7 +10,7 @@ import 'manage_profiles_screen.dart';
 import 'search_screen.dart';
 import 'my_list_screen.dart';
 import 'account_screen.dart';
-import 'watchlist_providers.dart'; // Asegúrate de que el nombre del archivo coincida
+import 'watchlist_providers.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -32,8 +32,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     super.initState();
     _currentProfile = widget.userData ?? {};
 
-    // DISPARADOR PARA EL BACKEND:
-    // Al iniciar, pedimos al Provider que traiga la lista de la base de datos.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final String userId = _currentProfile['id']?.toString() ?? "invitado";
       Provider.of<WatchlistProvider>(
@@ -43,11 +41,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     });
   }
 
-  // --- LÓGICA DE PERFILES ---
+  // --- LÓGICA DE PERFILES SEGÚN PLAN ---
   List<Map<String, String>> _getVisibleProfiles() {
     final String plan = (_currentProfile['plan'] ?? 'basico')
         .toString()
         .toLowerCase();
+
+    // Lógica: Premium (4), Estandar (2), Basico (1)
     int maxProfiles = plan == 'premium' ? 4 : (plan == 'estandar' ? 2 : 1);
 
     final List<Map<String, String>> allProfiles = [
@@ -88,19 +88,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final size = MediaQuery.of(context).size;
     final bool isMobile = size.width < 800;
     final visibleProfiles = _getVisibleProfiles();
-
-    // Obtenemos el ID para pasarlo a la pantalla de "Mi Lista"
     final String currentUserId =
         _currentProfile['id']?.toString() ?? "invitado";
 
-    // ORDEN DE ÍNDICES:
-    // 0: Inicio, 1: Series, 2: Películas, 3: Novedades, 4: Mi lista, 5: Buscador
     final List<Widget> screens = [
       MoviesScreen(user: _currentProfile),
       SeriesScreen(isActive: _selectedIndex == 1),
       PeliculasScreen(isActive: _selectedIndex == 2),
       const NovedadesScreen(),
-      MyListScreen(userId: currentUserId), // Ahora recibe el userId del backend
+      MyListScreen(userId: currentUserId),
       const SearchScreen(),
     ];
 
@@ -164,41 +160,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  Widget _buildMobileBottomNav() {
-    return BottomNavigationBar(
-      currentIndex: _selectedIndex >= 5 ? 0 : _selectedIndex,
-      onTap: _onItemTapped,
-      backgroundColor: Colors.black.withOpacity(0.95),
-      type: BottomNavigationBarType.fixed,
-      selectedItemColor: Colors.white,
-      unselectedItemColor: Colors.grey,
-      selectedFontSize: 10,
-      unselectedFontSize: 10,
-      items: const [
-        BottomNavigationBarItem(
-          icon: Icon(Icons.home_outlined),
-          label: "Inicio",
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.video_library_outlined),
-          label: "Series",
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.movie_outlined),
-          label: "Películas",
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.auto_awesome_motion_outlined),
-          label: "Novedades",
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.bookmark_border),
-          label: "Mi lista",
-        ),
-      ],
-    );
-  }
-
   Widget _buildProfileIcon(List<Map<String, String>> visibleProfiles) {
     return CompositedTransformTarget(
       link: _linkLayer,
@@ -226,6 +187,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
+  // --- EL MENÚ MODIFICADO (FOTO 2) ---
   Widget _buildDropdownMenu(List<Map<String, String>> availableProfiles) {
     final String currentActiveName =
         (_currentProfile['selectedName'] ??
@@ -242,24 +204,39 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       width: 220,
       child: CompositedTransformFollower(
         link: _linkLayer,
+        showWhenUnlinked: false,
         offset: const Offset(-180, 40),
         child: Container(
           decoration: BoxDecoration(
             color: Colors.black.withOpacity(0.95),
             border: Border.all(color: Colors.white12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 10,
+                spreadRadius: 5,
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 10),
-              ...otherProfiles.map(
-                (profile) => _profileDropdownItem(
-                  profile['name']!,
-                  profile['image']!,
-                  () => _switchProfile(profile),
+              // 1. SECCIÓN DE PERFILES (Solo si el plan lo permite)
+              if (otherProfiles.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                ...otherProfiles.map(
+                  (profile) => _profileDropdownItem(
+                    profile['name']!,
+                    profile['image']!,
+                    () => _switchProfile(profile),
+                  ),
                 ),
-              ),
-              const Divider(color: Colors.white24),
+                const SizedBox(height: 5),
+              ],
+
+              // 2. SECCIÓN ESENCIALES (Siempre visibles)
+              const Divider(color: Colors.white24, height: 1),
               _dropdownItem(Icons.edit_outlined, "Administrar perfiles", () {
                 _tooltipController.hide();
                 Navigator.push(
@@ -270,6 +247,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                 );
               }),
+              _dropdownItem(Icons.swap_horiz_rounded, "Transferir perfil", () {
+                _tooltipController.hide();
+              }),
               _dropdownItem(Icons.account_circle_outlined, "Cuenta", () {
                 _tooltipController.hide();
                 Navigator.push(
@@ -277,10 +257,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   MaterialPageRoute(builder: (c) => const AccountScreen()),
                 );
               }),
-              const Divider(color: Colors.white24),
-              _dropdownItem(null, "Cerrar sesión en MovieWind", () {
-                Navigator.pushReplacementNamed(context, '/auth');
-              }, isBold: true),
+              _dropdownItem(Icons.help_outline, "Centro de ayuda", () {
+                _tooltipController.hide();
+              }),
+
+              // 3. CERRAR SESIÓN
+              const Divider(color: Colors.white24, height: 1),
+              _dropdownItem(
+                null,
+                "Cerrar sesión en MovieWind",
+                () {
+                  Navigator.pushReplacementNamed(context, '/auth');
+                },
+                isBold: true,
+                isCentered: true,
+              ),
+              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -303,6 +295,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               width: 28,
               height: 28,
               decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(2),
                 image: DecorationImage(
                   image: _getImageProvider(imagePath),
                   fit: BoxFit.cover,
@@ -325,21 +318,27 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     String text,
     VoidCallback onTap, {
     bool isBold = false,
+    bool isCentered = false,
   }) {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(
+          mainAxisAlignment: isCentered
+              ? MainAxisAlignment.center
+              : MainAxisAlignment.start,
           children: [
-            if (icon != null) Icon(icon, color: Colors.white70, size: 20),
-            if (icon != null) const SizedBox(width: 10),
+            if (icon != null) ...[
+              Icon(icon, color: Colors.white, size: 22),
+              const SizedBox(width: 12),
+            ],
             Text(
               text,
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 13,
-                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                fontWeight: isBold ? FontWeight.bold : FontWeight.w400,
               ),
             ),
           ],
@@ -363,6 +362,39 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildMobileBottomNav() {
+    return BottomNavigationBar(
+      currentIndex: _selectedIndex >= 5 ? 0 : _selectedIndex,
+      onTap: _onItemTapped,
+      backgroundColor: Colors.black.withOpacity(0.95),
+      type: BottomNavigationBarType.fixed,
+      selectedItemColor: Colors.white,
+      unselectedItemColor: Colors.grey,
+      items: const [
+        BottomNavigationBarItem(
+          icon: Icon(Icons.home_outlined),
+          label: "Inicio",
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.video_library_outlined),
+          label: "Series",
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.movie_outlined),
+          label: "Películas",
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.auto_awesome_motion_outlined),
+          label: "Novedades",
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.bookmark_border),
+          label: "Mi lista",
+        ),
+      ],
     );
   }
 
