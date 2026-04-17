@@ -9,73 +9,61 @@ class WatchlistProvider with ChangeNotifier {
   List<Map<String, dynamic>> get watchlist => _watchlist;
   bool get isLoading => _isLoading;
 
-  // CORRECCIÓN CRÍTICA: Se añade ".up" a la URL para validar el certificado SSL
+  // Cambia esta URL por la de tu servidor en Railway
   final String baseUrl =
       "https://projectstreaming-production.up.railway.app/api/watchlist";
 
+  // Cargar la lista desde Neon
   Future<void> loadWatchlist(String userId) async {
     _isLoading = true;
     notifyListeners();
+
     try {
       final response = await http.get(Uri.parse('$baseUrl?userId=$userId'));
+
       if (response.statusCode == 200) {
-        _watchlist = List<Map<String, dynamic>>.from(
-          json.decode(response.body),
-        );
+        final List<dynamic> data = json.decode(response.body);
+        _watchlist = List<Map<String, dynamic>>.from(data);
       }
     } catch (e) {
-      debugPrint("Error conexión: $e");
+      print("Error cargando watchlist: $e");
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  Future<void> toggleWatchlist({
-    required String userId,
-    required dynamic tmdbId,
-    required String title,
-    required String image,
-    String type = 'movie',
-  }) async {
-    final String idString = tmdbId.toString();
+  // Guardar o eliminar (Toggle)
+  Future<void> toggleWatchlist(
+    String userId,
+    int contentId,
+    String title,
+    String image,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/toggle'),
         headers: {"Content-Type": "application/json"},
-        body: json.encode({
-          "userId": userId,
-          "tmdbId": idString,
-          "title": title,
-          "image": image,
-          "type": type,
-        }),
+        body: json.encode({"userId": userId, "contentId": contentId}),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        if (isInWatchlist(idString)) {
-          _watchlist.removeWhere(
-            (item) =>
-                (item['tmdb_id']?.toString() ?? item['tmdbId']?.toString()) ==
-                idString,
-          );
+        // Actualizamos la lista local para que la UI cambie instantáneamente
+        if (isInWatchlist(contentId)) {
+          _watchlist.removeWhere((item) => item['id'] == contentId);
         } else {
-          _watchlist.add({'tmdb_id': idString, 'title': title, 'image': image});
+          _watchlist.add({'id': contentId, 'title': title, 'image': image});
         }
         notifyListeners();
       }
     } catch (e) {
-      debugPrint("Fallo de red: $e");
+      print("Error en toggleWatchlist: $e");
+      rethrow;
     }
   }
 
-  bool isInWatchlist(dynamic tmdbId) {
-    if (tmdbId == null) return false;
-    final String idToSearch = tmdbId.toString();
-    return _watchlist.any(
-      (item) =>
-          (item['tmdb_id']?.toString() ?? item['tmdbId']?.toString()) ==
-          idToSearch,
-    );
+  // Verificar si un ID ya está en la lista
+  bool isInWatchlist(int contentId) {
+    return _watchlist.any((item) => item['id'] == contentId);
   }
 }
