@@ -12,15 +12,15 @@ class MyListScreen extends StatelessWidget {
 
   const MyListScreen({super.key, required this.userId, this.user});
 
-  // Función para obtener la data completa desde la API de TMDB
-  Future<Movie?> _fetchFullMovieData(dynamic rawId, String? rawType) async {
+  // Esta función es la que hace la magia de conectar con TMDB
+  Future<Movie?> _fetchFullMovieData(dynamic tmdbId, String? rawType) async {
     const String apiKey = 'd8a00b94f5c00821e497b569fec9a61f';
 
-    // 1. Limpieza y validación del ID
-    final String idString = rawId?.toString() ?? '';
-    if (idString.isEmpty || idString == 'null') return null;
+    // Validamos que el ID de TMDB no sea el de ubicación (ej. que no sea 36, sino 980431)
+    final String id = tmdbId?.toString() ?? '';
+    if (id.isEmpty || id == 'null') return null;
 
-    // 2. Normalización de Tipo (movie o tv)
+    // Normalizamos el tipo para la API
     String type = 'movie';
     if (rawType != null) {
       String t = rawType.toLowerCase();
@@ -28,18 +28,18 @@ class MyListScreen extends StatelessWidget {
     }
 
     final url = Uri.parse(
-      'https://api.themoviedb.org/3/$type/$idString?api_key=$apiKey&language=es-ES&append_to_response=videos,credits,images,seasons',
+      'https://api.themoviedb.org/3/$type/$id?api_key=$apiKey&language=es-ES&append_to_response=videos,credits,images,seasons',
     );
 
     try {
-      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      final response = await http.get(url).timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
 
-        // Mapeo manual para asegurar que MovieDetailsScreen tenga todo para reproducir
+        // Creamos el objeto Movie completo para que el reproductor funcione
         return Movie(
           id: data['id'] ?? 0,
-          tmdbId: data['id']?.toString() ?? idString,
+          tmdbId: data['id']?.toString() ?? id,
           title: data['title'] ?? data['name'] ?? 'Sin título',
           description: data['overview'] ?? 'Sin sinopsis disponible',
           releaseDate: data['release_date'] ?? data['first_air_date'] ?? '',
@@ -52,7 +52,7 @@ class MyListScreen extends StatelessWidget {
         );
       }
     } catch (e) {
-      debugPrint("Error al consultar TMDB: $e");
+      debugPrint("Error llamando a TMDB: $e");
     }
     return null;
   }
@@ -66,7 +66,6 @@ class MyListScreen extends StatelessWidget {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        elevation: 0,
         title: const Text(
           "Mi lista",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -83,7 +82,6 @@ class MyListScreen extends StatelessWidget {
             )
           : LayoutBuilder(
               builder: (context, constraints) {
-                // Diseño de posters pequeños (7 en web, 3 en móvil)
                 int crossAxisCount = constraints.maxWidth > 1200 ? 7 : 3;
 
                 return GridView.builder(
@@ -92,15 +90,16 @@ class MyListScreen extends StatelessWidget {
                     crossAxisCount: crossAxisCount,
                     childAspectRatio: 0.67,
                     crossAxisSpacing: 10,
-                    mainAxisSpacing: 12,
+                    mainAxisSpacing: 15,
                   ),
                   itemCount: watchlist.length,
                   itemBuilder: (context, index) {
                     final item = watchlist[index];
 
-                    // PRIORIDAD DE ID: Intentamos tmdb_id primero, luego contentId
-                    final dynamic tmdbId =
-                        item['tmdb_id'] ?? item['tmdbId'] ?? item['contentId'];
+                    // --- CONFIGURACIÓN CLAVE ---
+                    // Aquí forzamos a que tome 'tmdb_id' que es la columna de tu tabla content
+                    final dynamic idParaTMDB =
+                        item['tmdb_id'] ?? item['tmdbId'];
                     final String type = item['type'] ?? 'tv';
 
                     return InkWell(
@@ -113,10 +112,14 @@ class MyListScreen extends StatelessWidget {
                           ),
                         );
 
-                        final movie = await _fetchFullMovieData(tmdbId, type);
+                        // Pasamos el tmdb_id a la función
+                        final movie = await _fetchFullMovieData(
+                          idParaTMDB,
+                          type,
+                        );
 
                         if (context.mounted) {
-                          Navigator.pop(context); // Cierra el loading
+                          Navigator.pop(context);
                           if (movie != null) {
                             Navigator.push(
                               context,
@@ -129,9 +132,9 @@ class MyListScreen extends StatelessWidget {
                             );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
+                              SnackBar(
                                 content: Text(
-                                  "Error: El ID de la serie no es válido",
+                                  "ID de TMDB no encontrado ($idParaTMDB)",
                                 ),
                               ),
                             );
@@ -158,14 +161,14 @@ class MyListScreen extends StatelessWidget {
                                     ),
                                   ),
                             ),
-                            // Botón para eliminar
                             Positioned(
                               top: 4,
                               right: 4,
                               child: GestureDetector(
                                 onTap: () => provider.toggleWatchlist(
                                   userId,
-                                  int.tryParse(tmdbId.toString()) ?? 0,
+                                  // Para eliminar, usamos el tmdbId
+                                  int.tryParse(idParaTMDB.toString()) ?? 0,
                                   item['title'] ?? '',
                                   item['image'] ?? '',
                                 ),
