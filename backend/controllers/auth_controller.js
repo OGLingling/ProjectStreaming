@@ -114,24 +114,45 @@ exports.register = async (req, res) => {
     }
 };
 
-// --- 5. ACTUALIZAR PERFIL (PUT) ---
+// --- 5. ACTUALIZAR PERFIL (CORREGIDO PARA EVITAR ERROR 500) ---
 exports.updateUser = async (req, res) => {
-    const { id } = req.params; // Captura el ID de la URL
-    const { name, profilePic, plan } = req.body; // Captura los datos del cuerpo
-
     try {
+        const { id } = req.params; 
+        const { name, profilePic, plan } = req.body;
+
+        // Log para que veas en Railway qué ID está llegando
+        console.log("Intentando actualizar usuario con ID:", id);
+
+        // VALIDACIÓN: Si el ID es nulo o inválido, respondemos 400 (Bad Request) en vez de 500
+        if (!id || id === "null" || id === "undefined") {
+            console.error("Error: Se recibió un ID nulo o inválido desde el frontend");
+            return res.status(400).json({ error: "ID de usuario inválido o no proporcionado" });
+        }
+
         const userUpdated = await prisma.user.update({
             where: { id: id },
             data: { 
-                // Usamos validaciones simples para no sobreescribir con null
                 ...(name && { name }), 
                 ...(profilePic && { profilePic }),
                 ...(plan && { plan }),
             },
         });
+
+        console.log("Usuario actualizado correctamente:", userUpdated.id);
         res.json(userUpdated);
+
     } catch (error) {
-        console.error("Error en Prisma:", error);
-        res.status(500).json({ error: "Error al actualizar el perfil" });
+        console.error("Error detallado en el servidor:", error.message);
+
+        // Si el ID no existe en la base de datos, Prisma lanza este error
+        if (error.code === 'P2025') {
+            return res.status(404).json({ error: "El usuario no existe en la base de datos" });
+        }
+
+        // Cualquier otro error interno
+        res.status(500).json({ 
+            error: "Error interno al actualizar el perfil",
+            detalle: error.message 
+        });
     }
 };
