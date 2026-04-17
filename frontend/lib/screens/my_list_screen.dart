@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import '../models/movie_model.dart';
+import '../services/tmdb_service.dart';
 import 'movie_details_screen.dart';
 import 'watchlist_providers.dart';
 
@@ -12,50 +10,8 @@ class MyListScreen extends StatelessWidget {
 
   const MyListScreen({super.key, required this.userId, this.user});
 
-  // Función para obtener la data completa desde la API de TMDB
-  Future<Movie?> _fetchFullMovieData(dynamic rawId, String? rawType) async {
-    const String apiKey = 'd8a00b94f5c00821e497b569fec9a61f';
-
-    // 1. Limpieza y validación del ID
-    final String idString = rawId?.toString() ?? '';
-    if (idString.isEmpty || idString == 'null') return null;
-
-    // 2. Normalización de Tipo (movie o tv)
-    String type = 'movie';
-    if (rawType != null) {
-      String t = rawType.toLowerCase();
-      if (t == 'tv' || t == 'serie' || t == 'series') type = 'tv';
-    }
-
-    final url = Uri.parse(
-      'https://api.themoviedb.org/3/$type/$idString?api_key=$apiKey&language=es-ES&append_to_response=videos,credits,images,seasons',
-    );
-
-    try {
-      final response = await http.get(url).timeout(const Duration(seconds: 10));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-
-        // Mapeo manual para asegurar que MovieDetailsScreen tenga todo para reproducir
-        return Movie(
-          id: data['id'] ?? 0,
-          tmdbId: data['id']?.toString() ?? idString,
-          title: data['title'] ?? data['name'] ?? 'Sin título',
-          description: data['overview'] ?? 'Sin sinopsis disponible',
-          releaseDate: data['release_date'] ?? data['first_air_date'] ?? '',
-          imageUrl: data['poster_path'] ?? '',
-          backdropUrl: data['backdrop_path'] ?? '',
-          rating: (data['vote_average'] as num?)?.toDouble() ?? 0.0,
-          category: '',
-          type: type,
-          seasons: data['seasons'] ?? [],
-        );
-      }
-    } catch (e) {
-      debugPrint("Error al consultar TMDB: $e");
-    }
-    return null;
-  }
+  // NOTA: Hemos eliminado _fetchFullMovieData de aquí porque ahora
+  // usamos TmdbService.getMovieDetails para mantener el código limpio.
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +39,6 @@ class MyListScreen extends StatelessWidget {
             )
           : LayoutBuilder(
               builder: (context, constraints) {
-                // Diseño de posters pequeños (7 en web, 3 en móvil)
                 int crossAxisCount = constraints.maxWidth > 1200 ? 7 : 3;
 
                 return GridView.builder(
@@ -98,13 +53,26 @@ class MyListScreen extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final item = watchlist[index];
 
-                    // PRIORIDAD DE ID: Intentamos tmdb_id primero, luego contentId
-                    final dynamic tmdbId =
-                        item['tmdb_id'] ?? item['tmdbId'] ?? item['contentId'];
-                    final String type = item['type'] ?? 'tv';
+                    // --- LÓGICA DE IDs SINCRONIZADA CON TU BACKEND ---
+                    // 1. tmdb_id: Para la API de TMDB (Evita el error 'null')
+                    final dynamic tmdbIdForApi = item['tmdb_id'];
+
+                    // 2. id: El contentId interno de Neon (Para poder eliminar)
+                    final dynamic internalDbId = item['id'];
+
+                    final String type = item['type'] ?? 'movie';
 
                     return InkWell(
                       onTap: () async {
+                        if (tmdbIdForApi == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Error: ID de TMDB no encontrado"),
+                            ),
+                          );
+                          return;
+                        }
+
                         showDialog(
                           context: context,
                           barrierDismissible: false,
@@ -113,7 +81,11 @@ class MyListScreen extends StatelessWidget {
                           ),
                         );
 
-                        final movie = await _fetchFullMovieData(tmdbId, type);
+                        // 2. USAMOS EL SERVICIO CENTRALIZADO
+                        final movie = await TmdbService.getMovieDetails(
+                          tmdbIdForApi,
+                          type,
+                        );
 
                         if (context.mounted) {
                           Navigator.pop(context); // Cierra el loading
@@ -124,14 +96,6 @@ class MyListScreen extends StatelessWidget {
                                 builder: (context) => MovieDetailsScreen(
                                   movie: movie,
                                   user: user,
-                                ),
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  "Error: El ID de la serie no es válido",
                                 ),
                               ),
                             );
@@ -158,21 +122,25 @@ class MyListScreen extends StatelessWidget {
                                     ),
                                   ),
                             ),
-                            // Botón para eliminar
+                            // BOTÓN PARA ELIMINAR CORREGIDO
                             Positioned(
                               top: 4,
                               right: 4,
                               child: GestureDetector(
-                                onTap: () => provider.toggleWatchlist(
-                                  userId,
-                                  int.tryParse(tmdbId.toString()) ?? 0,
-                                  item['title'] ?? '',
-                                  item['image'] ?? '',
-                                ),
+                                onTap: () {
+                                  // Enviamos el internalDbId (el 36 de tu DB)
+                                  // para que el backend sepa qué fila borrar
+                                  provider.toggleWatchlist(
+                                    userId,
+                                    internalDbId,
+                                    item['title'] ?? '',
+                                    item['image'] ?? '',
+                                  );
+                                },
                                 child: Container(
-                                  padding: const EdgeInsets.all(2),
+                                  padding: const EdgeInsets.all(4),
                                   decoration: const BoxDecoration(
-                                    color: Colors.black54,
+                                    color: Colors.black87,
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(

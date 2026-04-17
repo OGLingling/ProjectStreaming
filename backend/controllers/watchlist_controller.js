@@ -8,23 +8,13 @@ const getWatchlist = async (req, res) => {
     try {
         const list = await prisma.watchlist.findMany({
             where: { userId: userId },
-            include: { content: true } // Esto hace el JOIN con la tabla Content
+            include: { content: true } 
         });
 
         const formattedList = list.map(item => ({
-            // Mantenemos el ID de la tabla para el toggle si quieres
-            id: item.contentId, 
-            
-            // AGREGAMOS EL TMDB_ID (Este es el que soluciona tu error en Flutter)
-            tmdb_id: item.content?.tmdb_id, 
-            
+            id: item.contentId,
             title: item.content?.title || "Sin título",
-            
-            // Asegúrate de que el campo sea 'image' para que coincida con tu Flutter
-            image: item.content?.image || item.content?.posterPath || "",
-            
-            // También enviamos el tipo para que TMDB sepa si es movie o tv
-            type: item.content?.type || "movie" 
+            image: item.content?.posterPath || ""
         }));
 
         res.status(200).json(formattedList);
