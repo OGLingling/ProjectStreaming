@@ -30,14 +30,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.initState();
     _nameController = TextEditingController(text: widget.name);
     _selectedImage = widget.image;
+
+    // LOG DE DEBUGGING: Esto te dirá exactamente qué ID llegó a la pantalla
+    debugPrint("🔵 EditProfileScreen iniciada.");
+    debugPrint("🔵 Nombre recibido: ${widget.name}");
+    debugPrint("🔵 ID recibido: '${widget.userId}'");
   }
 
-  // --- LÓGICA CORREGIDA PARA GUARDAR CAMBIOS ---
   Future<void> _saveProfileChanges() async {
-    // Validación de seguridad para evitar enviar "null" al servidor
-    if (widget.userId.isEmpty || widget.userId == "null") {
+    // 1. VALIDACIÓN ESTRICTA: Bloqueamos la petición si el ID no es válido
+    if (widget.userId.isEmpty ||
+        widget.userId == "null" ||
+        widget.userId == "undefined") {
+      debugPrint(
+        "🔴 ERROR CRÍTICO: No se puede guardar porque el ID es '${widget.userId}'.",
+      );
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error: ID de usuario no válido")),
+        const SnackBar(
+          content: Text(
+            "Error: ID de usuario no encontrado. Cierra sesión y vuelve a entrar.",
+          ),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -46,11 +61,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     try {
       final String newName = _nameController.text.trim();
-
-      // CORRECCIÓN: URL dinámica que incluye el ID al final según tu backend
       final url = Uri.parse(
         'https://projectstreaming-production.up.railway.app/api/users/${widget.userId}',
       );
+
+      debugPrint("🟡 Enviando PUT a: $url");
 
       final response = await http.put(
         url,
@@ -58,22 +73,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         body: json.encode({"name": newName, "profilePic": _selectedImage}),
       );
 
+      debugPrint("🟢 Respuesta del servidor: ${response.statusCode}");
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         if (mounted) {
-          // Retornamos los datos a la pantalla anterior
+          // Retornamos los nuevos datos para que la pantalla anterior se actualice
           Navigator.pop(context, {'name': newName, 'image': _selectedImage});
         }
       } else {
-        debugPrint(
-          "Fallo del servidor: ${response.statusCode} - ${response.body}",
-        );
-        throw Exception("Error al guardar");
+        debugPrint("🔴 Fallo del servidor: ${response.body}");
+        throw Exception("Error al guardar: Código ${response.statusCode}");
       }
     } catch (e) {
-      debugPrint("Excepción en el guardado: $e");
+      debugPrint("🔴 Excepción capturada: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Error al conectar con el servidor")),
+          const SnackBar(
+            content: Text("Error de conexión al guardar el perfil."),
+          ),
         );
       }
     } finally {
@@ -307,7 +324,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  // Función para obtener la imagen del perfil
   ImageProvider _getImage(String path) {
     final normalized = path.trim();
     if (normalized.isEmpty || normalized.toLowerCase() == 'null') {

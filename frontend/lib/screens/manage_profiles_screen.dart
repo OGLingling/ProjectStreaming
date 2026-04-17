@@ -23,6 +23,7 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
   @override
   void initState() {
     super.initState();
+    // Inicializamos con los datos que vienen del perfil seleccionado o los base
     currentName = _normalizeText(
       widget.profileData['selectedName'] ?? widget.profileData['name'],
     );
@@ -31,19 +32,28 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
     );
   }
 
+  // --- LOGICA DE NAVEGACIÓN CORREGIDA ---
   Future<void> _openEditProfile() async {
+    // Extraemos el ID real usando 'id' (prioridad) o 'userId' como respaldo
+    final String actualUserId =
+        widget.profileData['id']?.toString() ??
+        widget.profileData['userId']?.toString() ??
+        "";
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => EditProfileScreen(
           name: currentName,
           image: currentImg,
-          userId: widget.profileData['userId'],
+          userId: actualUserId, // <--- Enviamos el ID correcto al backend
         ),
       ),
     );
 
     if (!mounted) return;
+
+    // Si la edición fue exitosa, actualizamos el estado local
     if (result is Map) {
       final nextName = _normalizeText(result['name']);
       final nextImg = _normalizeImagePath(result['image']);
@@ -112,7 +122,6 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
                 const SizedBox(height: 30),
                 _sectionTitle("Preferencias"),
 
-                // SECCIÓN 2: Idiomas y Controles
                 _buildWhiteCard([
                   _buildListTile(
                     leading: const Icon(Icons.translate, color: Colors.black),
@@ -203,7 +212,7 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
     );
   }
 
-  // --- MÉTODOS DE APOYO (Normalización y Navegación) ---
+  // --- MÉTODOS DE APOYO ---
 
   void _navigateTo(BuildContext context, Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (context) => screen));
@@ -261,6 +270,7 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
       style: GoogleFonts.montserrat(color: Colors.grey, fontSize: 18),
     ),
   );
+
   Widget _buildWhiteCard(List<Widget> children) => Container(
     decoration: BoxDecoration(
       color: Colors.white,
