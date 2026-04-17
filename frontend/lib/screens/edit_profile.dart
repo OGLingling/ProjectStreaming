@@ -307,6 +307,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  // Función para obtener la imagen del perfil
   ImageProvider _getImage(String path) {
     final normalized = path.trim();
     if (normalized.isEmpty || normalized.toLowerCase() == 'null') {
