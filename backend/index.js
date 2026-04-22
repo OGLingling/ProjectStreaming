@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth_routes');
 const adminRoutes = require('./routes/admin_routes');
 const authController = require('./controllers/auth_controller');
 const watchlistRoutes = require('./routes/watchlist_routes');
+const scraperRoutes = require('./routes/scraper_routes');
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use('/api/movies', movieRoutes);  // Maneja películas y proxy
 app.use('/api/auth', authRoutes);    // Maneja OTP, Registro y Perfil
 app.use('/api/admin', adminRoutes);  // Maneja supervisión de admin
 app.use('/api/watchlist', watchlistRoutes); // Maneja watchlist
+app.use('/api', scraperRoutes);
 
 app.get('/api/users', authController.getUserByEmail);
 
