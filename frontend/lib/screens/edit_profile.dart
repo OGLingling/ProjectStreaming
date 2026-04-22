@@ -69,12 +69,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         return;
       }
 
-      // La URL se ajusta para enviar al endpoint /api/users/:id
+      // CORRECCIÓN CRÍTICA: La ruta del backend es /api/auth/users/:id
       final url = Uri.parse(
-        'https://projectstreaming-production.up.railway.app/api/users/${widget.userId}',
+        'https://projectstreaming-production.up.railway.app/api/auth/users/${widget.userId}',
       );
 
       debugPrint("🟡 Enviando PUT a: $url");
+      debugPrint(
+        "🟡 Body: ${json.encode({"name": newName, "profilePic": _selectedImage})}",
+      );
 
       final response = await http.put(
         url,
@@ -89,16 +92,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           // Retornamos los nuevos datos para que la pantalla anterior se actualice
           Navigator.pop(context, {'name': newName, 'image': _selectedImage});
         }
+      } else if (response.statusCode == 404) {
+        debugPrint("🔴 Error 404: Ruta no encontrada o usuario no existe.");
+        throw Exception("Ruta incorrecta o usuario no encontrado (404)");
       } else {
         debugPrint("🔴 Fallo del servidor: ${response.body}");
-        throw Exception("Error al guardar: Código ${response.statusCode}");
+        throw Exception("Error del servidor: Código ${response.statusCode}");
       }
     } catch (e) {
       debugPrint("🔴 Excepción capturada: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Error de conexión al guardar el perfil."),
+          SnackBar(
+            content: Text(
+              e.toString().contains("404")
+                  ? "Error 404: Endpoint no válido."
+                  : "Error de conexión al guardar el perfil.",
+            ),
+            backgroundColor: Colors.red,
           ),
         );
       }
