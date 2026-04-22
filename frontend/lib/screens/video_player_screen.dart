@@ -1,6 +1,8 @@
 import 'dart:ui_web' as ui;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:web/web.dart' as web;
+import '../providers/settings_provider.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
   final String? tmdbId;
@@ -141,17 +143,74 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          HtmlElementView(
-            key: ValueKey(currentViewType),
-            viewType: currentViewType,
-          ),
-          if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(color: Colors.redAccent),
-            ),
-        ],
+      body: Consumer<SettingsProvider>(
+        builder: (context, settings, child) {
+          return Stack(
+            children: [
+              HtmlElementView(
+                key: ValueKey(currentViewType),
+                viewType: currentViewType,
+              ),
+              if (_isLoading)
+                const Center(
+                  child: CircularProgressIndicator(color: Colors.redAccent),
+                ),
+              // --- CAPA DE SUBTÍTULOS (OVERLAY) ---
+              if (settings.showSubtitles)
+                Positioned(
+                  bottom: 30, // Separación del borde inferior
+                  left: 20,
+                  right: 20,
+                  child: IgnorePointer(
+                    // Para que los toques pasen al video (Play/Pause)
+                    child: Container(
+                      alignment: Alignment.center,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        // NOTA: Este es un texto simulado. En una implementación real con SRT/VTT,
+                        // deberías parsear el archivo y actualizar este texto dinámicamente según el tiempo del video.
+                        child: Text(
+                          "Los subtítulos propios se mostrarán aquí...",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: settings.subtitleColor,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            shadows: const [
+                              Shadow(
+                                offset: Offset(-1.5, -1.5),
+                                color: Colors.black,
+                              ),
+                              Shadow(
+                                offset: Offset(1.5, -1.5),
+                                color: Colors.black,
+                              ),
+                              Shadow(
+                                offset: Offset(1.5, 1.5),
+                                color: Colors.black,
+                              ),
+                              Shadow(
+                                offset: Offset(-1.5, 1.5),
+                                color: Colors.black,
+                              ),
+                              Shadow(blurRadius: 4.0, color: Colors.black),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
