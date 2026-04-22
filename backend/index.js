@@ -52,3 +52,4 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`Servidor activo en puerto ${PORT}`);
     console.log("✅ Ruta de scraping cargada correctamente en /api/extract");
 });
+server.timeout = 120000;
