@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 
 class AvatarPickerScreen extends StatefulWidget {
   final String profileName;
@@ -20,7 +18,6 @@ class AvatarPickerScreen extends StatefulWidget {
 
 class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
   final ScrollController _scrollController = ScrollController();
-  bool _isUpdating = false;
 
   static const List<String> _avatars = [
     "assets/avatars/usuario4.webp",
@@ -31,60 +28,10 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
     "assets/avatars/usuarioprueba.jpg",
   ];
 
-  // --- CORRECCIÓN 1: VALIDACIÓN PREVENTIVA DE ID ---
-  Future<void> _handleAvatarSelection(String avatarPath) async {
-    // Si el ID es nulo, está vacío o es la cadena "null", abortamos antes de llamar al servidor
-    if (widget.userId.isEmpty || widget.userId.trim().toLowerCase() == 'null') {
-      debugPrint(
-        "ALERTA: Se intentó actualizar un avatar con un userId inválido: '${widget.userId}'",
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Error: No se encontró tu sesión de usuario"),
-          ),
-        );
-      }
-      return;
-    }
-
-    setState(() => _isUpdating = true);
-
-    try {
-      // --- CORRECCIÓN 2: LIMPIEZA DE URL ---
-      // Usamos .trim() para asegurar que no haya espacios accidentales en el ID
-      final cleanId = widget.userId.trim();
-      final url = Uri.parse(
-        'https://projectstreaming-production.up.railway.app/api/auth/users/$cleanId',
-      );
-
-      final response = await http.put(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: json.encode({"profilePic": avatarPath}),
-      );
-
-      // --- CORRECCIÓN 3: MANEJO DE RESPUESTA ---
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        if (mounted) Navigator.pop(context, avatarPath);
-      } else {
-        debugPrint("Error 404/500 detectado: ${response.statusCode}");
-        debugPrint("Cuerpo de respuesta: ${response.body}");
-        throw Exception("Status: ${response.statusCode}");
-      }
-    } catch (e) {
-      debugPrint("Excepción en la petición: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Error al conectar con el servidor")),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isUpdating = false);
-    }
+  // La pantalla solo devuelve el path seleccionado, no hace la petición HTTP
+  void _handleAvatarSelection(String avatarPath) {
+    Navigator.pop(context, avatarPath);
   }
-
-  // ... (Resto del código de build y funciones de ayuda se mantiene igual)
 
   @override
   void dispose() {
@@ -104,16 +51,6 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black),
-        actions: _isUpdating
-            ? [
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(right: 20),
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              ]
-            : null,
       ),
       body: Stack(
         children: [
@@ -171,9 +108,7 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
                         itemBuilder: (context, index) {
                           final avatar = _avatars[index];
                           return InkWell(
-                            onTap: _isUpdating
-                                ? null
-                                : () => _handleAvatarSelection(avatar),
+                            onTap: () => _handleAvatarSelection(avatar),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
                               child: Image.asset(
@@ -260,11 +195,6 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
               ],
             ),
           ),
-          if (_isUpdating)
-            Container(
-              color: Colors.black12,
-              child: const Center(child: CircularProgressIndicator()),
-            ),
         ],
       ),
     );

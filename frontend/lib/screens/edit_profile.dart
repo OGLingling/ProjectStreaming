@@ -61,8 +61,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     try {
       final String newName = _nameController.text.trim();
+      if (newName.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("El nombre no puede estar vacío.")),
+        );
+        setState(() => _isSaving = false);
+        return;
+      }
+
+      // La URL se ajusta para enviar al endpoint /api/users/:id
       final url = Uri.parse(
-        'https://projectstreaming-production.up.railway.app/api/auth/users/${widget.userId}',
+        'https://projectstreaming-production.up.railway.app/api/users/${widget.userId}',
       );
 
       debugPrint("🟡 Enviando PUT a: $url");
