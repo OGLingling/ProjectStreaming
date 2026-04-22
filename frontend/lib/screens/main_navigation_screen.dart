@@ -237,16 +237,28 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
               // 2. SECCIÓN ESENCIALES (Siempre visibles)
               const Divider(color: Colors.white24, height: 1),
-              _dropdownItem(Icons.edit_outlined, "Administrar perfiles", () {
-                _tooltipController.hide();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (c) =>
-                        ManageProfilesScreen(profileData: _currentProfile),
-                  ),
-                );
-              }),
+              _dropdownItem(
+                Icons.edit_outlined,
+                "Administrar perfiles",
+                () async {
+                  _tooltipController.hide();
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (c) =>
+                          ManageProfilesScreen(profileData: _currentProfile),
+                    ),
+                  );
+                  if (result != null && result is Map) {
+                    setState(() {
+                      _currentProfile['selectedName'] = result['name'];
+                      _currentProfile['name'] = result['name'];
+                      _currentProfile['selectedImage'] = result['image'];
+                      _currentProfile['profilePic'] = result['image'];
+                    });
+                  }
+                },
+              ),
               _dropdownItem(Icons.swap_horiz_rounded, "Transferir perfil", () {
                 _tooltipController.hide();
               }),

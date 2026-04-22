@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'avatar_picker_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -88,6 +89,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       debugPrint("🟢 Respuesta del servidor: ${response.statusCode}");
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_name', newName);
+        await prefs.setString('user_profilePic', _selectedImage);
+
         if (mounted) {
           // Retornamos los nuevos datos para que la pantalla anterior se actualice
           Navigator.pop(context, {'name': newName, 'image': _selectedImage});

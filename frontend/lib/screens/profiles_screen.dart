@@ -12,6 +12,23 @@ class ProfilesScreen extends StatefulWidget {
 }
 
 class _ProfilesScreenState extends State<ProfilesScreen> {
+  Map<String, dynamic>? _localUserData;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_localUserData == null) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Map<String, dynamic>) {
+        _localUserData = Map<String, dynamic>.from(args);
+      } else if (widget.user != null) {
+        _localUserData = Map<String, dynamic>.from(widget.user!);
+      } else {
+        _localUserData = {};
+      }
+    }
+  }
+
   // Navegación directa al main
   void _navigateToMovies(
     BuildContext context,
@@ -33,10 +50,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final Map<String, dynamic> userData =
-        widget.user ??
-        (ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-            {});
+    final Map<String, dynamic> userData = _localUserData ?? {};
 
     final String plan = (userData['plan'] ?? 'basico').toString().toLowerCase();
 
@@ -111,14 +125,23 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
               ),
               const SizedBox(height: 50),
               ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
+                onPressed: () async {
+                  final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) =>
                           ManageProfilesScreen(profileData: visibleProfiles[0]),
                     ),
                   );
+
+                  // Si recibimos datos actualizados de ManageProfilesScreen, recargamos UI global
+                  if (result != null && result is Map) {
+                    setState(() {
+                      userData['name'] = result['name'];
+                      userData['userName'] = result['name'];
+                      userData['profilePic'] = result['image'];
+                    });
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.transparent,
