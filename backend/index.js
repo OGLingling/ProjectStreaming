@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 
+const app = express();
+
 // --- IMPORTACIÓN DE RUTAS ---
 const movieRoutes = require('./routes/movie_routes');
 const authRoutes = require('./routes/auth_routes');
@@ -9,8 +11,6 @@ const adminRoutes = require('./routes/admin_routes');
 const authController = require('./controllers/auth_controller');
 const watchlistRoutes = require('./routes/watchlist_routes');
 const scraperRoutes = require('./routes/scraper_routes');
-
-const app = express();
 
 // 1. CONFIGURACIÓN DE MIDDLEWARES
 app.use(cors({
