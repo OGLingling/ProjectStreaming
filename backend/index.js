@@ -30,14 +30,15 @@ app.use('/api/admin', adminRoutes);  // Maneja supervisión de admin
 app.use('/api/watchlist', watchlistRoutes); // Maneja watchlist
 app.use('/api', scraperRoutes);
 
-app.get('/health', (req, res) => res.status(200).send('OK'));
-
 app.get('/api/users', authController.getUserByEmail);
 
 // 3. RUTA DE SALUD (Opcional, útil para ver si el server vive)
 app.get('/', (req, res) => {
     res.send('Servidor MOVIEWIND Activo 🚀');
 });
+
+// Ruta de Health Check crítica para el Load Balancer de Railway
+app.get('/health', (req, res) => res.status(200).send('OK'));
 
 // Middleware para atrapar 404
 app.use((req, res) => { 
