@@ -37,6 +37,9 @@ app.get('/', (req, res) => {
     res.send('Servidor MOVIEWIND Activo 🚀');
 });
 
+// Ruta de Health Check crítica para el Load Balancer de Railway
+app.get('/health', (req, res) => res.status(200).send('OK'));
+
 // Middleware para atrapar 404
 app.use((req, res) => { 
     console.log("❌ 404 Capturado en la ruta:", req.originalUrl); 
@@ -46,6 +49,6 @@ app.use((req, res) => {
 // 4. ARRANQUE DEL SERVIDOR
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Servidor MOVIEWIND corriendo en puerto ${PORT}`);
+    console.log(`Servidor activo en puerto ${PORT}`);
     console.log("✅ Ruta de scraping cargada correctamente en /api/extract");
 });

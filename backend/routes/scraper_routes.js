@@ -19,7 +19,7 @@ router.get('/extract', async (req, res) => {
   try {
     console.log(`\n[API] Recibiendo petición de scraping para: ${url}`);
     
-    // Llamar al Scraper Service
+    // Llamar al Scraper Service Ultra-Ligero
     const streamUrl = await VideoScraper.extractStreamUrl(url);
 
     if (streamUrl) {
@@ -27,18 +27,15 @@ router.get('/extract', async (req, res) => {
         success: true,
         streamUrl: streamUrl
       });
-    } else {
-      return res.status(404).json({
-        success: false,
-        error: "No se pudo extraer el enlace directo .m3u8 tras analizar el tráfico."
-      });
     }
 
   } catch (error) {
-    console.error("[API] Error del Servidor durante Scraping:", error);
+    console.error("[API] Error capturado durante Scraping:", error.message);
+    
+    // Respuesta JSON detallada y amigable para Flutter
     return res.status(500).json({
       success: false,
-      error: "Error interno al ejecutar el extractor de video.",
+      error: "No se pudo extraer el enlace del video.",
       details: error.message
     });
   }
