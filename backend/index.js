@@ -37,6 +37,12 @@ app.get('/', (req, res) => {
     res.send('Servidor MOVIEWIND Activo 🚀');
 });
 
+// Middleware para atrapar 404
+app.use((req, res) => { 
+    console.log("❌ 404 Capturado en la ruta:", req.originalUrl); 
+    res.status(404).send("Not Found - MovieWind API"); 
+});
+
 // 4. ARRANQUE DEL SERVIDOR
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {

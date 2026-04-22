@@ -17,7 +17,7 @@ router.get('/extract', async (req, res) => {
   }
 
   try {
-    console.log(`\n[API] Scraper activado para la URL: ${url}`);
+    console.log(`\n[API] Recibiendo petición de scraping para: ${url}`);
     
     // Llamar al Scraper Service
     const streamUrl = await VideoScraper.extractStreamUrl(url);
