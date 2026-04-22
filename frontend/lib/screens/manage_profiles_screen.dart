@@ -3,9 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'edit_profile.dart';
 
 // Imports de la carpeta settings
-import 'settings/configuracion_lenguaje.dart';
+import 'settings/configuracion_reproduccion.dart';
 import 'settings/control_parental.dart';
-import 'settings/configuracion_subtitulos.dart';
 
 class ManageProfilesScreen extends StatefulWidget {
   final Map<String, dynamic> profileData;
@@ -133,9 +132,8 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
                   _buildWhiteCard([
                     _buildListTile(
                       leading: const Icon(Icons.translate, color: Colors.black),
-                      title: "Idiomas",
-                      subtitle:
-                          "Configura los idiomas de visualización y audio",
+                      title: "Configuración de Reproducción",
+                      subtitle: "Configura idiomas y aspecto de subtítulos",
                       onTap: () => _openLanguageSettings(context),
                     ),
                     const Divider(color: Colors.black12, height: 1),
@@ -148,16 +146,6 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
                       subtitle:
                           "Edita las clasificaciones por edad y restricciones",
                       onTap: () => _openParentalControls(context),
-                    ),
-                    const Divider(color: Colors.black12, height: 1),
-                    _buildListTile(
-                      leading: const Icon(
-                        Icons.subtitles_outlined,
-                        color: Colors.black,
-                      ),
-                      title: "Aspecto de los subtítulos",
-                      subtitle: "Personaliza el aspecto de los subtítulos",
-                      onTap: () => _openSubtitleSettings(context),
                     ),
                   ]),
 
@@ -232,10 +220,16 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
   }
 
   void _openLanguageSettings(BuildContext context) {
+    final String actualUserId =
+        widget.profileData['id']?.toString() ??
+        widget.profileData['userId']?.toString() ??
+        "";
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const ConfiguracionLenguajeScreen(),
+        builder: (context) =>
+            ConfiguracionReproduccionScreen(userId: actualUserId),
       ),
     );
   }
@@ -244,15 +238,6 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const ControlParentalScreen()),
-    );
-  }
-
-  void _openSubtitleSettings(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const ConfiguracionSubtitulosScreen(),
-      ),
     );
   }
 

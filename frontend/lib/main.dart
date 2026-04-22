@@ -8,7 +8,7 @@ import 'screens/auth_screen.dart';
 import 'screens/profiles_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/watchlist_providers.dart'; // 2. Importa tu WatchlistProvider
-import 'providers/subtitle_provider.dart'; // 3. Importa tu SubtitleProvider
+import 'providers/settings_provider.dart'; // 3. Importa tu SettingsProvider
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,7 +33,7 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => WatchlistProvider()),
-        ChangeNotifierProvider(create: (_) => SubtitleProvider()),
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
       child: const MyApp(),
     ),

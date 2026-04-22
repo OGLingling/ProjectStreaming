@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import '../../providers/subtitle_provider.dart'; // Ajusta la ruta si es necesario
+import '../../providers/settings_provider.dart'; // Ajusta la ruta si es necesario
 
 class ConfiguracionSubtitulosScreen extends StatelessWidget {
   const ConfiguracionSubtitulosScreen({super.key});
@@ -21,9 +21,12 @@ class ConfiguracionSubtitulosScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
-        title: Text("Aspecto de los subtítulos", style: GoogleFonts.montserrat()),
+        title: Text(
+          "Aspecto de los subtítulos",
+          style: GoogleFonts.montserrat(),
+        ),
       ),
-      body: Consumer<SubtitleProvider>(
+      body: Consumer<SettingsProvider>(
         builder: (context, provider, child) {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -97,7 +100,8 @@ class ConfiguracionSubtitulosScreen extends StatelessWidget {
                       style: TextStyle(color: Colors.grey[400], fontSize: 13),
                     ),
                     value: provider.showSubtitles,
-                    onChanged: (val) => provider.toggleSubtitles(val),
+                    onChanged: (val) =>
+                        provider.updateSettings(newShowSubtitles: val),
                   ),
                 ),
 
@@ -126,7 +130,9 @@ class ConfiguracionSubtitulosScreen extends StatelessWidget {
                           children: _colorOptions.map((color) {
                             final isSelected = provider.subtitleColor == color;
                             return GestureDetector(
-                              onTap: () => provider.updateColor(color),
+                              onTap: () => provider.updateSettings(
+                                newSubtitleColor: color,
+                              ),
                               child: Container(
                                 width: 45,
                                 height: 45,
