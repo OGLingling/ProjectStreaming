@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../../providers/subtitle_provider.dart'; // Ajusta la ruta si es necesario
 
-class ConfiguracionSubtitulosScreen extends StatefulWidget {
+class ConfiguracionSubtitulosScreen extends StatelessWidget {
   const ConfiguracionSubtitulosScreen({super.key});
 
-  @override
-  State<ConfiguracionSubtitulosScreen> createState() =>
-      _ConfiguracionSubtitulosScreenState();
-}
-
-class _ConfiguracionSubtitulosScreenState
-    extends State<ConfiguracionSubtitulosScreen> {
-  // 1. ESTADOS INICIALES
-  double _fontSize = 18.0;
-  Color _textColor = Colors.white;
-  Color _backgroundColor = Colors.black.withOpacity(0.5);
+  final List<Color> _colorOptions = const [
+    Colors.white,
+    Colors.yellow,
+    Colors.green,
+    Colors.cyanAccent,
+    Colors.pinkAccent,
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -22,192 +20,154 @@ class _ConfiguracionSubtitulosScreenState
       backgroundColor: const Color(0xFF141414),
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: Text(
-          "Aspecto de los subtítulos",
-          style: GoogleFonts.montserrat(),
-        ),
         elevation: 0,
+        title: Text("Aspecto de los subtítulos", style: GoogleFonts.montserrat()),
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // --- SECCIÓN DE VISTA PREVIA ---
-            Container(
-              height: 200,
-              width: double.infinity,
-              margin: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                image: const DecorationImage(
-                  image: AssetImage(
-                    "assets/images/preview_bg.jpg",
-                  ), // Asegúrate de tener una imagen de fondo o usa un color
-                  fit: BoxFit.cover,
-                  opacity: 0.6,
-                ),
-              ),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+      body: Consumer<SubtitleProvider>(
+        builder: (context, provider, child) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // --- VISTA PREVIA ---
+                Container(
+                  width: double.infinity,
+                  height: 180,
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(8),
+                    image: const DecorationImage(
+                      image: NetworkImage(
+                        "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1000&auto=format&fit=crop",
+                      ),
+                      fit: BoxFit.cover,
+                      colorFilter: ColorFilter.mode(
+                        Colors.black45,
+                        BlendMode.darken,
+                      ),
+                    ),
                   ),
-                  color: _backgroundColor,
-                  child: Text(
-                    "Así se verán los subtítulos",
-                    style: TextStyle(
-                      color: _textColor,
-                      fontSize: _fontSize,
-                      fontWeight: FontWeight.w500,
+                  alignment: Alignment.bottomCenter,
+                  padding: const EdgeInsets.only(bottom: 20),
+                  child: AnimatedOpacity(
+                    opacity: provider.showSubtitles ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        "Este es un texto de ejemplo.",
+                        style: TextStyle(
+                          color: provider.subtitleColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
+                const SizedBox(height: 30),
 
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Divider(color: Colors.white24),
-            ),
-
-            // --- CONTROLES ---
-            _buildSettingSection(
-              title: "Tamaño del texto",
-              child: Slider(
-                activeColor: const Color(0xFFE50914),
-                inactiveColor: Colors.white24,
-                value: _fontSize,
-                min: 12,
-                max: 30,
-                divisions: 3,
-                label: _fontSize == 12
-                    ? "Pequeño"
-                    : (_fontSize == 18 ? "Mediano" : "Grande"),
-                onChanged: (val) => setState(() => _fontSize = val),
-              ),
-            ),
-
-            _buildSettingSection(
-              title: "Color del texto",
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _colorOption(Colors.white),
-                  _colorOption(Colors.yellow),
-                  _colorOption(Colors.cyan),
-                  _colorOption(Colors.greenAccent),
-                ],
-              ),
-            ),
-
-            _buildSettingSection(
-              title: "Fondo de los subtítulos",
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _bgOption(Colors.transparent, "Ninguno"),
-                  _bgOption(Colors.black.withOpacity(0.5), "Sombra"),
-                  _bgOption(Colors.black, "Bloque"),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 40),
-
-            // BOTÓN GUARDAR
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE50914),
+                // --- TOGGLE ACTIVAR/DESACTIVAR ---
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text(
-                    "GUARDAR CAMBIOS",
-                    style: TextStyle(color: Colors.white),
+                  child: SwitchListTile(
+                    activeColor: const Color(0xFFE50914),
+                    title: const Text(
+                      "Mostrar subtítulos",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: Text(
+                      provider.showSubtitles
+                          ? "Los subtítulos estarán visibles durante la reproducción."
+                          : "Los subtítulos están desactivados.",
+                      style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                    ),
+                    value: provider.showSubtitles,
+                    onChanged: (val) => provider.toggleSubtitles(val),
                   ),
                 ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  // --- WIDGETS DE APOYO ---
+                const SizedBox(height: 30),
 
-  Widget _buildSettingSection({required String title, required Widget child}) {
-    return Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title.toUpperCase(),
-            style: const TextStyle(
-              color: Colors.grey,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
+                // --- SELECTOR DE COLOR ---
+                AnimatedOpacity(
+                  opacity: provider.showSubtitles ? 1.0 : 0.3,
+                  duration: const Duration(milliseconds: 300),
+                  child: AbsorbPointer(
+                    absorbing: !provider.showSubtitles,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Color del texto",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: _colorOptions.map((color) {
+                            final isSelected = provider.subtitleColor == color;
+                            return GestureDetector(
+                              onTap: () => provider.updateColor(color),
+                              child: Container(
+                                width: 45,
+                                height: 45,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.transparent,
+                                    width: 3,
+                                  ),
+                                  boxShadow: [
+                                    if (isSelected)
+                                      BoxShadow(
+                                        color: color.withValues(alpha: 0.5),
+                                        blurRadius: 10,
+                                        spreadRadius: 2,
+                                      ),
+                                  ],
+                                ),
+                                child: isSelected
+                                    ? Icon(
+                                        Icons.check,
+                                        color: color == Colors.white
+                                            ? Colors.black
+                                            : Colors.white,
+                                      )
+                                    : null,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 15),
-          child,
-        ],
-      ),
-    );
-  }
-
-  Widget _colorOption(Color color) {
-    bool isSelected = _textColor == color;
-    return GestureDetector(
-      onTap: () => setState(() => _textColor = color),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isSelected ? Colors.red : Colors.white24,
-            width: 3,
-          ),
-        ),
-        child: isSelected
-            ? const Icon(Icons.check, color: Colors.black, size: 20)
-            : null,
-      ),
-    );
-  }
-
-  Widget _bgOption(Color color, String label) {
-    bool isSelected = _backgroundColor == color;
-    return GestureDetector(
-      onTap: () => setState(() => _backgroundColor = color),
-      child: Column(
-        children: [
-          Container(
-            width: 60,
-            height: 40,
-            decoration: BoxDecoration(
-              color: color,
-              border: Border.all(
-                color: isSelected ? Colors.red : Colors.white24,
-              ),
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey,
-              fontSize: 10,
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
