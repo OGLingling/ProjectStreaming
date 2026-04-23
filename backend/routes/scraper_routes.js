@@ -28,6 +28,13 @@ router.get('/extract', async (req, res) => {
         streamUrl: streamUrl
       });
     }
+    
+    // Si llegamos aquí, el scraper no encontró URL pero tampoco lanzó error
+    return res.status(404).json({
+      success: false,
+      error: "No se encontró ningún stream de video en la página",
+      details: "El scraper completó la búsqueda pero no detectó archivos .m3u8 o .mp4"
+    });
 
   } catch (error) {
     console.error("[API] Error capturado durante Scraping:", error.message);

@@ -20,12 +20,18 @@ class VideoScraper {
 
       const page = await browser.newPage();
       
-      // Simulación de usuario
+      // Simulación de usuario ultra-ligera
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
       const urlObj = new URL(targetUrl);
       await page.setExtraHTTPHeaders({ 'Referer': urlObj.origin + '/' });
 
+      // BLOQUEO EXTREMO DE RECURSOS - VITAL PARA RAILWAY
       await page.setRequestInterception(true);
+      
+      // Deshabilitar características que consumen RAM
+      await page.setJavaScriptEvaluation(false);
+      await page.setBypassCSP(false);
+      await page.setCacheEnabled(false);
       
       // MODO REACTIVO: Promesa que se resuelve en cuanto olemos el video
       const urlPromise = new Promise((resolve) => {
@@ -40,13 +46,20 @@ class VideoScraper {
             }
           }
           
-          // 2. Optimización Agresiva
+          // 2. OPTIMIZACIÓN EXTREMA - BLOQUEO MASIVO PARA RAILWAY
           const resourceType = req.resourceType();
-          const isTrash = ['image', 'stylesheet', 'font'].includes(resourceType) || 
-                          url.includes('analytics') || url.includes('ad');
+          const requestUrl = req.url().toLowerCase();
           
-          // Nota: No bloqueamos 'media' porque ahí podría estar el m3u8 en algunos servers
-          if (isTrash) {
+          // PERMITIR SOLO: HTML, XHR, Fetch, Media (donde puede estar el m3u8) y WebSocket
+          const allowedTypes = ['document', 'xhr', 'fetch', 'media', 'websocket'];
+          
+          // BLOQUEAR ABSOLUTAMENTE TODO LO DEMÁS
+          const isAllowed = allowedTypes.includes(resourceType) || 
+                           requestUrl.includes('.m3u8') || requestUrl.includes('.mp4') ||
+                           requestUrl.includes('master.m3u8') || requestUrl.includes('index.m3u8');
+          
+          if (!isAllowed) {
+            // Bloqueo agresivo: imágenes, CSS, fuentes, scripts, analytics, ads, etc.
             req.abort().catch(() => {});
           } else {
             req.continue().catch(() => {});
@@ -75,9 +88,9 @@ class VideoScraper {
         page.mouse.click(640, 360).catch(() => {});
       }, 5000);
 
-      // Carrera: Encontrar URL vs Timeout de Seguridad (15s total para no colgar el server)
+      // TIMEOUT ULTRA-AGRESIVO: 12 segundos máximo para evitar límites de Railway
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout: No se encontró el m3u8")), 15000)
+        setTimeout(() => reject(new Error("Timeout Railway: No se encontró el stream en 12s")), 12000)
       );
 
       const finalUrl = await Promise.race([urlPromise, timeoutPromise]);
