@@ -99,3 +99,18 @@ model User {
   autoPlay          Boolean @default(true)
   myList        Watchlist[]
 }
+
+// Modelo para logs de scraping
+model ScrapeLog {
+  id          Int      @id @default(autoincrement())
+  targetUrl   String   @db.Text
+  success     Boolean
+  streamUrl   String?  @db.Text
+  error       String?  @db.Text
+  duration    Int?     // Duración en milisegundos
+  createdAt   DateTime @default(now())
+  
+  @@index([targetUrl])
+  @@index([success])
+  @@index([createdAt])
+}

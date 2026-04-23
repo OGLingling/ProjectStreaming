@@ -1,10 +1,17 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const { PrismaClient } = require('@prisma/client');
 puppeteer.use(StealthPlugin());
+const prisma = new PrismaClient();
 
 class VideoScraper {
   static async extractStreamUrl(targetUrl) {
     let browser;
+    const startTime = Date.now();
+    let success = false;
+    let streamUrlResult = null;
+    let errorMessage = null;
+    
     try {
       console.log(`[Scraper Reactivo] Iniciando para: ${targetUrl}`);
       browser = await puppeteer.launch({
@@ -96,12 +103,33 @@ class VideoScraper {
       const finalUrl = await Promise.race([urlPromise, timeoutPromise]);
       
       clearTimeout(clickTimer);
+      success = true;
+      streamUrlResult = finalUrl;
       return finalUrl;
 
     } catch (error) {
       console.log(`[Scraper] Error controlado: ${error.message}`);
+      errorMessage = error.message;
       throw error; // Lo atrapamos en la ruta
     } finally {
+      const duration = Date.now() - startTime;
+      
+      // Loggear en base de datos
+      try {
+        await prisma.scrapeLog.create({
+          data: {
+            targetUrl: targetUrl,
+            success: success,
+            streamUrl: streamUrlResult,
+            error: errorMessage,
+            duration: duration
+          }
+        });
+        console.log(`[Scraper] Log guardado en BD - Éxito: ${success}, Duración: ${duration}ms`);
+      } catch (dbError) {
+        console.error('[Scraper] Error al guardar log en BD:', dbError.message);
+      }
+      
       if (browser) {
         console.log(`[Scraper] Cerrando Chromium...`);
         await browser.close().catch(() => {});

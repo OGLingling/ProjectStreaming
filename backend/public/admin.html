@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - MovieWind</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .stats-card {
+            transition: all 0.3s ease;
+        }
+        .stats-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-8 w-96">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Admin Panel</h2>
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2">Usuario</label>
+                <input type="text" id="username" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="mb-6">
+                <label class="block text-gray-700 text-sm font-bold mb-2">Contraseña</label>
+                <input type="password" id="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <button onclick="login()" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                Iniciar Sesión
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="flex">
+        <!-- Sidebar -->
+        <div class="w-64 bg-gray-800 text-white min-h-screen">
+            <div class="p-4 border-b border-gray-700">
+                <h1 class="text-xl font-bold">MovieWind Admin</h1>
+                <p class="text-sm text-gray-400">Panel de Administración</p>
+            </div>
+            <nav class="p-4">
+                <ul>
+                    <li class="mb-2">
+                        <a href="#dashboard" onclick="showSection('dashboard')" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md">
+                            <i class="fas fa-chart-line mr-3"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="#contents" onclick="showSection('contents')" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md">
+                            <i class="fas fa-film mr-3"></i> Contenidos
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="#users" onclick="showSection('users')" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md">
+                            <i class="fas fa-users mr-3"></i> Usuarios
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="#scraping" onclick="showSection('scraping')" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md">
+                            <i class="fas fa-code mr-3"></i> Scraping Logs
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="#broken-links" onclick="showSection('broken-links')" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md">
+                            <i class="fas fa-unlink mr-3"></i> Enlaces Rotos
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 p-8">
+            <!-- Dashboard Section -->
+            <div id="dashboard" class="section">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">Dashboard</h2>
+                
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="stats-card bg-white rounded-lg p-6 shadow-md">
+                        <div class="flex items-center">
+                            <div class="p-3 bg-blue-100 rounded-full">
+                                <i class="fas fa-users text-blue-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-gray-600 text-sm">Total Usuarios</p>
+                                <p id="totalUsers" class="text-2xl font-bold text-gray-800">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="stats-card bg-white rounded-lg p-6 shadow-md">
+                        <div class="flex items-center">
+                            <div class="p-3 bg-green-100 rounded-full">
+                                <i class="fas fa-film text-green-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-gray-600 text-sm">Total Contenidos</p>
+                                <p id="totalContents" class="text-2xl font-bold text-gray-800">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="stats-card bg-white rounded-lg p-6 shadow-md">
+                        <div class="flex items-center">
+                            <div class="p-3 bg-purple-100 rounded-full">
+                                <i class="fas fa-code text-purple-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-gray-600 text-sm">Peticiones Scraping</p>
+                                <p id="scrapingRequests" class="text-2xl font-bold text-gray-800">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="stats-card bg-white rounded-lg p-6 shadow-md">
+                        <div class="flex items-center">
+                            <div class="p-3 bg-red-100 rounded-full">
+                                <i class="fas fa-bug text-red-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-gray-600 text-sm">Tasa de Éxito</p>
+                                <p id="successRate" class="text-2xl font-bold text-gray-800">0%</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="bg-white rounded-lg p-6 shadow-md">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Actividad Reciente</h3>
+                    <div id="recentActivity" class="space-y-3">
+                        <p class="text-gray-600 text-center">Cargando actividad reciente...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contents Section -->
+            <div id="contents" class="section hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Gestión de Contenidos</h2>
+                    <button onclick="showAddContentModal()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                        <i class="fas fa-plus mr-2"></i>Agregar Contenido
+                    </button>
+                </div>
+
+                <!-- Search and Filters -->
+                <div class="bg-white rounded-lg p-4 shadow-md mb-6">
+                    <div class="flex gap-4">
+                        <input type="text" id="contentSearch" placeholder="Buscar contenido..." class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <select id="contentType" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">Todos los tipos</option>
+                            <option value="movie">Películas</option>
+                            <option value="tv">Series</option>
+                        </select>
+                        <button onclick="loadContents()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                            <i class="fas fa-search mr-2"></i>Buscar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Contents Table -->
+                <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Título</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">vsEmbed URL</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">vidsrc URL</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="contentsTable" class="bg-white divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">Cargando contenidos...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="mt-6 flex justify-between items-center">
+                    <div id="contentsPaginationInfo" class="text-sm text-gray-600"></div>
+                    <div class="flex gap-2">
+                        <button id="prevPage" onclick="changePage('prev')" class="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50">
+                            Anterior
+                        </button>
+                        <button id="nextPage" onclick="changePage('next')" class="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50">
+                            Siguiente
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users Section -->
+            <div id="users" class="section hidden">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">Gestión de Usuarios</h2>
+                <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plan</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mi Lista</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registro</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTable" class="bg-white divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">Cargando usuarios...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Scraping Logs Section -->
+            <div id="scraping" class="section hidden">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">Logs de Scraping</h2>
+                
+                <!-- Filters -->
+                <div class="bg-white rounded-lg p-4 shadow-md mb-6">
+                    <div class="flex gap-4">
+                        <select id="logSuccessFilter" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">Todos los estados</option>
+                            <option value="true">Solo éxitos</option>
+                            <option value="false">Solo errores</option>
+                        </select>
+                        <button onclick="loadScrapingLogs()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                            <i class="fas fa-filter mr-2"></i>Filtrar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Logs Table -->
+                <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duración</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Error</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scrapingLogsTable" class="bg-white divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">Cargando logs...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="mt-6 flex justify-between items-center">
+                    <div id="logsPaginationInfo" class="text-sm text-gray-600"></div>
+                    <div class="flex gap-2">
+                        <button id="prevLogPage" onclick="changeLogPage('prev')" class="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50">
+                            Anterior
+                        </button>
+                        <button id="nextLogPage" onclick="changeLogPage('next')" class="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50">
+                            Siguiente
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Broken Links Section -->
+            <div id="broken-links" class="section hidden">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">Enlaces Rotos (Últimos 7 días)</h2>
+                <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Error</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody id="brokenLinksTable" class="bg-white divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="3" class="px-6 py-4 text-center text-gray-500">Cargando enlaces rotos...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Content Modal -->
+    <div id="addContentModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-8 w-96">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Contenido</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2">TMDB ID</label>
+                    <input type="text" id="contentTmdbId" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Título</label>
+                    <input type="text" id="contentTitle" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Tipo</label>
+                    <select id="contentTypeSelect" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="movie">Película</option>
+                        <option value="tv">Serie</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2">vsEmbed URL</label>
+                    <input type="text" id="contentVsembedUrl" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2">vidsrc URL</label>
+                    <input type="text" id="contentVidsrcUrl" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+            <div class="mt-6 flex gap-4">
+                <button onclick="hideAddContentModal()" class="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400">
+                    Cancelar
+                </button>
+                <button onclick="addContent()" class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">
+                    Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let currentLogPage = 1;
+        const limit = 20;
+        const logLimit = 50;
+        let authToken = '';
+        let currentContents = [];
+
+        // Authentication
+        function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            authToken = btoa(`${username}:${password}`);
+            document.getElementById('loginModal').classList.add('hidden');
+            loadStats();
+            loadContents();
+            loadUsers();
+            loadScrapingLogs();
+            loadBrokenLinks();
+        }
+
+        // API Calls
+        async function apiCall(endpoint, options = {}) {
+            try {
+                const response = await fetch(`/api/admin${endpoint}`, {
+                    headers: {
+                        'Authorization': `Basic ${authToken}`,
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+
+                if (response.status === 401) {
+                    alert('Credenciales inválidas');
+                    document.getElementById('loginModal').classList.remove('hidden');
+                    throw new Error('Unauthorized');
+                }
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                return await response.json();
+            } catch (error) {
+                console.error('API Call error:', error);
+                alert('Error al conectar con el servidor');
+                throw error;
+            }
+        }
+
+        // Stats
+        async function loadStats() {
+            try {
+                const stats = await apiCall('/stats');
+                document.getElementById('totalUsers').textContent = stats.totalUsers;
+                document.getElementById('totalContents').textContent = stats.totalContents;
+                document.getElementById('scrapingRequests').textContent = stats.scrapingRequests;
+                document.getElementById('successRate').textContent = `${stats.successRate}%`;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        // Contents Management
+        async function loadContents() {
+            try {
+                const search = document.getElementById('contentSearch').value;
+                const type = document.getElementById('contentType').value;
+                
+                const data = await apiCall(`/contents?page=${currentPage}&limit=${limit}&search=${search}&type=${type}`);
+                currentContents = data.contents;
+                
+                const tableBody = document.getElementById('contentsTable');
+                tableBody.innerHTML = '';
+
+                if (data.contents.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No se encontraron contenidos</td></tr>';
+                    return;
+                }
+
+                data.contents.forEach(content => {
+                    const row = `
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">${content.title}</div>
+                                <div class="text-sm text-gray-500">${content.tmdbId}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">${content.type}</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                                ${content.vsembedUrl ? content.vsembedUrl.substring(0, 30) + '...' : 'N/A'}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                                ${content.vidsrcUrl ? content.vidsrcUrl.substring(0, 30) + '...' : 'N/A'}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <button onclick="editContent(${content.id})" class="text-blue-600 hover:text-blue-900 mr-3">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button onclick="deleteContent(${content.id})" class="text-red-600 hover:text-red-900">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                    tableBody.innerHTML += row;
+                });
+
+                // Update pagination info
+                document.getElementById('contentsPaginationInfo').textContent = 
+                    `Mostrando ${data.contents.length} de ${data.total} contenidos`;
+
+                // Update pagination buttons
+                document.getElementById('prevPage').disabled = currentPage === 1;
+                document.getElementById('nextPage').disabled = currentPage === data.totalPages;
+
+            } catch (error) {
+                console.error('Error loading contents:', error);
+                document.getElementById('contentsTable').innerHTML = 
+                    '<tr><td colspan="5" class="px-6 py-4 text-center text-red-500">Error al cargar contenidos</td></tr>';
+            }
+        }
+
+        // Users Management
+        async function loadUsers() {
+            try {
+                const users = await apiCall('/users');
+                const tableBody = document.getElementById('usersTable');
+                tableBody.innerHTML = '';
+
+                users.forEach(user => {
+                    const row = `
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">${user.email}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                ${user.name}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">${user.plan}</span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                ${user._count?.watchlist || 0} items
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                ${new Date(user.createdAt).toLocaleDateString()}
+                            </td>
+                        </tr>
+                    `;
+                    tableBody.innerHTML += row;
+                });
+
+            } catch (error) {
+                console.error('Error loading users:', error);
+            }
+        }
+
+        // Scraping Logs
+        async function loadScrapingLogs() {
+            try {
+                const successFilter = document.getElementById('logSuccessFilter').value;
+                let endpoint = `/scraping-logs?page=${currentLogPage}&limit=${logLimit}`;
+                
+                if (successFilter) {
+                    endpoint += `&success=${successFilter}`;
+                }
+
+                const data = await apiCall(endpoint);
+                const tableBody = document.getElementById('scrapingLogsTable');
+                tableBody.innerHTML = '';
+
+                data.logs.forEach(log => {
+                    const statusClass = log.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                    const statusText = log.success ? 'Éxito' : 'Error';
+                    
+                    const row = `
+                        <tr>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                                <div class="max-w-xs truncate" title="${log.targetUrl}">
+                                    ${log.targetUrl}
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs font-medium ${statusClass} rounded-full">
+                                    ${statusText}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                ${log.duration ? log.duration + 'ms' : 'N/A'}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                ${new Date(log.createdAt).toLocaleString()}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                                ${log.error ? log.error.substring(0, 50) + '...' : '-'}
+                            </td>
+                        </tr>
+                    `;
+                    tableBody.innerHTML += row;
+                });
+
+                // Update pagination info
+                document.getElementById('logsPaginationInfo').textContent = 
+                    `Mostrando ${data.logs.length} de ${data.total} logs`;
+
+                // Update pagination buttons
+                document.getElementById('prevLogPage').disabled = currentLogPage === 1;
+                document.getElementById('nextLogPage').disabled = currentLogPage === data.totalPages;
+
+            } catch (error) {
+                console.error('Error loading scraping logs:', error);
+            }
+        }
+
+        // Broken Links
+        async function loadBrokenLinks() {
+            try {
+                const brokenLinks = await apiCall('/broken-links');
+                const tableBody = document.getElementById('brokenLinksTable');
+                tableBody.innerHTML = '';
+
+                if (brokenLinks.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="3" class="px-6 py-4 text-center text-gray-500">No hay enlaces rotos recientes</td></tr>';
+                    return;
+                }
+
+                brokenLinks.forEach(link => {
+                    const row = `
+                        <tr>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                                <div class="max-w-xs truncate" title="${link.targetUrl}">
+                                    ${link.targetUrl}
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                                ${link.error ? link.error.substring(0, 100) + '...' : 'Error desconocido'}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                ${new Date(link.createdAt).toLocaleString()}
+                            </td>
+                        </tr>
+                    `;
+                    tableBody.innerHTML += row;
+                });
+
+            } catch (error) {
+                console.error('Error loading broken links:', error);
+            }
+        }
+
+        // Content CRUD Operations
+        async function addContent() {
+            try {
+                const contentData = {
+                    tmdbId: document.getElementById('contentTmdbId').value,
+                    title: document.getElementById('contentTitle').value,
+                    type: document.getElementById('contentTypeSelect').value,
+                    vsembedUrl: document.getElementById('contentVsembedUrl').value,
+                    vidsrcUrl: document.getElementById('contentVidsrcUrl').value
+                };
+
+                await apiCall('/contents', {
+                    method: 'POST',
+                    body: JSON.stringify(contentData),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                hideAddContentModal();
+                loadContents();
+                alert('Contenido agregado correctamente');
+
+            } catch (error) {
+                console.error('Error adding content:', error);
+                alert('Error al agregar contenido');
+            }
+        }
+
+        function editContent(contentId) {
+            const content = currentContents.find(c => c.id === contentId);
+            if (content) {
+                document.getElementById('contentTmdbId').value = content.tmdbId;
+                document.getElementById('contentTitle').value = content.title;
+                document.getElementById('contentTypeSelect').value = content.type;
+                document.getElementById('contentVsembedUrl').value = content.vsembedUrl || '';
+                document.getElementById('contentVidsrcUrl').value = content.vidsrcUrl || '';
+                showAddContentModal();
+            }
+        }
+
+        async function deleteContent(contentId) {
+            if (confirm('¿Estás seguro de que quieres eliminar este contenido?')) {
+                try {
+                    await apiCall(`/contents/${contentId}`, { method: 'DELETE' });
+                    loadContents();
+                    alert('Contenido eliminado correctamente');
+                } catch (error) {
+                    console.error('Error deleting content:', error);
+                    alert('Error al eliminar contenido');
+                }
+            }
+        }
+
+        // Pagination
+        function changePage(direction) {
+            if (direction === 'next') {
+                currentPage++;
+            } else if (direction === 'prev' && currentPage > 1) {
+                currentPage--;
+            }
+            loadContents();
+        }
+
+        function changeLogPage(direction) {
+            if (direction === 'next') {
+                currentLogPage++;
+            } else if (direction === 'prev' && currentLogPage > 1) {
+                currentLogPage--;
+            }
+            loadScrapingLogs();
+        }
+
+        // Modal Functions
+        function showAddContentModal() {
+            document.getElementById('addContentModal').classList.remove('hidden');
+        }
+
+        function hideAddContentModal() {
+            document.getElementById('addContentModal').classList.add('hidden');
+            // Clear form
+            document.getElementById('contentTmdbId').value = '';
+            document.getElementById('contentTitle').value = '';
+            document.getElementById('contentVsembedUrl').value = '';
+            document.getElementById('contentVidsrcUrl').value = '';
+        }
+
+        // Section Navigation
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.add('hidden');
+            });
+            
+            // Show selected section
+            document.getElementById(sectionId).classList.remove('hidden');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Show login modal by default
+            document.getElementById('loginModal').classList.remove('hidden');
+            
+            // Set up event listeners
+            document.getElementById('password').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    login();
+                }
+            });
+            
+            document.getElementById('contentSearch').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    loadContents();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
