@@ -96,9 +96,9 @@ class VideoScraper {
         page.mouse.click(640, 360).catch(() => {});
       }, 5000);
 
-      // TIMEOUT ULTRA-AGRESIVO: 12 segundos máximo para evitar límites de Railway
+      // TIMEOUT OPTIMIZADO: 30 segundos para extracciones más complejas en Railway
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout Railway: No se encontró el stream en 12s")), 12000)
+        setTimeout(() => reject(new Error("Timeout Railway: No se encontró el stream en 30s")), 30000)
       );
 
       const finalUrl = await Promise.race([urlPromise, timeoutPromise]);
