@@ -36,7 +36,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   // URL base de tu API de scraping en Railway
   final String _apiBaseUrl =
-      'https://projectstreaming-production.up.railway.app';
+      'https://projectstreaming-production-5629.up.railway.app';
 
   // Lista de proveedores para scraping
   final List<Map<String, String>> _providers = [

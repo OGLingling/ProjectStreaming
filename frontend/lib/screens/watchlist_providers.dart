@@ -10,7 +10,7 @@ class WatchlistProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
 
   final String baseUrl =
-      "https://projectstreaming-production.up.railway.app/api/watchlist";
+      "https://projectstreaming-production-5629.up.railway.app/api/watchlist";
 
   // Cargar la lista desde Neon
   Future<void> loadWatchlist(String userId) async {

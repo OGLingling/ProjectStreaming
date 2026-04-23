@@ -44,7 +44,7 @@ class _ConfiguracionLenguajeScreenState
 
     try {
       final url = Uri.parse(
-        'https://projectstreaming-production.up.railway.app/api/auth/users/${widget.userId}',
+        'https://projectstreaming-production-5629.up.railway.app/api/auth/users/${widget.userId}',
       );
 
       final payload = {
