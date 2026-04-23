@@ -22,7 +22,8 @@ class VideoScraper {
           '--disable-dev-shm-usage',
           '--single-process', // Ahorro de RAM
           '--disable-blink-features=AutomationControlled' // Evasión
-        ]
+        ],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
       });
 
       const page = await browser.newPage();
