@@ -34,9 +34,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   String? _errorMessage;
   VideoPlayerController? _videoPlayerController;
 
-  // URL base de tu API de scraping en Railway
-  final String _apiBaseUrl =
-      'https://projectstreaming-production-5629.up.railway.app';
+  // Lista de servidores con redundancia - Primario + Backup
+  final List<String> _apiServers = [
+    'https://projectstreaming-production-5629.up.railway.app', // Primario
+  ];
 
   // Lista de proveedores para scraping
   final List<Map<String, String>> _providers = [
@@ -115,23 +116,47 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<String?> _fetchVideoUrl(String targetUrl) async {
-    final String apiUrl =
-        '$_apiBaseUrl/api/extract?url=${Uri.encodeComponent(targetUrl)}';
+    Exception? lastError;
 
-    final response = await http
-        .get(Uri.parse(apiUrl), headers: {'Accept': 'application/json'})
-        .timeout(const Duration(seconds: 20));
+    // Intentar con cada servidor en orden (redundancia)
+    for (int i = 0; i < _apiServers.length; i++) {
+      final String serverUrl = _apiServers[i];
+      final String apiUrl =
+          '$serverUrl/api/extract?url=${Uri.encodeComponent(targetUrl)}';
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(response.body);
-      if (data['success'] == true) {
-        return data['streamUrl'];
-      } else {
-        throw Exception(data['error'] ?? 'Error en el scraping');
+      print('🔍 Intentando servidor ${i + 1}: $serverUrl');
+
+      try {
+        final response = await http
+            .get(Uri.parse(apiUrl), headers: {'Accept': 'application/json'})
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> data = json.decode(response.body);
+          if (data['success'] == true) {
+            print('✅ Éxito con servidor ${i + 1}: $serverUrl');
+            return data['streamUrl'];
+          } else {
+            lastError = Exception(data['error'] ?? 'Error en el scraping');
+            print('⚠️  Servidor ${i + 1} falló: ${data['error']}');
+          }
+        } else {
+          lastError = Exception('Error HTTP ${response.statusCode}');
+          print('⚠️  Servidor ${i + 1} falló: HTTP ${response.statusCode}');
+        }
+      } catch (error) {
+        lastError = error is Exception ? error : Exception(error.toString());
+        print('⚠️  Servidor ${i + 1} falló: ${error.toString()}');
       }
-    } else {
-      throw Exception('Error HTTP ${response.statusCode}: ${response.body}');
+
+      // Pequeña pausa entre intentos (excepto después del último)
+      if (i < _apiServers.length - 1) {
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
     }
+
+    // Si todos los servidores fallaron, lanzar el último error
+    throw lastError ?? Exception('Todos los servidores fallaron');
   }
 
   void _showErrorDialog(String error) {

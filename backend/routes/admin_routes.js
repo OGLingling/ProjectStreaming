@@ -81,6 +81,7 @@ router.get('/recent-activity', async (req, res) => {
 // --- GESTIÓN DE USUARIOS ---
 router.get('/users', async (req, res) => {
   try {
+    console.log('🔍 Intentando conectar a la base de datos para obtener usuarios...');
     const users = await prisma.user.findMany({
       include: {
         _count: {
@@ -89,9 +90,30 @@ router.get('/users', async (req, res) => {
       },
       orderBy: { createdAt: 'desc' }
     });
+    console.log(`✅ Obtenidos ${users.length} usuarios correctamente`);
     res.json(users);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('❌ Error crítico en /api/admin/users:', error);
+    console.error('🔧 Detalles del error Prisma:', {
+      code: error.code,
+      meta: error.meta,
+      message: error.message,
+      stack: error.stack
+    });
+    
+    // Diagnóstico específico de errores de conexión
+    if (error.code === 'P1001') {
+      console.error('🚨 Error de conexión a la base de datos - Verificar URL de conexión');
+    } else if (error.code === 'P1017') {
+      console.error('🚨 La base de datos ha cerrado la conexión');
+    } else if (error.code === 'P2024') {
+      console.error('🚨 Timeout en la conexión a la base de datos');
+    }
+    
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Contacte al administrador'
+    });
   }
 });
 
