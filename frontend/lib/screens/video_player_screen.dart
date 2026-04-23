@@ -34,8 +34,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   String? _errorMessage;
   VideoPlayerController? _videoPlayerController;
 
-  // URL base de tu API de scraping en Railway
-  final String _apiBaseUrl = 'https://moviewind-production.up.railway.app';
+  // URLs base de tus APIs de scraping con redundancia
+  final List<String> _apiBaseUrls = [
+    'https://projectstreaming.onrender.com', // Servidor principal
+    'https://moviewind-production.up.railway.app', // Servidor de respaldo
+  ];
 
   // Lista de proveedores para scraping
   final List<Map<String, String>> _providers = [
@@ -114,23 +117,40 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<String?> _fetchVideoUrl(String targetUrl) async {
-    final String apiUrl =
-        '$_apiBaseUrl/api/extract?url=${Uri.encodeComponent(targetUrl)}';
+    Exception? lastError;
 
-    final response = await http
-        .get(Uri.parse(apiUrl), headers: {'Accept': 'application/json'})
-        .timeout(const Duration(seconds: 20));
+    // Intentar con cada servidor en orden (redundancia)
+    for (final apiBaseUrl in _apiBaseUrls) {
+      try {
+        final String apiUrl =
+            '$apiBaseUrl/api/extract?url=${Uri.encodeComponent(targetUrl)}';
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(response.body);
-      if (data['success'] == true) {
-        return data['streamUrl'];
-      } else {
-        throw Exception(data['error'] ?? 'Error en el scraping');
+        final response = await http
+            .get(Uri.parse(apiUrl), headers: {'Accept': 'application/json'})
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> data = json.decode(response.body);
+          if (data['success'] == true) {
+            return data['streamUrl'];
+          } else {
+            lastError = Exception(data['error'] ?? 'Error en el scraping');
+            continue; // Intentar con el siguiente servidor
+          }
+        } else {
+          lastError = Exception(
+            'Error HTTP ${response.statusCode} en $apiBaseUrl',
+          );
+          continue; // Intentar con el siguiente servidor
+        }
+      } catch (error) {
+        lastError = error is Exception ? error : Exception(error.toString());
+        continue; // Intentar con el siguiente servidor
       }
-    } else {
-      throw Exception('Error HTTP ${response.statusCode}: ${response.body}');
     }
+
+    // Si todos los servidores fallaron, lanzar el último error
+    throw lastError ?? Exception('Todos los servidores fallaron');
   }
 
   void _showErrorDialog(String error) {
