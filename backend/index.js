@@ -21,6 +21,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use(express.static('public'));
 
 // 2. DEFINICIÓN DE PUNTOS DE ENTRADA (ENDPOINTS)
 // Aquí conectamos los prefijos de las URLs con tus archivos de rutas
