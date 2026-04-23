@@ -1,6 +1,4 @@
 import 'dart:ui_web' as ui;
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:web/web.dart' as web;
@@ -31,8 +29,6 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   int _currentProviderIndex = 0;
-  String?
-  _extractedStreamUrl; // Almacenará el enlace .m3u8 si el scraper tiene éxito
 
   // Lista actualizada: VidSrc (.ru) ahora es el principal
   final List<Map<String, String>> _providers = [
@@ -56,49 +52,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  Future<void> _initPlayer() async {
+  void _initPlayer() {
     setState(() => _isLoading = true);
-
-    // 1. Construir la URL base de Vidsrc
-    final String targetUrl = _generateUrl();
-
-    // 2. Intentar extraer el .m3u8 usando nuestro backend
-    await _extractDirectStream(targetUrl);
-
-    // 3. Registrar el iframe de todas formas. Si tenemos el .m3u8, aquí lo ideal
-    // sería usar video_player nativo. Pero por ahora inyectamos el src.
     _registerIFrame();
 
-    if (mounted) setState(() => _isLoading = false);
-  }
-
-  Future<void> _extractDirectStream(String targetUrl) async {
-    try {
-      debugPrint("🟡 Iniciando extracción para URL: $targetUrl");
-      // Importante: Usar la URL de tu backend en producción
-      final Uri apiEndpoint = Uri.parse(
-        'https://projectstreaming-production.up.railway.app/api/extract?url=${Uri.encodeComponent(targetUrl)}',
-      );
-
-      final response = await http.get(apiEndpoint);
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true && data['streamUrl'] != null) {
-          _extractedStreamUrl = data['streamUrl'];
-          debugPrint("🟢 Recibiendo m3u8 del servidor: $_extractedStreamUrl");
-        }
-      } else {
-        debugPrint("🔴 Error en scraper: Código ${response.statusCode}");
-      }
-    } catch (e) {
-      debugPrint("🔴 Excepción al contactar scraper: $e");
-    }
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) setState(() => _isLoading = false);
+    });
   }
 
   void _registerIFrame() {
-    // Si tenemos el link directo extraído, lo usamos. Si no, caemos en el iframe original.
-    final String urlToPlay = _extractedStreamUrl ?? _generateUrl();
+    final String url = _generateUrl();
     final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
 
     final String viewType =
@@ -106,7 +70,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     ui.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
       final iframe = web.HTMLIFrameElement()
-        ..src = urlToPlay
+        ..src = url
         ..style.border = 'none'
         ..style.width = '100%'
         ..style.height = '100%'
