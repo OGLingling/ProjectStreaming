@@ -72,7 +72,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       // CORRECCIÓN CRÍTICA: La ruta del backend es /api/auth/users/:id
       final url = Uri.parse(
-        'https://projectstreaming.onrender.com/api/auth/users/${widget.userId}',
+        'https://projectstreaming-production.up.railway.app/api/auth/users/${widget.userId}',
       );
 
       debugPrint("🟡 Enviando PUT a: $url");

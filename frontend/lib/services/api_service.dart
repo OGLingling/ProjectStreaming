@@ -5,7 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Base URL
-  static const String baseUrl = "https://projectstreaming.onrender.com";
+  static const String baseUrl =
+      "https://projectstreaming-production.up.railway.app";
 
   // --- OBTENER PELÍCULAS Y SERIES ---
   static Future<List<dynamic>> getMoviesByType(String type) async {
