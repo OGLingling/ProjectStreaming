@@ -28,6 +28,7 @@ router.use(adminAuth);
 // --- ESTADÍSTICAS Y ANALYTICS ---
 router.get('/stats', async (req, res) => {
   try {
+    console.log('Petición recibida en Admin Stats');
     const [
       totalUsers,
       totalContents,
@@ -51,6 +52,29 @@ router.get('/stats', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// --- ACTIVIDAD RECIENTE PARA DASHBOARD ---
+router.get('/recent-activity', async (req, res) => {
+  try {
+    console.log('Petición recibida en Admin Recent Activity');
+    
+    // Obtener logs recientes (últimas 10 actividades)
+    const recentLogs = await prisma.scrapeLog.findMany({
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        content: {
+          select: { title: true }
+        }
+      }
+    });
+    
+    res.json(recentLogs);
+  } catch (error) {
+    console.error('Error en recent-activity:', error.message);
+    res.status(500).json({ error: 'Error al obtener actividad reciente' });
   }
 });
 

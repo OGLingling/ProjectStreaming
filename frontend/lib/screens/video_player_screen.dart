@@ -1,7 +1,9 @@
-import 'dart:ui_web' as ui;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:web/web.dart' as web;
+import 'package:video_player/video_player.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../providers/settings_provider.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -28,9 +30,14 @@ class VideoPlayerScreen extends StatefulWidget {
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
-  int _currentProviderIndex = 0;
+  bool _isScraping = false;
+  String? _errorMessage;
+  VideoPlayerController? _videoPlayerController;
 
-  // Lista actualizada: VidSrc (.ru) ahora es el principal
+  // URL base de tu API de scraping en Railway
+  final String _apiBaseUrl = 'https://moviewind-production.up.railway.app';
+
+  // Lista de proveedores para scraping
   final List<Map<String, String>> _providers = [
     {"name": "VidSrc (.ru)", "baseUrl": "https://vsembed.ru/embed/"},
     {"name": "VidSrc (.su)", "baseUrl": "https://vsembed.su/embed/"},
@@ -52,42 +59,101 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  void _initPlayer() {
-    setState(() => _isLoading = true);
-    _registerIFrame();
-
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) setState(() => _isLoading = false);
-    });
+  @override
+  void dispose() {
+    _videoPlayerController?.dispose();
+    super.dispose();
   }
 
-  void _registerIFrame() {
-    final String url = _generateUrl();
-    final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
+  Future<void> _initPlayer() async {
+    if (_videoPlayerController != null) {
+      await _videoPlayerController!.dispose();
+    }
 
-    final String viewType =
-        'player-$contentId-S${widget.season}-E${widget.episode}-$_currentProviderIndex';
+    setState(() {
+      _isLoading = true;
+      _isScraping = true;
+      _errorMessage = null;
+    });
 
-    ui.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
-      final iframe = web.HTMLIFrameElement()
-        ..src = url
-        ..style.border = 'none'
-        ..style.width = '100%'
-        ..style.height = '100%'
-        ..allowFullscreen = true;
+    try {
+      // Obtener URL del video mediante scraping
+      final String targetUrl = _generateUrl();
+      final String? videoUrl = await _fetchVideoUrl(targetUrl);
 
-      iframe.setAttribute('referrerpolicy', 'origin');
-      iframe.setAttribute(
-        'allow',
-        'autoplay; fullscreen; picture-in-picture; encrypted-media; storage-access',
+      if (videoUrl == null) {
+        throw Exception('No se pudo obtener la URL del video');
+      }
+
+      // Configurar el controlador de video para HLS (.m3u8)
+      _videoPlayerController = VideoPlayerController.networkUrl(
+        Uri.parse(videoUrl),
+        videoPlayerOptions: VideoPlayerOptions(
+          allowBackgroundPlayback: false,
+          mixWithOthers: false,
+        ),
       );
 
-      return iframe;
-    });
+      await _videoPlayerController!.initialize();
+      await _videoPlayerController!.setLooping(true);
+      await _videoPlayerController!.play();
+
+      setState(() {
+        _isLoading = false;
+        _isScraping = false;
+      });
+    } catch (error) {
+      setState(() {
+        _isLoading = false;
+        _isScraping = false;
+        _errorMessage = error.toString();
+      });
+
+      _showErrorDialog(error.toString());
+    }
+  }
+
+  Future<String?> _fetchVideoUrl(String targetUrl) async {
+    final String apiUrl =
+        '$_apiBaseUrl/api/extract?url=${Uri.encodeComponent(targetUrl)}';
+
+    final response = await http
+        .get(Uri.parse(apiUrl), headers: {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      if (data['success'] == true) {
+        return data['streamUrl'];
+      } else {
+        throw Exception(data['error'] ?? 'Error en el scraping');
+      }
+    } else {
+      throw Exception('Error HTTP ${response.statusCode}: ${response.body}');
+    }
+  }
+
+  void _showErrorDialog(String error) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(
+          'No se pudo cargar el video: ${error.contains('Timeout') ? 'El servidor tardó demasiado en responder' : error}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _generateUrl() {
-    final provider = _providers[_currentProviderIndex];
+    // Usar siempre el primer proveedor ya que la selección fue removida
+    final provider = _providers[0];
     final isTV =
         widget.type.toLowerCase().contains('serie') ||
         widget.type.toLowerCase().contains('tv');
@@ -100,10 +166,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final String contentId = widget.tmdbId ?? widget.imdbId ?? "unknown";
-    final String currentViewType =
-        'player-$contentId-S${widget.season}-E${widget.episode}-$_currentProviderIndex';
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -124,34 +186,58 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           ],
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: ActionChip(
-              backgroundColor: Colors.redAccent,
-              label: Text(
-                _providers[_currentProviderIndex]['name']!,
-                style: const TextStyle(color: Colors.white, fontSize: 11),
+          if (_videoPlayerController != null && !_isLoading)
+            IconButton(
+              icon: Icon(
+                _videoPlayerController!.value.isPlaying
+                    ? Icons.pause
+                    : Icons.play_arrow,
+                color: Colors.white,
               ),
               onPressed: () {
                 setState(() {
-                  _currentProviderIndex =
-                      (_currentProviderIndex + 1) % _providers.length;
-                  _initPlayer();
+                  if (_videoPlayerController!.value.isPlaying) {
+                    _videoPlayerController!.pause();
+                  } else {
+                    _videoPlayerController!.play();
+                  }
                 });
               },
             ),
-          ),
         ],
       ),
       body: Consumer<SettingsProvider>(
         builder: (context, settings, child) {
           return Stack(
             children: [
-              HtmlElementView(
-                key: ValueKey(currentViewType),
-                viewType: currentViewType,
-              ),
-              if (_isLoading)
+              // Video Player
+              if (_videoPlayerController != null && !_isLoading)
+                Center(
+                  child: AspectRatio(
+                    aspectRatio: _videoPlayerController!.value.aspectRatio,
+                    child: VideoPlayer(_videoPlayerController!),
+                  ),
+                ),
+
+              // Loading Indicator durante scraping
+              if (_isScraping)
+                const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: Colors.redAccent),
+                      SizedBox(height: 16),
+                      Text(
+                        'Obteniendo fuente de video (esto puede tardar unos segundos)...',
+                        style: TextStyle(color: Colors.white, fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Loading Indicator general
+              if (_isLoading && !_isScraping)
                 const Center(
                   child: CircularProgressIndicator(color: Colors.redAccent),
                 ),

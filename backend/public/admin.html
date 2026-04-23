@@ -401,6 +401,51 @@
             }
         }
 
+        // Recent Activity
+        async function loadRecentActivity() {
+            try {
+                const activities = await apiCall('/recent-activity');
+                const activityContainer = document.getElementById('recentActivity');
+                
+                if (activities.length === 0) {
+                    activityContainer.innerHTML = '<p class="text-gray-600 text-center">No hay actividad reciente</p>';
+                    return;
+                }
+
+                let activityHTML = '';
+                activities.forEach(activity => {
+                    const statusClass = activity.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                    const statusText = activity.success ? 'Éxito' : 'Error';
+                    const title = activity.content?.title || 'Contenido no encontrado';
+                    
+                    activityHTML += `
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div class="flex-1">
+                                <p class="text-sm font-medium text-gray-900">${title}</p>
+                                <p class="text-xs text-gray-500 truncate" title="${activity.targetUrl}">
+                                    ${activity.targetUrl?.substring(0, 40)}...
+                                </p>
+                            </div>
+                            <div class="ml-2">
+                                <span class="px-2 py-1 text-xs font-medium ${statusClass} rounded-full">
+                                    ${statusText}
+                                </span>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    ${new Date(activity.createdAt).toLocaleString()}
+                                </p>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                activityContainer.innerHTML = activityHTML;
+            } catch (error) {
+                console.error('Error loading recent activity:', error);
+                document.getElementById('recentActivity').innerHTML = 
+                    '<p class="text-red-500 text-center">Error al cargar actividad reciente</p>';
+            }
+        }
+
         // Contents Management
         async function loadContents() {
             try {
@@ -684,6 +729,20 @@
             
             // Show selected section
             document.getElementById(sectionId).classList.remove('hidden');
+            
+            // Load section-specific data
+            if (sectionId === 'dashboard') {
+                loadStats();
+                loadRecentActivity();
+            } else if (sectionId === 'contents') {
+                loadContents();
+            } else if (sectionId === 'users') {
+                loadUsers();
+            } else if (sectionId === 'scraping') {
+                loadScrapingLogs();
+            } else if (sectionId === 'broken-links') {
+                loadBrokenLinks();
+            }
         }
 
         // Initialize
