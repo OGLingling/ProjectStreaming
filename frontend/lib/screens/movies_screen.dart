@@ -24,8 +24,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
   int _currentPage = 0;
   Timer? _carouselTimer;
 
-  final String apiBaseUrl =
-      "https://projectstreaming-production.up.railway.app/api/movies";
+  final String apiBaseUrl = "https://projectstreaming.onrender.com/api/movies";
 
   @override
   void initState() {

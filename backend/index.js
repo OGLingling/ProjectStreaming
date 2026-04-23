@@ -14,10 +14,9 @@ const scraperRoutes = require('./routes/scraper_routes');
 
 // 1. CONFIGURACIÓN DE MIDDLEWARES
 app.use(cors({
-    origin: ['https://projectstreaming.onrender.com', 'http://localhost:10000'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
+    origin: 'https://oglingling.github.io',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json());

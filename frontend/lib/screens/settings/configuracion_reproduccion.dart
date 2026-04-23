@@ -53,7 +53,7 @@ class _ConfiguracionReproduccionScreenState
 
     try {
       final url = Uri.parse(
-        'https://projectstreaming-production.up.railway.app/api/auth/users/${widget.userId}',
+        'https://projectstreaming.onrender.com/api/auth/users/${widget.userId}',
       );
 
       final payload = {

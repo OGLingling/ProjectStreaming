@@ -30,9 +30,7 @@ class _SearchScreenState extends State<SearchScreen> {
     try {
       // Reemplaza con la URL de tu API (ej: )
       final response = await http.get(
-        Uri.parse(
-          'https://projectstreaming-production.up.railway.app/api/movies',
-        ),
+        Uri.parse('https://projectstreaming.onrender.com/api/movies'),
       );
 
       if (response.statusCode == 200) {
