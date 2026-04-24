@@ -62,6 +62,7 @@ class VideoScraper {
   // --- MÉTODO GENÉRICO (FALLBACK) ---
   static async extractGeneric(targetUrl) {
     let browser;
+    let interactionTimer;
     const startTime = Date.now();
     let success = false;
     let streamUrlResult = null;
@@ -95,7 +96,7 @@ class VideoScraper {
       await page.setRequestInterception(true);
       
       // Optimizaciones de rendimiento
-      await page.setJavaScriptEnabled(true); // Habilita JS para reproductores dinámicos
+      await page.evaluate(() => document.readyState); // Eval de prueba para entorno JS
       await page.setBypassCSP(true);
       await page.setCacheEnabled(false);
       
@@ -142,11 +143,11 @@ class VideoScraper {
       // Navegación con espera mejorada
       await page.goto(targetUrl, { 
         waitUntil: 'networkidle0', 
-        timeout: 30000 
+        timeout: 20000 
       }).catch(() => console.log('[Scraper] Navegación completada (puede haber timeouts parciales)'));
 
       // Interacción inteligente para activar reproductores
-      const interactionTimer = setTimeout(async () => {
+      interactionTimer = setTimeout(async () => {
         try {
           console.log("[Scraper] 🤖 Simulando interacción humana...");
           // Click en el centro de la página
@@ -158,9 +159,9 @@ class VideoScraper {
         }
       }, 4000);
 
-      // Timeout de 30 segundos
+      // Timeout robusto de 20 segundos
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout: No se detectó stream en 30 segundos")), 30000)
+        setTimeout(() => reject(new Error("Timeout: No se detectó stream en 20 segundos")), 20000)
       );
 
       const finalUrl = await Promise.race([urlPromise, timeoutPromise]);
@@ -176,6 +177,9 @@ class VideoScraper {
       throw error; // Lo atrapamos en la ruta
     } finally {
       const duration = Date.now() - startTime;
+      if (interactionTimer) {
+        clearTimeout(interactionTimer);
+      }
       
       // Loggear en base de datos
       try {

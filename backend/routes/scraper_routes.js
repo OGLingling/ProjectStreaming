@@ -6,7 +6,7 @@ const VideoScraper = require('../services/scraper_service');
  * Endpoint para extraer URL directa de video (ej. .m3u8 o .mp4)
  * URL Esperada: GET /api/extract?url=https://vsembed.ru/embed/movie?tmdb=1234
  */
-router.get('/extract', async (req, res) => {
+const extractController = async (req, res) => {
   const { url } = req.query;
 
   if (!url) {
@@ -46,6 +46,8 @@ router.get('/extract', async (req, res) => {
       details: error.message
     });
   }
-});
+};
+
+router.get('/extract', extractController);
 
 module.exports = router;
