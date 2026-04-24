@@ -143,7 +143,7 @@ class VideoScraper {
       // Navegación con espera mejorada
       await page.goto(targetUrl, { 
         waitUntil: 'networkidle0', 
-        timeout: 20000 
+        timeout: 15000 
       }).catch(() => console.log('[Scraper] Navegación completada (puede haber timeouts parciales)'));
 
       // Interacción inteligente para activar reproductores
@@ -159,9 +159,9 @@ class VideoScraper {
         }
       }, 4000);
 
-      // Timeout robusto de 20 segundos
+      // Timeout robusto de 15 segundos
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout: No se detectó stream en 20 segundos")), 20000)
+        setTimeout(() => reject(new Error("Timeout: No se detectó stream en 15 segundos")), 15000)
       );
 
       const finalUrl = await Promise.race([urlPromise, timeoutPromise]);
