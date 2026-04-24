@@ -29,13 +29,13 @@ const extractLink = async (req, res) => {
       headless: true,
       args: [
         '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu'
+        '--disable-dev-shm-usage'
       ]
     });
 
     const page = await browser.newPage();
+
+    // Timeout máximo de 15s para fallar rápido y evitar 504
     page.setDefaultNavigationTimeout(15000);
     page.setDefaultTimeout(15000);
 
@@ -49,6 +49,7 @@ const extractLink = async (req, res) => {
     });
 
     let detectedStream = null;
+
     page.on('response', (response) => {
       const responseUrl = response.url();
       if (!detectedStream && isStreamUrl(responseUrl)) {
@@ -58,6 +59,7 @@ const extractLink = async (req, res) => {
 
     await page.goto(url, { waitUntil: 'domcontentloaded' });
 
+    // Uso de page.evaluate (sin métodos obsoletos)
     await page.evaluate(() => {
       window.scrollBy(0, 250);
       const media = document.querySelector('video, iframe');
@@ -66,11 +68,12 @@ const extractLink = async (req, res) => {
       }
     });
 
-    await page.waitForTimeout(4000);
+    await new Promise((resolve) => setTimeout(resolve, 4000));
 
     if (!detectedStream) {
       detectedStream = await page.evaluate(() => {
         const candidates = [];
+
         const video = document.querySelector('video');
         if (video?.src) candidates.push(video.src);
 
@@ -90,16 +93,18 @@ const extractLink = async (req, res) => {
         });
 
         return candidates.find((item) => {
-          const url = (item || '').toLowerCase();
+          const u = (item || '').toLowerCase();
           return (
-            (url.includes('.m3u8') || url.includes('.mp4') || url.includes('master.m3u8') || url.includes('index.m3u8')) &&
-            !url.includes('audio')
+            (u.includes('.m3u8') || u.includes('.mp4') || u.includes('master.m3u8') || u.includes('index.m3u8')) &&
+            !u.includes('audio')
           );
         }) || null;
       });
     }
 
-    if (!detectedStream) throw new Error('Video no encontrado');
+    if (!detectedStream) {
+      throw new Error('Video no encontrado');
+    }
 
     return res.status(200).json({
       success: true,
@@ -108,9 +113,10 @@ const extractLink = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      error: 'Error en la extracción'
+      error: error.message
     });
   } finally {
+    // CRÍTICO: cerrar siempre navegador para no agotar RAM
     if (browser) await browser.close();
   }
 };
