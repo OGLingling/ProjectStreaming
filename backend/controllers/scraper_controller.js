@@ -3,18 +3,11 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 
 puppeteer.use(StealthPlugin());
 
-const STREAM_PATTERNS = [
-  '.m3u8',
-  '.mp4',
-  'master.m3u8',
-  'index.m3u8',
-  '/stream/',
-  '/videoplayback'
-];
+const STREAM_PATTERNS = ['.m3u8', '.mp4', 'master.m3u8', 'index.m3u8', '/stream/', '/videoplayback'];
 
 const isStreamUrl = (rawUrl) => {
-  const url = (rawUrl || '').toLowerCase();
-  return STREAM_PATTERNS.some((pattern) => url.includes(pattern));
+  const lowered = (rawUrl || '').toLowerCase();
+  return STREAM_PATTERNS.some((pattern) => lowered.includes(pattern)) && !lowered.includes('audio');
 };
 
 const extractLink = async (req, res) => {
@@ -23,25 +16,28 @@ const extractLink = async (req, res) => {
   if (!url || typeof url !== 'string') {
     return res.status(400).json({
       success: false,
-      error: "Falta el parámetro 'url'. Ejemplo: /api/extract?url=https://proveedor.com/embed/..."
+      message: "Falta el parámetro 'url'."
     });
   }
 
   let browser;
-  let interactionTimer;
 
   try {
     const referer = new URL(url).origin + '/';
+
     browser = await puppeteer.launch({
+      headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--single-process'
+        '--disable-gpu'
       ]
     });
 
     const page = await browser.newPage();
+    page.setDefaultNavigationTimeout(15000);
+    page.setDefaultTimeout(15000);
 
     await page.setExtraHTTPHeaders({
       Referer: referer,
@@ -52,82 +48,80 @@ const extractLink = async (req, res) => {
       Connection: 'keep-alive'
     });
 
-    await page.setRequestInterception(true);
-
-    const streamPromise = new Promise((resolve) => {
-      page.on('request', (request) => {
-        const requestUrl = request.url();
-
-        if (isStreamUrl(requestUrl) && !requestUrl.toLowerCase().includes('audio')) {
-          resolve(requestUrl);
-        }
-
-        const type = request.resourceType();
-        const allow =
-          type === 'document' ||
-          type === 'media' ||
-          type === 'xhr' ||
-          type === 'fetch' ||
-          type === 'script' ||
-          type === 'websocket';
-
-        if (allow) {
-          request.continue().catch(() => {});
-        } else {
-          request.abort().catch(() => {});
-        }
-      });
-
-      page.on('response', (response) => {
-        const responseUrl = response.url();
-        if (isStreamUrl(responseUrl) && !responseUrl.toLowerCase().includes('audio')) {
-          resolve(responseUrl);
-        }
-      });
+    let detectedStream = null;
+    page.on('response', (response) => {
+      const responseUrl = response.url();
+      if (!detectedStream && isStreamUrl(responseUrl)) {
+        detectedStream = responseUrl;
+      }
     });
 
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: 15000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-    interactionTimer = setTimeout(async () => {
-      try {
-        await page.mouse.click(400, 300);
-        await page.evaluate(() => {
-          window.scrollBy(0, 250);
-        });
-      } catch (_) {
-        // Interacción opcional para disparar requests de players lazy-load.
+    await page.evaluate(() => {
+      window.scrollBy(0, 250);
+      const media = document.querySelector('video, iframe');
+      if (media && typeof media.click === 'function') {
+        media.click();
       }
-    }, 2000);
+    });
 
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Timeout: No se detectó stream en 20 segundos')), 20000)
-    );
+    await page.waitForTimeout(4000);
 
-    const streamUrl = await Promise.race([streamPromise, timeoutPromise]);
+    if (!detectedStream) {
+      detectedStream = await page.evaluate(() => {
+        const candidates = [];
+        const video = document.querySelector('video');
+        if (video?.src) candidates.push(video.src);
+
+        document.querySelectorAll('source').forEach((source) => {
+          if (source?.src) candidates.push(source.src);
+        });
+
+        document.querySelectorAll('iframe').forEach((iframe) => {
+          if (iframe?.src) candidates.push(iframe.src);
+        });
+
+        const regex = /(https?:\/\/[^\s"'<>]+\.(m3u8|mp4)[^\s"'<>]*)/gi;
+        document.querySelectorAll('script').forEach((script) => {
+          const content = script?.textContent || '';
+          const matches = content.match(regex);
+          if (matches) candidates.push(...matches);
+        });
+
+        return candidates.find((item) => {
+          const url = (item || '').toLowerCase();
+          return (
+            (url.includes('.m3u8') || url.includes('.mp4') || url.includes('master.m3u8') || url.includes('index.m3u8')) &&
+            !url.includes('audio')
+          );
+        }) || null;
+      });
+    }
+
+    if (!detectedStream) {
+      return res.status(404).json({
+        success: false,
+        message: 'Video no encontrado'
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      streamUrl
+      streamUrl: detectedStream
     });
   } catch (error) {
-    const isTimeout = (error.message || '').toLowerCase().includes('timeout');
-    return res.status(isTimeout ? 504 : 500).json({
+    const timeout = (error.message || '').toLowerCase().includes('timeout');
+    return res.status(timeout ? 504 : 500).json({
       success: false,
-      error: isTimeout
-        ? 'Timeout del scraper: no se encontró un stream en 20 segundos.'
-        : 'No se pudo extraer el enlace del video.',
+      message: timeout
+        ? 'Timeout del scraper: no se encontró video dentro de 15 segundos.'
+        : 'Error interno del scraper.',
       details: error.message
     });
   } finally {
-    if (interactionTimer) {
-      clearTimeout(interactionTimer);
-    }
-    if (browser) {
-      await browser.close().catch(() => {});
-    }
+    if (browser) await browser.close().catch(() => {});
   }
 };
 
-module.exports = {
-  extractLink
-};
+module.exports = { extractLink };
