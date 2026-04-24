@@ -63,16 +63,13 @@ class VideoScraper {
     
     try {
       console.log(`[Scraper Genérico] Iniciando para: ${targetUrl}`);
-      browser = await puppeteer.launch({
-        headless: 'new',
+      const browser = await puppeteer.launch({
         args: [
-          '--no-sandbox', 
-          '--disable-setuid-sandbox', 
-          '--disable-dev-shm-usage',
-          '--single-process',
-          '--disable-blink-features=AutomationControlled'
-        ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage', // Vital para servidores con poca RAM como Railway
+          '--single-process'
+        ]
       });
 
       const page = await browser.newPage();
