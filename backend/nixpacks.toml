@@ -21,6 +21,29 @@ nixPkgs = [
   "nspr", 
   "nss", 
   "pango"
+][phases.setup]
+nixPkgs = [
+  "nodejs_18",
+  "google-chrome",
+  "alsa-lib",
+  "at-spi2-atk",
+  "atk",
+  "cairo",
+  "expat",
+  "glib",
+  "libdrm",
+  "libgbm",
+  "nspr",
+  "nss",
+  "pango",
+  "xorg.libX11",
+  "xorg.libXcomposite",
+  "xorg.libXdamage",
+  "xorg.libXext",
+  "xorg.libXfixes",
+  "xorg.libXrandr",
+  "xorg.libxcb",
+  "xorg.libxshmfence"
 ]
 
 [start]
