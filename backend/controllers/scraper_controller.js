@@ -16,7 +16,7 @@ const extractLink = async (req, res) => {
   if (!url || typeof url !== 'string') {
     return res.status(400).json({
       success: false,
-      message: "Falta el parámetro 'url'."
+      error: "Falta el parámetro 'url'."
     });
   }
 
@@ -99,28 +99,19 @@ const extractLink = async (req, res) => {
       });
     }
 
-    if (!detectedStream) {
-      return res.status(404).json({
-        success: false,
-        message: 'Video no encontrado'
-      });
-    }
+    if (!detectedStream) throw new Error('Video no encontrado');
 
     return res.status(200).json({
       success: true,
       streamUrl: detectedStream
     });
   } catch (error) {
-    const timeout = (error.message || '').toLowerCase().includes('timeout');
-    return res.status(timeout ? 504 : 500).json({
+    return res.status(500).json({
       success: false,
-      message: timeout
-        ? 'Timeout del scraper: no se encontró video dentro de 15 segundos.'
-        : 'Error interno del scraper.',
-      details: error.message
+      error: 'Error en la extracción'
     });
   } finally {
-    if (browser) await browser.close().catch(() => {});
+    if (browser) await browser.close();
   }
 };
 
