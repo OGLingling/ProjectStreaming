@@ -114,3 +114,16 @@ model ScrapeLog {
   @@index([success])
   @@index([createdAt])
 }
+
+// Modelo para enlaces rotos detectados por el scraper
+model BrokenLink {
+  id        Int      @id @default(autoincrement())
+  url       String   @db.Text
+  error     String?  @db.Text
+  provider  String?
+  timestamp DateTime @default(now())
+  
+  @@index([url])
+  @@index([provider])
+  @@index([timestamp])
+}
