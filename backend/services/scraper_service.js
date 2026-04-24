@@ -95,7 +95,7 @@ class VideoScraper {
       await page.setRequestInterception(true);
       
       // Optimizaciones de rendimiento
-      await page.setJavaScriptEvaluation(true); // Habilitado para JS de reproductores
+      await page.setJavaScriptEnabled(true); // Habilita JS para reproductores dinámicos
       await page.setBypassCSP(true);
       await page.setCacheEnabled(false);
       
