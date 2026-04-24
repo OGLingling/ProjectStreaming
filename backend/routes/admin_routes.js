@@ -63,12 +63,7 @@ router.get('/recent-activity', async (req, res) => {
     // Obtener logs recientes (últimas 10 actividades)
     const recentLogs = await prisma.scrapeLog.findMany({
       take: 10,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        content: {
-          select: { title: true }
-        }
-      }
+      orderBy: { createdAt: 'desc' }
     });
     
     res.json(recentLogs);

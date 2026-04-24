@@ -80,8 +80,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _initPlayer() async {
+    _chewieController?.dispose();
+    _chewieController = null;
+
     if (_videoPlayerController != null) {
       await _videoPlayerController!.dispose();
+      _videoPlayerController = null;
     }
 
     setState(() {
@@ -114,6 +118,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           print(
             '⚠️  Proveedor ${_providers[i]['name']} falló: ${error.toString()}',
           );
+
+          _chewieController?.dispose();
+          _chewieController = null;
+          if (_videoPlayerController != null) {
+            await _videoPlayerController!.dispose();
+            _videoPlayerController = null;
+          }
 
           // Pequeña pausa entre intentos (excepto después del último)
           if (i < _providers.length - 1) {
@@ -169,11 +180,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         isLive: false,
       );
 
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _isScraping = false;
       });
     } catch (error) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _isScraping = false;
@@ -214,6 +227,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
+                'Referer':
+                    'https://projectstreaming-production-5629.up.railway.app',
+                'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
               },
             )
             .timeout(const Duration(seconds: 15));

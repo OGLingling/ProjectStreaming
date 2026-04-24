@@ -11,12 +11,22 @@ const adminRoutes = require('./routes/admin_routes');
 const authController = require('./controllers/auth_controller');
 const watchlistRoutes = require('./routes/watchlist_routes');
 const scraperRoutes = require('./routes/scraper_routes');
-const VideoScraper = require('./services/scraper_service');
 
 // 1. CONFIGURACIÓN DE MIDDLEWARES
+const allowedOrigins = [
+    'https://oglingling.github.io',
+    'http://localhost:3000',
+    'http://localhost:5173'
+];
+
 app.use(cors({
-    origin: 'https://oglingling.github.io',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('Origen no permitido por CORS'));
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -29,44 +39,7 @@ app.use('/api/movies', movieRoutes);  // Maneja películas y proxy
 app.use('/api/auth', authRoutes);    // Maneja OTP, Registro y Perfil
 app.use('/api/admin', adminRoutes);  // Maneja supervisión de admin
 app.use('/api/watchlist', watchlistRoutes); // Maneja watchlist
-app.use('/api/extract', scraperRoutes);
-
-// Ruta directa para extracción de video
-app.get('/api/extract', async (req, res) => {
-  const { url } = req.query;
-  
-  if (!url) {
-    return res.status(400).json({
-      success: false,
-      error: "Falta el parámetro 'url'. Ejemplo: /api/extract?url=https://ejemplo.com"
-    });
-  }
-  
-  try {
-    console.log(`🔍 Extrayendo video desde: ${url}`);
-    const streamUrl = await VideoScraper.extractStreamUrl(url);
-    
-    if (streamUrl) {
-      return res.status(200).json({
-        success: true,
-        streamUrl: streamUrl
-      });
-    }
-    
-    return res.status(404).json({
-      success: false,
-      error: "No se encontró ningún stream de video"
-    });
-    
-  } catch (error) {
-    console.error('❌ Error en extracción:', error.message);
-    return res.status(500).json({
-      success: false,
-      error: "Error interno del servidor durante la extracción",
-      details: error.message
-    });
-  }
-});
+app.use('/api', scraperRoutes);
 
 app.get('/api/users', authController.getUserByEmail);
 

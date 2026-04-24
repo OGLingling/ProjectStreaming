@@ -48,8 +48,14 @@ class VideoScraper {
       }
     } catch (error) {
       console.log(`[Scraper] Error en extracción específica (${provider}): ${error.message}`);
-      // Fallback a método genérico
-      return await this.extractGeneric(targetUrl);
+      try {
+        // Fallback a método genérico
+        return await this.extractGeneric(targetUrl);
+      } catch (fallbackError) {
+        console.log(`[Scraper] Fallback genérico también falló: ${fallbackError.message}`);
+        await this.logBrokenLink(targetUrl, fallbackError, provider);
+        return null;
+      }
     }
   }
 
@@ -63,7 +69,7 @@ class VideoScraper {
     
     try {
       console.log(`[Scraper Genérico] Iniciando para: ${targetUrl}`);
-      const browser = await puppeteer.launch({
+      browser = await puppeteer.launch({
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
