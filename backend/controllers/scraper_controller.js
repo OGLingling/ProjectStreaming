@@ -29,7 +29,9 @@ const extractLink = async (req, res) => {
       headless: true,
       args: [
         '--no-sandbox',
-        '--disable-dev-shm-usage'
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-setuid-sandbox'
       ]
     });
 
