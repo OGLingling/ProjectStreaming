@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../providers/settings_provider.dart';
@@ -33,6 +34,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isScraping = false;
   String? _errorMessage;
   VideoPlayerController? _videoPlayerController;
+  ChewieController? _chewieController;
 
   // Lista de servidores con redundancia - Primario + Backup
   final List<String> _apiServers = [
@@ -73,6 +75,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void dispose() {
     _videoPlayerController?.dispose();
+    _chewieController?.dispose();
     super.dispose();
   }
 
@@ -139,8 +142,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       );
 
       await _videoPlayerController!.initialize();
-      await _videoPlayerController!.setLooping(true);
-      await _videoPlayerController!.play();
+
+      // Configurar ChewieController con controles avanzados
+      _chewieController?.dispose();
+      _chewieController = ChewieController(
+        videoPlayerController: _videoPlayerController!,
+        autoPlay: true,
+        looping: false,
+        aspectRatio: _videoPlayerController!.value.aspectRatio,
+        showControls: true,
+        materialProgressColors: ChewieProgressColors(
+          playedColor: Colors.redAccent,
+          handleColor: Colors.red,
+          backgroundColor: Colors.grey,
+          bufferedColor: Colors.grey[300]!,
+        ),
+        placeholder: Container(
+          color: Colors.black,
+          child: Center(
+            child: CircularProgressIndicator(color: Colors.redAccent),
+          ),
+        ),
+        autoInitialize: true,
+        showOptions: true,
+        allowedScreenSleep: false,
+        isLive: false,
+      );
 
       setState(() {
         _isLoading = false;
@@ -372,39 +399,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               onPressed: _showProviderSelector,
               tooltip: 'Seleccionar servidor',
             ),
-
-          if (_videoPlayerController != null && !_isLoading)
-            IconButton(
-              icon: Icon(
-                _videoPlayerController!.value.isPlaying
-                    ? Icons.pause
-                    : Icons.play_arrow,
-                color: Colors.white,
-              ),
-              onPressed: () {
-                setState(() {
-                  if (_videoPlayerController!.value.isPlaying) {
-                    _videoPlayerController!.pause();
-                  } else {
-                    _videoPlayerController!.play();
-                  }
-                });
-              },
-            ),
         ],
       ),
       body: Consumer<SettingsProvider>(
         builder: (context, settings, child) {
           return Stack(
             children: [
-              // Video Player
-              if (_videoPlayerController != null && !_isLoading)
-                Center(
-                  child: AspectRatio(
-                    aspectRatio: _videoPlayerController!.value.aspectRatio,
-                    child: VideoPlayer(_videoPlayerController!),
-                  ),
-                ),
+              // Video Player con Chewie
+              if (_chewieController != null && !_isLoading)
+                Center(child: Chewie(controller: _chewieController!)),
 
               // Loading Indicator durante scraping con información de proveedores
               if (_isScraping)

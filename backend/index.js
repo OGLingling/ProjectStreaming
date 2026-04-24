@@ -31,6 +31,43 @@ app.use('/api/admin', adminRoutes);  // Maneja supervisión de admin
 app.use('/api/watchlist', watchlistRoutes); // Maneja watchlist
 app.use('/api/extract', scraperRoutes);
 
+// Ruta directa para extracción de video
+app.get('/api/extract', async (req, res) => {
+  const { url } = req.query;
+  
+  if (!url) {
+    return res.status(400).json({
+      success: false,
+      error: "Falta el parámetro 'url'. Ejemplo: /api/extract?url=https://ejemplo.com"
+    });
+  }
+  
+  try {
+    console.log(`🔍 Extrayendo video desde: ${url}`);
+    const streamUrl = await VideoScraper.extractStreamUrl(url);
+    
+    if (streamUrl) {
+      return res.status(200).json({
+        success: true,
+        streamUrl: streamUrl
+      });
+    }
+    
+    return res.status(404).json({
+      success: false,
+      error: "No se encontró ningún stream de video"
+    });
+    
+  } catch (error) {
+    console.error('❌ Error en extracción:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: "Error interno del servidor durante la extracción",
+      details: error.message
+    });
+  }
+});
+
 app.get('/api/users', authController.getUserByEmail);
 
 // 3. RUTA DE SALUD (Opcional, útil para ver si el server vive)
