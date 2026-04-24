@@ -1,20 +1,23 @@
 FROM ghcr.io/puppeteer/puppeteer:22.6.0
 
-# Cambiar a usuario root para instalar dependencias si fuera necesario
 USER root
 
-# Configurar directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos de dependencias e instalar
+# 1. Copiamos los archivos de configuración
 COPY package*.json ./
+
+# 2. COPIAMOS LA CARPETA PRISMA (Esto es lo que faltaba)
+# Esto asegura que el esquema esté ahí cuando npm install lo busque
+COPY prisma ./prisma/
+
+# 3. Instalamos las dependencias
+# Usamos --foreground-scripts para ver errores si fallan
 RUN npm install
 
-# Copiar el resto del código
+# 4. Copiamos el resto del código
 COPY . .
 
-# Railway usa la variable PORT automáticamente, pero exponemos el 8080 por si acaso
 EXPOSE 8080
 
-# Comando para arrancar la app
 CMD ["node", "index.js"]
