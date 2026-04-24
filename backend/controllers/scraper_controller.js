@@ -26,12 +26,15 @@ const extractLink = async (req, res) => {
     const referer = new URL(url).origin + '/';
 
     browser = await puppeteer.launch({
-      headless: true,
+      headless: 'new',
       args: [
         '--no-sandbox',
+        '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
-        '--disable-setuid-sandbox'
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process'
       ]
     });
 
@@ -59,7 +62,7 @@ const extractLink = async (req, res) => {
       }
     });
 
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
     // Uso de page.evaluate (sin métodos obsoletos)
     await page.evaluate(() => {
@@ -70,7 +73,7 @@ const extractLink = async (req, res) => {
       }
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 4000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     if (!detectedStream) {
       detectedStream = await page.evaluate(() => {
@@ -104,9 +107,7 @@ const extractLink = async (req, res) => {
       });
     }
 
-    if (!detectedStream) {
-      throw new Error('Video no encontrado');
-    }
+    if (!detectedStream) throw new Error('Video no encontrado');
 
     return res.status(200).json({
       success: true,
@@ -118,7 +119,7 @@ const extractLink = async (req, res) => {
       error: error.message
     });
   } finally {
-    // CRÍTICO: cerrar siempre navegador para no agotar RAM
+    // OBLIGATORIO: cerrar siempre browser para evitar fuga de RAM en Railway
     if (browser) await browser.close();
   }
 };
