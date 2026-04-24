@@ -85,7 +85,7 @@ router.get('/users', async (req, res) => {
     const users = await prisma.user.findMany({
       include: {
         _count: {
-          select: { watchlist: true }
+          select: { myList: true }
         }
       },
       orderBy: { createdAt: 'desc' }

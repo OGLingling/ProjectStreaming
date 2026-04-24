@@ -39,11 +39,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     'https://projectstreaming-production-5629.up.railway.app', // Primario
   ];
 
-  // Lista de proveedores para scraping
+  // Lista de proveedores para scraping con soporte multi-proveedor
   final List<Map<String, String>> _providers = [
     {"name": "VidSrc (.ru)", "baseUrl": "https://vsembed.ru/embed/"},
     {"name": "VidSrc (.su)", "baseUrl": "https://vsembed.su/embed/"},
+    {"name": "DoodStream", "baseUrl": "https://doodstream.com/"},
+    {"name": "StreamTape", "baseUrl": "https://streamtape.com/"},
+    {"name": "MixDrop", "baseUrl": "https://mixdrop.co/"},
+    {"name": "SuperVideo/Fembed", "baseUrl": "https://fembed.com/"},
   ];
+
+  // Proveedor actual seleccionado
+  int _currentProviderIndex = 0;
+  // Intentos de scraping realizados
+  int _scrapingAttempts = 0;
 
   @override
   void initState() {
@@ -76,15 +85,42 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _isLoading = true;
       _isScraping = true;
       _errorMessage = null;
+      _scrapingAttempts = 0;
     });
 
     try {
-      // Obtener URL del video mediante scraping
-      final String targetUrl = _generateUrl();
-      final String? videoUrl = await _fetchVideoUrl(targetUrl);
+      String? videoUrl;
+      Exception? lastError;
+
+      // Intentar con cada proveedor en orden
+      for (int i = 0; i < _providers.length; i++) {
+        _currentProviderIndex = i;
+        _scrapingAttempts++;
+
+        final String targetUrl = _generateUrl(providerIndex: i);
+        print('🎯 Intentando proveedor ${_providers[i]['name']}: $targetUrl');
+
+        try {
+          videoUrl = await _fetchVideoUrl(targetUrl);
+          if (videoUrl != null) {
+            print('✅ Éxito con proveedor ${_providers[i]['name']}: $videoUrl');
+            break;
+          }
+        } catch (error) {
+          lastError = error is Exception ? error : Exception(error.toString());
+          print(
+            '⚠️  Proveedor ${_providers[i]['name']} falló: ${error.toString()}',
+          );
+
+          // Pequeña pausa entre intentos (excepto después del último)
+          if (i < _providers.length - 1) {
+            await Future.delayed(const Duration(milliseconds: 800));
+          }
+        }
+      }
 
       if (videoUrl == null) {
-        throw Exception('No se pudo obtener la URL del video');
+        throw lastError ?? Exception('Todos los proveedores fallaron');
       }
 
       // Configurar el controlador de video para HLS (.m3u8)
@@ -94,6 +130,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           allowBackgroundPlayback: false,
           mixWithOthers: false,
         ),
+        httpHeaders: {
+          'Referer': 'https://projectstreaming-production-5629.up.railway.app',
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Origin': 'https://oglingling.github.io',
+        },
       );
 
       await _videoPlayerController!.initialize();
@@ -121,20 +163,44 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Intentar con cada servidor en orden (redundancia)
     for (int i = 0; i < _apiServers.length; i++) {
       final String serverUrl = _apiServers[i];
-      final String apiUrl =
+
+      // Construir URL con parámetros de tracking para watchlist
+      String apiUrl =
           '$serverUrl/api/extract?url=${Uri.encodeComponent(targetUrl)}';
+
+      // Agregar parámetros de contenido para tracking en watchlist
+      if (widget.tmdbId != null) {
+        apiUrl += '&contentId=${widget.tmdbId}';
+      }
+      if (widget.imdbId != null) {
+        apiUrl += '&imdbId=${widget.imdbId}';
+      }
+      apiUrl += '&title=${Uri.encodeComponent(widget.title)}';
+      apiUrl += '&type=${widget.type}';
 
       print('🔍 Intentando servidor ${i + 1}: $serverUrl');
 
       try {
         final response = await http
-            .get(Uri.parse(apiUrl), headers: {'Accept': 'application/json'})
+            .get(
+              Uri.parse(apiUrl),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+              },
+            )
             .timeout(const Duration(seconds: 15));
 
         if (response.statusCode == 200) {
           final Map<String, dynamic> data = json.decode(response.body);
           if (data['success'] == true) {
             print('✅ Éxito con servidor ${i + 1}: $serverUrl');
+
+            // Registrar en analytics si está disponible
+            if (data['analytics'] != null) {
+              print('📊 Analytics: ${data['analytics']}');
+            }
+
             return data['streamUrl'];
           } else {
             lastError = Exception(data['error'] ?? 'Error en el scraping');
@@ -159,35 +225,122 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     throw lastError ?? Exception('Todos los servidores fallaron');
   }
 
-  void _showErrorDialog(String error) {
+  void _showProviderSelector() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(
-          'No se pudo cargar el video: ${error.contains('Timeout') ? 'El servidor tardó demasiado en responder' : error}',
+        title: const Text('Seleccionar servidor'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _providers.length,
+            itemBuilder: (context, index) {
+              final provider = _providers[index];
+              return ListTile(
+                leading: Icon(
+                  index == _currentProviderIndex
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  color: index == _currentProviderIndex
+                      ? Colors.redAccent
+                      : Colors.grey,
+                ),
+                title: Text(provider['name']!),
+                subtitle: Text(provider['baseUrl']!),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (index != _currentProviderIndex) {
+                    setState(() {
+                      _currentProviderIndex = index;
+                    });
+                    _initPlayer(); // Recargar con nuevo proveedor
+                  }
+                },
+              );
+            },
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+            child: const Text('Cancelar'),
           ),
         ],
       ),
     );
   }
 
-  String _generateUrl() {
-    // Usar siempre el primer proveedor ya que la selección fue removida
-    final provider = _providers[0];
+  void _showErrorDialog(String error) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error al cargar el video'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              error.contains('Timeout')
+                  ? 'El servidor tardó demasiado en responder'
+                  : error.contains('404')
+                  ? 'No se encontró el video en los servidores disponibles'
+                  : error.contains('500')
+                  ? 'Error interno del servidor de streaming'
+                  : 'Error: $error',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Intentos realizados: $_scrapingAttempts proveedores',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _initPlayer(); // Reintentar
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Reintentar con otro servidor'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _generateUrl({int? providerIndex}) {
+    final provider = _providers[providerIndex ?? _currentProviderIndex];
     final isTV =
         widget.type.toLowerCase().contains('serie') ||
         widget.type.toLowerCase().contains('tv');
     String id = widget.tmdbId ?? widget.imdbId ?? "";
     String mediaType = isTV ? "tv" : "movie";
 
-    // Lógica simplificada para los proveedores restantes
-    return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
+    // Lógica específica por proveedor
+    String baseUrl = provider['baseUrl']!;
+
+    if (baseUrl.contains('doodstream')) {
+      return "$baseUrl$id";
+    } else if (baseUrl.contains('streamtape')) {
+      return "$baseUrl/v/$id";
+    } else if (baseUrl.contains('mixdrop')) {
+      return "$baseUrl/e/$id";
+    } else if (baseUrl.contains('fembed')) {
+      return "$baseUrl/v/$id";
+    } else {
+      // Proveedores VidSrc (compatibilidad con formato anterior)
+      return "${baseUrl}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
+    }
   }
 
   @override
@@ -212,6 +365,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           ],
         ),
         actions: [
+          // Selector de proveedores
+          if (!_isLoading)
+            IconButton(
+              icon: const Icon(Icons.settings, color: Colors.white),
+              onPressed: _showProviderSelector,
+              tooltip: 'Seleccionar servidor',
+            ),
+
           if (_videoPlayerController != null && !_isLoading)
             IconButton(
               icon: Icon(
@@ -245,17 +406,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   ),
                 ),
 
-              // Loading Indicator durante scraping
+              // Loading Indicator durante scraping con información de proveedores
               if (_isScraping)
-                const Center(
+                Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircularProgressIndicator(color: Colors.redAccent),
-                      SizedBox(height: 16),
+                      const CircularProgressIndicator(color: Colors.redAccent),
+                      const SizedBox(height: 16),
                       Text(
-                        'Obteniendo fuente de video (esto puede tardar unos segundos)...',
-                        style: TextStyle(color: Colors.white, fontSize: 14),
+                        'Buscando el mejor servidor... (Intento $_scrapingAttempts)',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _scrapingAttempts > 0 &&
+                                _scrapingAttempts <= _providers.length
+                            ? 'Probando: ${_providers[_scrapingAttempts - 1]['name']}'
+                            : 'Analizando proveedores disponibles',
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ],

@@ -11,6 +11,7 @@ const adminRoutes = require('./routes/admin_routes');
 const authController = require('./controllers/auth_controller');
 const watchlistRoutes = require('./routes/watchlist_routes');
 const scraperRoutes = require('./routes/scraper_routes');
+const VideoScraper = require('./services/scraper_service');
 
 // 1. CONFIGURACIÓN DE MIDDLEWARES
 app.use(cors({
@@ -47,7 +48,7 @@ app.use((req, res) => {
 });
 
 // 4. ARRANQUE DEL SERVIDOR
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 8080;
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Servidor activo en puerto ${PORT}`);
     console.log("✅ Ruta de scraping cargada correctamente en /api/extract");
