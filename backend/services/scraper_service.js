@@ -6,12 +6,20 @@ class VideoScraper {
   // --- DETECTOR AUTOMÁTICO DE PROVEEDORES (Se mantiene igual) ---
   static detectProvider(targetUrl) {
     const url = targetUrl.toLowerCase();
+    if (url.includes('vidsrc.win')) return 'vidsrcwin';
     if (url.includes('dood') || url.includes('/e/') || url.includes('doodstream')) return 'doodstream';
     if (url.includes('streamtape')) return 'streamtape';
     if (url.includes('mixdrop')) return 'mixdrop';
     if (url.includes('supervideo') || url.includes('fembed')) return 'supervideo';
     if (url.includes('vsembed') || url.includes('vidsrc')) return 'vidsrc';
     return 'unknown';
+  }
+
+  static isVidSrcWinCandidate(rawUrl) {
+    const url = (rawUrl || '').toLowerCase();
+    const hasVideoExt = url.includes('.m3u8') || url.includes('.mp4');
+    const hasExpectedToken = url.includes('playlist') || url.includes('master') || url.includes('hls');
+    return hasVideoExt && hasExpectedToken && !url.includes('audio') && !url.includes('trailer');
   }
 
   // --- MÉTODO PRINCIPAL ADAPTADO PARA RENDER ---
@@ -36,8 +44,12 @@ class VideoScraper {
         ]
       });
 
+      const refererOrigin = new URL(targetUrl).origin;
       const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        extraHTTPHeaders: {
+          Referer: `${refererOrigin}/`
+        }
       });
       const page = await context.newPage();
 
@@ -45,16 +57,26 @@ class VideoScraper {
       const urlPromise = new Promise((resolve) => {
         page.on('request', (req) => {
           const url = req.url().toLowerCase();
-          if (url.includes('.m3u8') || url.includes('.mp4') || url.includes('master.m3u8')) {
-            if (!url.includes('audio') && !url.includes('trailer')) {
+          if (provider === 'vidsrcwin') {
+            if (this.isVidSrcWinCandidate(url)) {
               resolve(req.url());
             }
+            return;
+          }
+          if (url.includes('.m3u8') || url.includes('.mp4') || url.includes('master.m3u8')) {
+            if (!url.includes('audio') && !url.includes('trailer')) resolve(req.url());
           }
         });
         page.on('response', (res) => {
           const url = res.url().toLowerCase();
+          if (provider === 'vidsrcwin') {
+            if (this.isVidSrcWinCandidate(url)) {
+              resolve(res.url());
+            }
+            return;
+          }
           if (url.includes('.m3u8') || url.includes('.mp4')) {
-             resolve(res.url());
+            resolve(res.url());
           }
         });
       });
@@ -62,7 +84,10 @@ class VideoScraper {
       // Navegación rápida (waitUntil: 'domcontentloaded' es más rápido en Render)
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
-      // Simulación de interacción para activar reproductores
+      // Simulación de interacción para activar reproductores (vidsrc.win)
+      if (provider === 'vidsrcwin') {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
       await page.mouse.click(400, 300);
       await page.evaluate(() => window.scrollBy(0, 200));
 
