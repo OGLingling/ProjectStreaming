@@ -1,11 +1,14 @@
-const { chromium } = require('playwright'); // Cambiado a Playwright para máxima compatibilidad con Render
+const { chromium } = require('playwright');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 class VideoScraper {
-  // --- DETECTOR AUTOMÁTICO DE PROVEEDORES (Se mantiene igual) ---
+  static NAV_TIMEOUT_MS = 45000;
+  static UA_WINDOWS_CHROME =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
   static detectProvider(targetUrl) {
-    const url = targetUrl.toLowerCase();
+    const url = String(targetUrl || '').toLowerCase();
     if (url.includes('vidsrc.win')) return 'vidsrcwin';
     if (url.includes('dood') || url.includes('/e/') || url.includes('doodstream')) return 'doodstream';
     if (url.includes('streamtape')) return 'streamtape';
@@ -15,118 +18,188 @@ class VideoScraper {
     return 'unknown';
   }
 
-  static isVidSrcWinCandidate(rawUrl) {
-    const url = (rawUrl || '').toLowerCase();
-    const hasVideoExt = url.includes('.m3u8') || url.includes('.mp4');
-    const hasExpectedToken = url.includes('playlist') || url.includes('master') || url.includes('hls');
-    return hasVideoExt && hasExpectedToken && !url.includes('audio') && !url.includes('trailer');
+  static isValidHttpUrl(value) {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch (_) {
+      return false;
+    }
   }
 
-  // --- MÉTODO PRINCIPAL ADAPTADO PARA RENDER ---
-  static async extractStreamUrl(targetUrl) {
-    const provider = this.detectProvider(targetUrl);
-    console.log(`[Scraper] Proveedor: ${provider} en Render`);
+  static buildCandidates(targetUrl) {
+    const raw = String(targetUrl || '').trim();
+    if (this.isValidHttpUrl(raw)) return [raw];
 
+    // Soporte híbrido TMDB: "tmdb:550" o "550"
+    const tmdbMatch = raw.match(/tmdb[:=]?(\d+)/i) || raw.match(/^(\d{2,10})$/);
+    if (!tmdbMatch) return [];
+
+    const id = tmdbMatch[1];
+    return [
+      `https://vidsrc.win/embed/movie/${id}`,
+      `https://vidsrc.win/embed/tv/${id}/1/1`
+    ];
+  }
+
+  static isIgnoredTraffic(rawUrl) {
+    const url = String(rawUrl || '').toLowerCase();
+    return (
+      url.includes('audio') ||
+      url.includes('trailer') ||
+      url.includes('advert') ||
+      url.includes('doubleclick') ||
+      url.includes('googlesyndication') ||
+      url.includes('googleads')
+    );
+  }
+
+  static isStreamCandidate(rawUrl) {
+    const url = String(rawUrl || '').toLowerCase();
+    if (this.isIgnoredTraffic(url)) return false;
+    return url.includes('.m3u8') || url.includes('.mp4') || url.includes('master.m3u8');
+  }
+
+  static isEmbedProvider(rawUrl) {
+    const url = String(rawUrl || '').toLowerCase();
+    return url.includes('/embed/') || url.includes('vidsrc.win/embed/');
+  }
+
+  static async runGhostClicks(page) {
+    await page.mouse.click(400, 300);
+    await page.waitForTimeout(500);
+    await page.mouse.click(420, 320);
+    await page.waitForTimeout(500);
+    await page.mouse.click(380, 280);
+    await page.evaluate(() => window.scrollBy(0, 240));
+  }
+
+  static async extractFromSingleUrl(targetUrl) {
     let browser;
+    const provider = this.detectProvider(targetUrl);
+
+    try {
+      browser = await chromium.launch({
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--single-process'
+        ]
+      });
+
+      const refererOrigin = new URL(targetUrl).origin;
+      const context = await browser.newContext({
+        userAgent: this.UA_WINDOWS_CHROME,
+        extraHTTPHeaders: {
+          Referer: `${refererOrigin}/`
+        }
+      });
+      const page = await context.newPage();
+      page.setDefaultNavigationTimeout(this.NAV_TIMEOUT_MS);
+      page.setDefaultTimeout(this.NAV_TIMEOUT_MS);
+
+      const streamPromise = new Promise((resolve) => {
+        page.on('request', (req) => {
+          const reqUrl = req.url();
+          if (this.isStreamCandidate(reqUrl)) resolve(reqUrl);
+        });
+        page.on('response', (res) => {
+          const resUrl = res.url();
+          if (this.isStreamCandidate(resUrl)) resolve(resUrl);
+        });
+      });
+
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: this.NAV_TIMEOUT_MS });
+
+      if (this.isEmbedProvider(targetUrl) || provider === 'vidsrcwin') {
+        await this.runGhostClicks(page);
+      }
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Timeout: no se detectó stream en ${this.NAV_TIMEOUT_MS / 1000}s`)), this.NAV_TIMEOUT_MS)
+      );
+
+      const streamUrl = await Promise.race([streamPromise, timeoutPromise]);
+      return streamUrl || null;
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
+    }
+  }
+
+  static async extractStreamUrl(targetUrl) {
     const startTime = Date.now();
     let success = false;
     let streamUrlResult = null;
     let errorMessage = null;
 
     try {
-      // Lanzamiento optimizado para la RAM limitada de Render
-      browser = await chromium.launch({
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--single-process' // Crítico para no agotar la CPU de Render
-        ]
-      });
-
-      const refererOrigin = new URL(targetUrl).origin;
-      const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        viewport: { width: 1280, height: 720 }
-      });
-      const page = await context.newPage();
-
-      // Intercepción de tráfico (Equivalente a tu lógica anterior)
-      const urlPromise = new Promise((resolve) => {
-        page.on('request', (req) => {
-          const url = req.url().toLowerCase();
-          if (provider === 'vidsrcwin') {
-            if (this.isVidSrcWinCandidate(url)) {
-              resolve(req.url());
-            }
-            return;
-          }
-          if (url.includes('.m3u8') || url.includes('.mp4') || url.includes('master.m3u8')) {
-            if (!url.includes('audio') && !url.includes('trailer')) resolve(req.url());
-          }
-        });
-        page.on('response', (res) => {
-          const url = res.url().toLowerCase();
-          if (provider === 'vidsrcwin') {
-            if (this.isVidSrcWinCandidate(url)) {
-              resolve(res.url());
-            }
-            return;
-          }
-          if (url.includes('.m3u8') || url.includes('.mp4')) {
-            resolve(res.url());
-          }
-        });
-      });
-
-      // Navegación rápida (waitUntil: 'domcontentloaded' es más rápido en Render)
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-
-      // Simulación de interacción para activar reproductores (vidsrc.win)
-      if (provider === 'vidsrcwin') {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+      const candidates = this.buildCandidates(targetUrl);
+      if (!candidates.length) {
+        throw new Error('targetUrl inválido: usa URL http(s) o ID TMDB');
       }
-      await page.mouse.click(400, 300);
-      await page.evaluate(() => window.scrollBy(0, 200));
 
-      // Espera el stream o el timeout
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout: No se detectó stream en 45 segundos")), 45000)
-      );
+      for (const candidate of candidates) {
+        try {
+          const stream = await this.extractFromSingleUrl(candidate);
+          if (stream) {
+            success = true;
+            streamUrlResult = stream;
+            break;
+          }
+        } catch (candidateError) {
+          errorMessage = candidateError.message;
+          await this.logBrokenLink(candidate, candidateError, this.detectProvider(candidate));
+        }
+      }
 
-      streamUrlResult = await Promise.race([urlPromise, timeoutPromise]);
-      success = true;
       return streamUrlResult;
-
     } catch (error) {
-      console.log(`[Scraper] Error: ${error.message}`);
       errorMessage = error.message;
-      await this.logBrokenLink(targetUrl, error, provider);
+      await this.logBrokenLink(String(targetUrl || ''), error, this.detectProvider(String(targetUrl || '')));
       return null;
     } finally {
-      if (browser) {
-        await browser.close(); // Siempre cerrar para liberar memoria en Render
-      }
-      // Guardar Log en BD
-      await this.saveLog(targetUrl, success, streamUrlResult, errorMessage, Date.now() - startTime);
+      await this.saveLog(
+        String(targetUrl || ''),
+        success,
+        streamUrlResult,
+        errorMessage,
+        Date.now() - startTime
+      );
     }
   }
 
-  // --- LOGS Y MANTENIMIENTO ---
   static async saveLog(url, success, result, error, duration) {
     try {
       await prisma.scrapeLog.create({
-        data: { targetUrl: url, success, streamUrl: result, error, duration }
+        data: {
+          targetUrl: url,
+          success,
+          streamUrl: result,
+          error,
+          duration
+        }
       });
-    } catch (e) { console.error("Error BD Log:", e.message); }
+    } catch (e) {
+      console.error('Error BD Log:', e.message);
+    }
   }
 
   static async logBrokenLink(targetUrl, error, provider) {
     try {
       await prisma.brokenLink.create({
-        data: { url: targetUrl, error: error.message, provider, timestamp: new Date() }
+        data: {
+          url: targetUrl,
+          error: error.message,
+          provider,
+          timestamp: new Date()
+        }
       });
-    } catch (e) { console.error("Error BD BrokenLink:", e.message); }
+    } catch (e) {
+      console.error('Error BD BrokenLink:', e.message);
+    }
   }
 }
 
