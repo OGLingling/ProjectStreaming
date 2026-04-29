@@ -3,7 +3,8 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 class VideoScraper {
-  static NAV_TIMEOUT_MS = 60000; // Aumentado a 60s para Render Gratis
+  // 1. AUMENTO DE TIEMPO: Render necesita al menos 60s para cargar estas webs
+  static NAV_TIMEOUT_MS = 60000; 
   static UA_WINDOWS_CHROME =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -35,7 +36,6 @@ class VideoScraper {
     if (!tmdbMatch) return [];
 
     const id = tmdbMatch[1];
-    // Probamos primero con vidsrc.win (que suele ser más estable para scraping)
     return [
       `https://vidsrc.win/embed/movie/${id}`,
       `https://vidsrc.win/embed/tv/${id}/1/1`
@@ -44,9 +44,7 @@ class VideoScraper {
 
   static isStreamCandidate(rawUrl) {
     const url = String(rawUrl || '').toLowerCase();
-    // Filtramos basura y publicidad común
     if (url.includes('googleads') || url.includes('doubleclick') || url.includes('analytics')) return false;
-    // Buscamos extensiones reales de video o listas HLS
     return (
       url.includes('.m3u8') || 
       url.includes('.mp4') || 
@@ -57,28 +55,19 @@ class VideoScraper {
 
   static async runDeepInteractions(page) {
     console.log("[Scraper] Iniciando interacciones profundas...");
-    
-    // 1. Intentar detectar el iframe principal del reproductor
     const frames = page.frames();
     const playerFrame = frames.find(f => f.url().includes('vidsrc') || f.url().includes('embed'));
 
     if (playerFrame) {
       try {
-        // Clic en el centro del iframe (donde suele estar el botón Play)
         await playerFrame.click('body', { position: { x: 400, y: 300 }, force: true });
-        console.log("[Scraper] Clic realizado dentro del iframe.");
       } catch (e) {
-        // Si falla el clic por selector, usamos coordenadas globales
         await page.mouse.click(400, 300);
       }
     } else {
       await page.mouse.click(400, 300);
     }
-
-    // 2. Pequeños movimientos para simular actividad humana
-    await page.mouse.wheel(0, 100);
     await page.waitForTimeout(2000);
-    await page.mouse.wheel(0, -100);
   }
 
   static async extractFromSingleUrl(targetUrl) {
@@ -88,9 +77,10 @@ class VideoScraper {
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--single-process',
-          '--disable-blink-features=AutomationControlled' // Oculta que es un bot
+          '--disable-dev-shm-usage', // CRÍTICO para Render
+          '--single-process',       // Ahorra RAM
+          '--no-zygote',            // Evita procesos huérfanos
+          '--disable-blink-features=AutomationControlled'
         ]
       });
 
@@ -102,7 +92,16 @@ class VideoScraper {
       const page = await context.newPage();
       let streamUrlFound = null;
 
-      // Escuchador de tráfico de red
+      // 2. OPTIMIZACIÓN: Bloqueamos imágenes y fuentes para cargar más rápido
+      await page.route('**/*', (route) => {
+        const type = route.request().resourceType();
+        if (['image', 'font', 'media'].includes(type) && !route.request().url().includes('.mp4')) {
+          route.abort();
+        } else {
+          route.continue();
+        }
+      });
+
       page.on('request', (req) => {
         const url = req.url();
         if (this.isStreamCandidate(url)) {
@@ -111,16 +110,15 @@ class VideoScraper {
         }
       });
 
-      // Navegación con tiempo de espera generoso
+      // 3. ESPERA EXTENDIDA: networkidle para asegurar que carguen los reproductores
       await page.goto(targetUrl, { 
         waitUntil: 'networkidle', 
         timeout: this.NAV_TIMEOUT_MS 
       });
 
-      // Ejecutamos clics para forzar la carga del video
       await this.runDeepInteractions(page);
 
-      // Espera activa: revisamos cada segundo si el stream ya apareció
+      // Revisión de 15 segundos para dar tiempo a que el flujo aparezca
       for (let i = 0; i < 15; i++) {
         if (streamUrlFound) return streamUrlFound;
         await page.waitForTimeout(1000);
@@ -153,7 +151,7 @@ class VideoScraper {
             break;
           }
         } catch (e) {
-          console.error(`[Scraper] Falló candidato ${candidate}: ${e.message}`);
+          console.error(`[Scraper] Error en candidato: ${e.message}`);
           errorMessage = e.message;
         }
       }
