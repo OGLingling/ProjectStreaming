@@ -47,9 +47,7 @@ class VideoScraper {
       const refererOrigin = new URL(targetUrl).origin;
       const context = await browser.newContext({
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        extraHTTPHeaders: {
-          Referer: `${refererOrigin}/`
-        }
+        viewport: { width: 1280, height: 720 }
       });
       const page = await context.newPage();
 
@@ -93,7 +91,7 @@ class VideoScraper {
 
       // Espera el stream o el timeout
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout en Render: 15s")), 15000)
+        setTimeout(() => reject(new Error("Timeout: No se detectó stream en 45 segundos")), 45000)
       );
 
       streamUrlResult = await Promise.race([urlPromise, timeoutPromise]);
