@@ -36,24 +36,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
 
-  // Lista de servidores con redundancia - Primario + Backup
-  final List<String> _apiServers = [
-    'https://projectstreaming-1.onrender.com', // Primario
-  ];
+  // Servidor de Render donde corre tu Scraper de Node.js
+  final String _scraperBaseUrl = 'https://projectstreaming-1.onrender.com';
 
-  // Lista de proveedores para scraping con soporte multi-proveedor
+  // Lista de proveedores para el scraper
   final List<Map<String, String>> _providers = [
     {"name": "VidSrc (.ru)", "baseUrl": "https://vsembed.ru/embed/"},
     {"name": "VidSrc (.su)", "baseUrl": "https://vsembed.su/embed/"},
-    {"name": "DoodStream", "baseUrl": "https://doodstream.com/"},
-    {"name": "StreamTape", "baseUrl": "https://streamtape.com/"},
-    {"name": "MixDrop", "baseUrl": "https://mixdrop.co/"},
-    {"name": "SuperVideo/Fembed", "baseUrl": "https://fembed.com/"},
   ];
 
-  // Proveedor actual seleccionado
   int _currentProviderIndex = 0;
-  // Intentos de scraping realizados
   int _scrapingAttempts = 0;
 
   @override
@@ -63,31 +55,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   @override
-  void didUpdateWidget(covariant VideoPlayerScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.season != widget.season ||
-        oldWidget.episode != widget.episode ||
-        oldWidget.tmdbId != widget.tmdbId) {
-      _initPlayer();
-    }
-  }
-
-  @override
   void dispose() {
-    _videoPlayerController?.dispose();
-    _chewieController?.dispose();
+    _disposeControllers();
     super.dispose();
   }
 
-  Future<void> _initPlayer() async {
+  Future<void> _disposeControllers() async {
     _chewieController?.dispose();
-    _chewieController = null;
-
     if (_videoPlayerController != null) {
       await _videoPlayerController!.dispose();
-      _videoPlayerController = null;
     }
+    _videoPlayerController = null;
+    _chewieController = null;
+  }
 
+  // Lógica principal de inicio
+  Future<void> _initPlayer() async {
+    await _disposeControllers();
+
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _isScraping = true;
@@ -96,66 +82,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
 
     try {
-      String? videoUrl;
-      Exception? lastError;
+      String? streamUrl;
 
-      // Intentar con cada proveedor en orden
+      // Intentar obtener el link directo de los proveedores disponibles
       for (int i = 0; i < _providers.length; i++) {
         _currentProviderIndex = i;
         _scrapingAttempts++;
 
-        final String targetUrl = _generateUrl(providerIndex: i);
-        print('🎯 Intentando proveedor ${_providers[i]['name']}: $targetUrl');
+        final String targetUrl = _generateTargetUrl(i);
 
         try {
-          videoUrl = await _fetchVideoUrl(targetUrl);
-          if (videoUrl != null) {
-            print('✅ Éxito con proveedor ${_providers[i]['name']}: $videoUrl');
-            break;
-          }
-        } catch (error) {
-          lastError = error is Exception ? error : Exception(error.toString());
-          print(
-            '⚠️  Proveedor ${_providers[i]['name']} falló: ${error.toString()}',
-          );
-
-          _chewieController?.dispose();
-          _chewieController = null;
-          if (_videoPlayerController != null) {
-            await _videoPlayerController!.dispose();
-            _videoPlayerController = null;
-          }
-
-          // Pequeña pausa entre intentos (excepto después del último)
-          if (i < _providers.length - 1) {
-            await Future.delayed(const Duration(milliseconds: 800));
-          }
+          streamUrl = await _fetchStreamFromScraper(targetUrl);
+          if (streamUrl != null) break;
+        } catch (e) {
+          debugPrint('Error en proveedor ${_providers[i]['name']}: $e');
+          if (i == _providers.length - 1) rethrow;
         }
       }
 
-      if (videoUrl == null) {
-        throw lastError ?? Exception('Todos los proveedores fallaron');
-      }
+      if (streamUrl == null)
+        throw Exception("No se obtuvo respuesta del servidor");
 
-      // Configurar el controlador de video para HLS (.m3u8)
+      // Inicializar VideoPlayer con el stream extraído (.m3u8 o .mp4)
       _videoPlayerController = VideoPlayerController.networkUrl(
-        Uri.parse(videoUrl),
-        videoPlayerOptions: VideoPlayerOptions(
-          allowBackgroundPlayback: false,
-          mixWithOthers: false,
-        ),
+        Uri.parse(streamUrl),
         httpHeaders: {
-          'Referer': 'https://projectstreaming-1.onrender.com',
           'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Origin': 'https://oglingling.github.io',
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36',
         },
       );
 
       await _videoPlayerController!.initialize();
 
-      // Configurar ChewieController con controles avanzados
-      _chewieController?.dispose();
+      // Configurar Chewie
       _chewieController = ChewieController(
         videoPlayerController: _videoPlayerController!,
         autoPlay: true,
@@ -166,224 +125,96 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           playedColor: Colors.redAccent,
           handleColor: Colors.red,
           backgroundColor: Colors.grey,
-          bufferedColor: Colors.grey[300]!,
+          bufferedColor: Colors.white.withOpacity(0.3),
         ),
-        placeholder: Container(
-          color: Colors.black,
-          child: Center(
-            child: CircularProgressIndicator(color: Colors.redAccent),
-          ),
-        ),
+        placeholder: Container(color: Colors.black),
         autoInitialize: true,
-        showOptions: true,
-        allowedScreenSleep: false,
-        isLive: false,
+        errorBuilder: (context, errorMessage) {
+          return const Center(
+            child: Text(
+              "Error de reproducción. Reintenta con otro servidor.",
+              style: TextStyle(color: Colors.white),
+            ),
+          );
+        },
       );
 
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _isScraping = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _isScraping = false;
-        _errorMessage = error.toString();
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isScraping = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isScraping = false;
+          _errorMessage = e.toString();
+        });
+        _showErrorDialog(e.toString());
+      }
+    }
+  }
 
-      _showErrorDialog(error.toString());
+  // Comunicación con el backend de Node.js
+  Future<String?> _fetchStreamFromScraper(String targetUrl) async {
+    final String apiUrl =
+        '$_scraperBaseUrl/api/extract?url=${Uri.encodeComponent(targetUrl)}';
+
+    // Timeout de 55 segundos porque el scraper en Render tarda ~40s en navegar
+    final response = await http
+        .get(Uri.parse(apiUrl), headers: {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 55));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      if (data['success'] == true && data['streamUrl'] != null) {
+        return data['streamUrl'];
+      } else {
+        throw Exception(data['error'] ?? "Error desconocido en el scraper");
+      }
+    } else {
+      throw Exception(
+        "Servidor caído o saturado (Código: ${response.statusCode})",
+      );
     }
   }
 
-  Future<String?> _fetchVideoUrl(String targetUrl) async {
-    Exception? lastError;
-
-    // Intentar con cada servidor en orden (redundancia)
-    for (int i = 0; i < _apiServers.length; i++) {
-      final String serverUrl = _apiServers[i];
-
-      // Construir URL con parámetros de tracking para watchlist
-      String apiUrl =
-          '$serverUrl/api/extract?url=${Uri.encodeComponent(targetUrl)}';
-
-      // Agregar parámetros de contenido para tracking en watchlist
-      if (widget.tmdbId != null) {
-        apiUrl += '&contentId=${widget.tmdbId}';
-      }
-      if (widget.imdbId != null) {
-        apiUrl += '&imdbId=${widget.imdbId}';
-      }
-      apiUrl += '&title=${Uri.encodeComponent(widget.title)}';
-      apiUrl += '&type=${widget.type}';
-
-      print('🔍 Intentando servidor ${i + 1}: $serverUrl');
-
-      try {
-        final response = await http
-            .get(
-              Uri.parse(apiUrl),
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Referer': 'https://projectstreaming-1.onrender.com',
-                'User-Agent':
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              },
-            )
-            .timeout(const Duration(seconds: 15));
-
-        if (response.statusCode == 200) {
-          final Map<String, dynamic> data = json.decode(response.body);
-          if (data['success'] == true) {
-            print('✅ Éxito con servidor ${i + 1}: $serverUrl');
-
-            // Registrar en analytics si está disponible
-            if (data['analytics'] != null) {
-              print('📊 Analytics: ${data['analytics']}');
-            }
-
-            return data['streamUrl'];
-          } else {
-            lastError = Exception(data['error'] ?? 'Error en el scraping');
-            print('⚠️  Servidor ${i + 1} falló: ${data['error']}');
-          }
-        } else {
-          lastError = Exception('Error HTTP ${response.statusCode}');
-          print('⚠️  Servidor ${i + 1} falló: HTTP ${response.statusCode}');
-        }
-      } catch (error) {
-        lastError = error is Exception ? error : Exception(error.toString());
-        print('⚠️  Servidor ${i + 1} falló: ${error.toString()}');
-      }
-
-      // Pequeña pausa entre intentos (excepto después del último)
-      if (i < _apiServers.length - 1) {
-        await Future.delayed(const Duration(milliseconds: 500));
-      }
-    }
-
-    // Si todos los servidores fallaron, lanzar el último error
-    throw lastError ?? Exception('Todos los servidores fallaron');
-  }
-
-  void _showProviderSelector() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Seleccionar servidor'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: _providers.length,
-            itemBuilder: (context, index) {
-              final provider = _providers[index];
-              return ListTile(
-                leading: Icon(
-                  index == _currentProviderIndex
-                      ? Icons.check_circle
-                      : Icons.radio_button_unchecked,
-                  color: index == _currentProviderIndex
-                      ? Colors.redAccent
-                      : Colors.grey,
-                ),
-                title: Text(provider['name']!),
-                subtitle: Text(provider['baseUrl']!),
-                onTap: () {
-                  Navigator.pop(context);
-                  if (index != _currentProviderIndex) {
-                    setState(() {
-                      _currentProviderIndex = index;
-                    });
-                    _initPlayer(); // Recargar con nuevo proveedor
-                  }
-                },
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showErrorDialog(String error) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Error al cargar el video'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              error.contains('Timeout')
-                  ? 'El servidor tardó demasiado en responder'
-                  : error.contains('404')
-                  ? 'No se encontró el video en los servidores disponibles'
-                  : error.contains('500')
-                  ? 'Error interno del servidor de streaming'
-                  : 'Error: $error',
-              style: const TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Intentos realizados: $_scrapingAttempts proveedores',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _initPlayer(); // Reintentar
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Reintentar con otro servidor'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _generateUrl({int? providerIndex}) {
-    final provider = _providers[providerIndex ?? _currentProviderIndex];
+  String _generateTargetUrl(int index) {
+    final provider = _providers[index];
     final isTV =
         widget.type.toLowerCase().contains('serie') ||
         widget.type.toLowerCase().contains('tv');
     String id = widget.tmdbId ?? widget.imdbId ?? "";
     String mediaType = isTV ? "tv" : "movie";
 
-    // Lógica específica por proveedor
-    String baseUrl = provider['baseUrl']!;
+    return "${provider['baseUrl']}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
+  }
 
-    if (baseUrl.contains('doodstream')) {
-      return "$baseUrl$id";
-    } else if (baseUrl.contains('streamtape')) {
-      return "$baseUrl/v/$id";
-    } else if (baseUrl.contains('mixdrop')) {
-      return "$baseUrl/e/$id";
-    } else if (baseUrl.contains('fembed')) {
-      return "$baseUrl/v/$id";
-    } else {
-      // Proveedores VidSrc (compatibilidad con formato anterior)
-      return "${baseUrl}$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
-    }
+  void _showErrorDialog(String error) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Error', style: TextStyle(color: Colors.white)),
+        content: Text(error, style: const TextStyle(color: Colors.grey)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () {
+              Navigator.pop(context);
+              _initPlayer();
+            },
+            child: const Text('Reintentar'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -398,117 +229,65 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           children: [
             Text(
               widget.title,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
+              style: const TextStyle(fontSize: 14, color: Colors.white),
             ),
             if (widget.type.toLowerCase().contains('tv'))
               Text(
                 "T${widget.season} • E${widget.episode}",
-                style: const TextStyle(color: Colors.grey, fontSize: 10),
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
               ),
           ],
         ),
-        actions: [
-          // Selector de proveedores
-          if (!_isLoading)
-            IconButton(
-              icon: const Icon(Icons.settings, color: Colors.white),
-              onPressed: _showProviderSelector,
-              tooltip: 'Seleccionar servidor',
-            ),
-        ],
       ),
       body: Consumer<SettingsProvider>(
         builder: (context, settings, child) {
           return Stack(
             children: [
-              // Video Player con Chewie
+              // Reproductor Chewie
               if (_chewieController != null && !_isLoading)
                 Center(child: Chewie(controller: _chewieController!)),
 
-              // Loading Indicator durante scraping con información de proveedores
+              // Pantalla de carga informativa (Scraping)
               if (_isScraping)
                 Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const CircularProgressIndicator(color: Colors.redAccent),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 20),
                       Text(
-                        'Buscando el mejor servidor... (Intento $_scrapingAttempts)',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                        ),
-                        textAlign: TextAlign.center,
+                        "Buscando video en ${_providers[_currentProviderIndex]['name']}...",
+                        style: const TextStyle(color: Colors.white),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _scrapingAttempts > 0 &&
-                                _scrapingAttempts <= _providers.length
-                            ? 'Probando: ${_providers[_scrapingAttempts - 1]['name']}'
-                            : 'Analizando proveedores disponibles',
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
-                        textAlign: TextAlign.center,
+                      const Text(
+                        "Esto puede tardar hasta 1 minuto en Render Gratis",
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
                       ),
                     ],
                   ),
                 ),
 
-              // Loading Indicator general
-              if (_isLoading && !_isScraping)
-                const Center(
-                  child: CircularProgressIndicator(color: Colors.redAccent),
-                ),
-              // --- CAPA DE SUBTÍTULOS (OVERLAY) ---
-              if (settings.showSubtitles)
+              // Overlay de Subtítulos Personalizados
+              if (settings.showSubtitles && !_isLoading)
                 Positioned(
-                  bottom: 30, // Separación del borde inferior
+                  bottom: 50,
                   left: 20,
                   right: 20,
                   child: IgnorePointer(
-                    // Para que los toques pasen al video (Play/Pause)
-                    child: Container(
-                      alignment: Alignment.center,
+                    child: Center(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(4),
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(5),
                         ),
-                        // NOTA: Este es un texto simulado. En una implementación real con SRT/VTT,
-                        // deberías parsear el archivo y actualizar este texto dinámicamente según el tiempo del video.
                         child: Text(
-                          "Los subtítulos propios se mostrarán aquí...",
+                          "Los subtítulos se configurarán aquí",
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: settings.subtitleColor,
                             fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            shadows: const [
-                              Shadow(
-                                offset: Offset(-1.5, -1.5),
-                                color: Colors.black,
-                              ),
-                              Shadow(
-                                offset: Offset(1.5, -1.5),
-                                color: Colors.black,
-                              ),
-                              Shadow(
-                                offset: Offset(1.5, 1.5),
-                                color: Colors.black,
-                              ),
-                              Shadow(
-                                offset: Offset(-1.5, 1.5),
-                                color: Colors.black,
-                              ),
-                              Shadow(blurRadius: 4.0, color: Colors.black),
-                            ],
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
