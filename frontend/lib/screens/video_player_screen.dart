@@ -38,7 +38,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   // Lista de servidores con redundancia - Primario + Backup
   final List<String> _apiServers = [
-    'https://projectstreaming-production-5629.up.railway.app', // Primario
+    'https://projectstreaming-1.onrender.com', // Primario
   ];
 
   // Lista de proveedores para scraping con soporte multi-proveedor
@@ -145,7 +145,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           mixWithOthers: false,
         ),
         httpHeaders: {
-          'Referer': 'https://projectstreaming-production-5629.up.railway.app',
+          'Referer': 'https://projectstreaming-1.onrender.com',
           'User-Agent':
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Origin': 'https://oglingling.github.io',
@@ -227,8 +227,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
-                'Referer':
-                    'https://projectstreaming-production-5629.up.railway.app',
+                'Referer': 'https://projectstreaming-1.onrender.com',
                 'User-Agent':
                     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
               },
