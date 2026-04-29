@@ -19,6 +19,7 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "nodemailer": "^8.0.2",
+    "playwright": "^1.43.0",
     "puppeteer": "^24.42.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",

@@ -1,14 +1,13 @@
-FROM ghcr.io/puppeteer/puppeteer:22.6.0
+FROM mcr.microsoft.com/playwright:v1.43.0-jammy
 
 USER root
 
 WORKDIR /app
 
 COPY package*.json ./
-
 COPY prisma ./prisma/
 
-RUN npm install
+RUN npm install && npx prisma generate
 
 COPY . .
 

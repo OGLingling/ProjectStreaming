@@ -1,7 +1,5 @@
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-
-puppeteer.use(StealthPlugin());
+const fs = require('fs');
+const { chromium } = require('playwright');
 
 const STREAM_PATTERNS = ['.m3u8', '.mp4', 'master.m3u8', 'index.m3u8', '/stream/', '/videoplayback'];
 
@@ -25,8 +23,8 @@ const extractLink = async (req, res) => {
   try {
     const referer = new URL(url).origin + '/';
 
-    browser = await puppeteer.launch({
-      headless: 'new',
+    const launchOptions = {
+      headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -36,33 +34,38 @@ const extractLink = async (req, res) => {
         '--no-zygote',
         '--single-process'
       ]
+    };
+
+    const chromePath = process.env.CHROME_PATH || '/usr/bin/google-chrome';
+    if (fs.existsSync(chromePath)) {
+      launchOptions.executablePath = chromePath;
+    }
+
+    browser = await chromium.launch(launchOptions);
+
+    const context = await browser.newContext({
+      userAgent:
+        'Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro Build/TQ3A.230901.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.179 Mobile Safari/537.36 MovieWind/1.0',
+      extraHTTPHeaders: {
+        Referer: referer,
+        'X-Client-Platform': 'mobile-app'
+      }
     });
 
-    const page = await browser.newPage();
-
-    // Timeout máximo de 15s para fallar rápido y evitar 504
-    page.setDefaultNavigationTimeout(15000);
-    page.setDefaultTimeout(15000);
-
-    await page.setExtraHTTPHeaders({
-      Referer: referer,
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.5',
-      Connection: 'keep-alive'
-    });
+    const page = await context.newPage();
+    page.setDefaultNavigationTimeout(20000);
+    page.setDefaultTimeout(20000);
 
     let detectedStream = null;
 
-    page.on('response', (response) => {
+    page.on('response', async (response) => {
       const responseUrl = response.url();
       if (!detectedStream && isStreamUrl(responseUrl)) {
         detectedStream = responseUrl;
       }
     });
 
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
     // Uso de page.evaluate (sin métodos obsoletos)
     await page.evaluate(() => {
@@ -105,6 +108,16 @@ const extractLink = async (req, res) => {
           );
         }) || null;
       });
+    }
+
+    if (!detectedStream) {
+      await Promise.race([
+        page.waitForResponse((response) => isStreamUrl(response.url()), { timeout: 20000 })
+          .then((response) => {
+            detectedStream = response.url();
+          }),
+        new Promise((resolve) => setTimeout(resolve, 20000))
+      ]);
     }
 
     if (!detectedStream) throw new Error('Video no encontrado');
