@@ -15,9 +15,14 @@ const extractLink = async (req, res) => {
   let browser;
   try {
     // Lanzamos Chromium con los flags de seguridad para Railway
-    browser = await chromium.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-    });
+  const browser = await chromium.launch({
+  args: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--single-process'
+  ]
+});
 
     // Simulamos un dispositivo móvil (iPhone 13) para evitar anuncios pesados
     const context = await browser.newContext({
