@@ -3,8 +3,8 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 class VideoScraper {
-  // 1. AUMENTO DE TIEMPO: Render necesita al menos 60s para cargar estas webs
-  static NAV_TIMEOUT_MS = 60000; 
+  // Aumentamos el tiempo a 80s: Render es lento y los sitios de streaming tienen muchos scripts.
+  static NAV_TIMEOUT_MS = 80000; 
   static UA_WINDOWS_CHROME =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -13,8 +13,6 @@ class VideoScraper {
     if (url.includes('vidsrc.win')) return 'vidsrcwin';
     if (url.includes('dood') || url.includes('/e/') || url.includes('doodstream')) return 'doodstream';
     if (url.includes('streamtape')) return 'streamtape';
-    if (url.includes('mixdrop')) return 'mixdrop';
-    if (url.includes('supervideo') || url.includes('fembed')) return 'supervideo';
     if (url.includes('vsembed') || url.includes('vidsrc')) return 'vidsrc';
     return 'unknown';
   }
@@ -44,30 +42,15 @@ class VideoScraper {
 
   static isStreamCandidate(rawUrl) {
     const url = String(rawUrl || '').toLowerCase();
-    if (url.includes('googleads') || url.includes('doubleclick') || url.includes('analytics')) return false;
+    // Bloqueo de dominios de publicidad para no saturar la RAM de Render
+    if (url.includes('googleads') || url.includes('doubleclick') || url.includes('analytics') || url.includes('popads')) return false;
+    
     return (
       url.includes('.m3u8') || 
       url.includes('.mp4') || 
-      url.includes('master.m3u8') || 
-      url.includes('playlist.m3u8')
+      url.includes('playlist.m3u8') ||
+      url.includes('master.m3u8')
     );
-  }
-
-  static async runDeepInteractions(page) {
-    console.log("[Scraper] Iniciando interacciones profundas...");
-    const frames = page.frames();
-    const playerFrame = frames.find(f => f.url().includes('vidsrc') || f.url().includes('embed'));
-
-    if (playerFrame) {
-      try {
-        await playerFrame.click('body', { position: { x: 400, y: 300 }, force: true });
-      } catch (e) {
-        await page.mouse.click(400, 300);
-      }
-    } else {
-      await page.mouse.click(400, 300);
-    }
-    await page.waitForTimeout(2000);
   }
 
   static async extractFromSingleUrl(targetUrl) {
@@ -77,9 +60,9 @@ class VideoScraper {
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage', // CRÍTICO para Render
-          '--single-process',       // Ahorra RAM
-          '--no-zygote',            // Evita procesos huérfanos
+          '--disable-dev-shm-usage', // Esencial para evitar crashes en Render
+          '--single-process',       // Reduce el consumo de RAM significativamente
+          '--no-zygote',
           '--disable-blink-features=AutomationControlled'
         ]
       });
@@ -92,33 +75,53 @@ class VideoScraper {
       const page = await context.newPage();
       let streamUrlFound = null;
 
-      // 2. OPTIMIZACIÓN: Bloqueamos imágenes y fuentes para cargar más rápido
+      // OPTIMIZACIÓN AGRESIVA: Bloqueamos basura pesada
       await page.route('**/*', (route) => {
+        const url = route.request().url();
         const type = route.request().resourceType();
-        if (['image', 'font', 'media'].includes(type) && !route.request().url().includes('.mp4')) {
-          route.abort();
-        } else {
-          route.continue();
+        
+        // Si ya tenemos el video, abortamos cualquier otra petición entrante
+        if (streamUrlFound) return route.abort();
+
+        // Bloqueamos imágenes, fuentes y trackers
+        if (['image', 'font', 'media'].includes(type) && !url.includes('.mp4')) {
+          return route.abort();
         }
+        if (url.includes('ads') || url.includes('tracking') || url.includes('fb-cdn') || url.includes('analytics')) {
+          return route.abort();
+        }
+        route.continue();
       });
 
+      // Escuchador de red en tiempo real
       page.on('request', (req) => {
         const url = req.url();
         if (this.isStreamCandidate(url)) {
-          console.log("[DEBUG] Stream detectado:", url);
+          console.log("[DEBUG] ¡Video encontrado en la red!:", url);
           streamUrlFound = url;
         }
       });
 
-      // 3. ESPERA EXTENDIDA: networkidle para asegurar que carguen los reproductores
-      await page.goto(targetUrl, { 
-        waitUntil: 'networkidle', 
-        timeout: this.NAV_TIMEOUT_MS 
-      });
+      try {
+        // Usamos domcontentloaded para no esperar a que carguen los anuncios
+        await page.goto(targetUrl, { 
+          waitUntil: 'domcontentloaded', 
+          timeout: this.NAV_TIMEOUT_MS 
+        });
+      } catch (e) {
+        console.log("[Scraper] Timeout en carga, pero verificando si se capturó el stream...");
+      }
 
-      await this.runDeepInteractions(page);
+      // SIMULACIÓN DE HUMANO: Muchos reproductores no sueltan el link sin un clic
+      await page.waitForTimeout(4000);
+      if (!streamUrlFound) {
+        console.log("[Scraper] Intentando clic de activación en el reproductor...");
+        await page.mouse.click(640, 360); // Clic al centro de la pantalla
+        await page.waitForTimeout(2000);
+        await page.mouse.wheel(0, 300); // Pequeño scroll
+      }
 
-      // Revisión de 15 segundos para dar tiempo a que el flujo aparezca
+      // Espera final dinámica
       for (let i = 0; i < 15; i++) {
         if (streamUrlFound) return streamUrlFound;
         await page.waitForTimeout(1000);
@@ -142,7 +145,7 @@ class VideoScraper {
       if (!candidates.length) throw new Error('ID o URL inválida');
 
       for (const candidate of candidates) {
-        console.log(`[Scraper] Probando candidato: ${candidate}`);
+        console.log(`[Scraper] Probando: ${candidate}`);
         try {
           const stream = await this.extractFromSingleUrl(candidate);
           if (stream) {
@@ -151,7 +154,7 @@ class VideoScraper {
             break;
           }
         } catch (e) {
-          console.error(`[Scraper] Error en candidato: ${e.message}`);
+          console.error(`[Scraper] Falló candidato: ${e.message}`);
           errorMessage = e.message;
         }
       }
@@ -167,7 +170,13 @@ class VideoScraper {
   static async saveLog(url, success, result, error, duration) {
     try {
       await prisma.scrapeLog.create({
-        data: { targetUrl: url, success, streamUrl: result, error, duration }
+        data: { 
+          targetUrl: url, 
+          success, 
+          streamUrl: result, 
+          error: error || null, 
+          duration 
+        }
       });
     } catch (e) {
       console.error('Error BD Log:', e.message);
