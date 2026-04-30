@@ -1,8 +1,8 @@
-// Importamos el servicio (asegúrate de que el nombre del archivo coincida)
+require('dotenv').config();
 const VideoScraper = require('./services/scraper_service.js');
 
 async function ejecutarPrueba() {
-  const idPrueba = '823464'; // Godzilla x Kong (ejemplo)
+  const idPrueba = '980431'; // Godzilla x Kong (ejemplo)
   
   console.log(`--- INICIANDO PRUEBA PARA ID: ${idPrueba} ---`);
   console.log("Paso 1: Construyendo candidatos...");
