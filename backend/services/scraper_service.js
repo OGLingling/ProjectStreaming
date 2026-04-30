@@ -1,32 +1,26 @@
-const { chromium } = require('playwright');
+const { chromium } = require('playwright-extra');
+const { stealth } = require('playwright-stealth'); // Corregido
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-class VideoScraper {
-  // Aumentamos a 90 segundos para dar margen a la CPU limitada de Render
-  static NAV_TIMEOUT_MS = 90000; 
-  static UA_WINDOWS_CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+// Aplicar el plugin de sigilo a Playwright
+chromium.use(stealth());
 
-  /**
-   * Detecta si una URL de la red es un posible flujo de video
-   */
+class VideoScraper {
+  static NAV_TIMEOUT_MS = 100000; 
+  static UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
   static isStreamCandidate(rawUrl) {
     const url = String(rawUrl || '').toLowerCase();
-    // Bloqueo de dominios de rastreo y anuncios para ahorrar CPU
-    if (url.includes('googleads') || url.includes('analytics') || url.includes('doubleclick') || url.includes('popads')) return false;
-    
+    if (url.includes('googleads') || url.includes('analytics') || url.includes('doubleclick')) return false;
     return (
       url.includes('.m3u8') || 
       url.includes('.mp4') || 
       url.includes('playlist.m3u8') ||
-      url.includes('master.m3u8') ||
-      url.includes('video_file')
+      url.includes('master.m3u8')
     );
   }
 
-  /**
-   * Lógica de extracción para una URL específica
-   */
   static async extractFromSingleUrl(targetUrl) {
     let browser;
     try {
@@ -34,157 +28,105 @@ class VideoScraper {
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage', // Crítico para evitar crashes en Render
-          '--single-process',       // Ahorra RAM al usar un solo proceso para el navegador
+          '--disable-dev-shm-usage',
+          '--single-process',
           '--no-zygote',
         ]
       });
 
       const context = await browser.newContext({
-        userAgent: this.UA_WINDOWS_CHROME,
+        userAgent: this.UA,
         viewport: { width: 1280, height: 720 },
-        extraHTTPHeaders: { 'Referer': 'https://vsembed.ru/' } // Engaña a los servidores de video
       });
 
       const page = await context.newPage();
       let streamUrlFound = null;
 
-      // Intercepción de red optimizada
-      await page.route('**/*', (route) => {
-        const url = route.request().url();
-        const type = route.request().resourceType();
-        
-        // Si ya tenemos el video, detenemos cualquier otra carga
-        if (streamUrlFound) return route.abort(); 
-
-        // Bloqueo de recursos pesados (imágenes y fuentes) para liberar RAM
-        if (['image', 'font'].includes(type)) return route.abort();
-        if (url.includes('ads') || url.includes('tracking')) return route.abort();
-        
-        route.continue();
-      });
-
-      // Escuchador de eventos de red
+      // Intercepción de red
       page.on('request', (req) => {
         const url = req.url();
         if (this.isStreamCandidate(url)) {
-          console.log("[DEBUG] ¡Stream capturado!:", url);
           streamUrlFound = url;
         }
       });
 
+      // Bloqueo de anuncios para no saturar la RAM de Render
+      await page.route('**/*', (route) => {
+        const url = route.request().url();
+        if (url.includes('ads') || url.includes('pop') || url.includes('pixel')) {
+          return route.abort();
+        }
+        route.continue();
+      });
+
+      console.log(`[Scraper] Navegando a: ${targetUrl}`);
+      
       try {
-        // 'commit' inicia la búsqueda en cuanto el servidor responde
         await page.goto(targetUrl, { 
-          waitUntil: 'commit', 
+          waitUntil: 'domcontentloaded', 
           timeout: this.NAV_TIMEOUT_MS 
         });
       } catch (e) {
-        console.log("[Scraper] Timeout en carga inicial, verificando capturas de red...");
+        console.log("[Scraper] Timeout en carga, pero verificando red...");
       }
 
-      // --- SIMULACIÓN DE INTERACCIÓN HUMANA ---
-      await page.waitForTimeout(5000);
-      
+      // Espera inicial para que cargue el player
+      await page.waitForTimeout(8000);
+
       if (!streamUrlFound) {
-        console.log("[Scraper] Forzando clics de activación...");
-        // Movimiento de scroll para activar scripts perezosos
-        await page.mouse.wheel(0, 300);
-        await page.waitForTimeout(1000);
-        
-        // Intentar clic en el centro del reproductor para disparar el evento Play
-        const clickPoints = [[640, 360], [500, 300], [750, 400]];
-        for (const [x, y] of clickPoints) {
+        console.log("[Scraper] Intentando activar video con clics tácticos...");
+        // Coordenadas donde suelen estar los botones de Play
+        const points = [[640, 360], [600, 300], [680, 400]];
+        for (const [x, y] of points) {
           if (streamUrlFound) break;
           await page.mouse.click(x, y);
-          await page.waitForTimeout(2000);
+          await page.waitForTimeout(2500);
         }
       }
 
-      // Verificación final dinámica (espera hasta 25 segundos adicionales)
+      // Verificación final dinámica
       for (let i = 0; i < 25; i++) {
         if (streamUrlFound) return streamUrlFound;
         await page.waitForTimeout(1000);
       }
 
-      throw new Error("No se detectó flujo de video tras interacciones.");
+      throw new Error("No se detectó flujo de video.");
 
     } finally {
       if (browser) await browser.close();
     }
   }
 
-  /**
-   * Valida si el input es una URL HTTP válida
-   */
-  static isValidHttpUrl(value) {
-    try {
-      const parsed = new URL(value);
-      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-    } catch (_) { return false; }
-  }
+  static isValidHttpUrl(v) { try { return new URL(v).protocol.startsWith('http'); } catch { return false; } }
 
-  /**
-   * Construye las URLs candidatas basadas en el ID de TMDB o URL directa
-   */
-  static buildCandidates(targetUrl) {
-    const raw = String(targetUrl || '').trim();
+  static buildCandidates(url) {
+    const raw = String(url || '').trim();
     if (this.isValidHttpUrl(raw)) return [raw];
-
-    const tmdbMatch = raw.match(/tmdb[:=]?(\d+)/i) || raw.match(/^(\d{2,10})$/);
-    if (!tmdbMatch) return [];
-
-    const id = tmdbMatch[1];
-    return [
-      `https://vidsrc.win/embed/movie/${id}`,
-      `https://vidsrc.win/embed/tv/${id}/1/1`
-    ];
+    const id = (raw.match(/tmdb[:=]?(\d+)/i) || raw.match(/^(\d+)$/))?.[1];
+    return id ? [`https://vidsrc.win/embed/movie/${id}`, `https://vidsrc.win/embed/tv/${id}/1/1`] : [];
   }
 
-  /**
-   * Punto de entrada principal para la extracción
-   */
-  static async extractStreamUrl(targetUrl) {
-    const startTime = Date.now();
-    let success = false;
-    let streamUrlResult = null;
-    let errorMessage = null;
-
+  static async extractStreamUrl(url) {
+    const start = Date.now();
+    let res = null, err = null;
     try {
-      const candidates = this.buildCandidates(targetUrl);
-      if (!candidates.length) throw new Error('ID o URL inválida');
-
-      for (const candidate of candidates) {
-        console.log(`[Scraper] Probando candidato: ${candidate}`);
-        try {
-          const stream = await this.extractFromSingleUrl(candidate);
-          if (stream) {
-            success = true;
-            streamUrlResult = stream;
-            break;
-          }
-        } catch (e) {
-          console.error(`[Scraper] Error: ${e.message}`);
-          errorMessage = e.message;
-        }
+      const candidates = this.buildCandidates(url);
+      for (const c of candidates) {
+        res = await this.extractFromSingleUrl(c);
+        if (res) break;
       }
-      return streamUrlResult;
-    } catch (error) {
-      errorMessage = error.message;
-      return null;
-    } finally {
-      // Guardar log en la base de datos
-      await this.saveLog(String(targetUrl), success, streamUrlResult, errorMessage, Date.now() - startTime);
-    }
+    } catch (e) { err = e.message; }
+    await this.saveLog(url, !!res, res, err, Date.now() - start);
+    return res;
   }
 
-  static async saveLog(url, success, result, error, duration) {
-    try {
-      await prisma.scrapeLog.create({
-        data: { targetUrl: url, success, streamUrl: result, error, duration }
-      });
-    } catch (e) {
-      console.error('Error BD Log:', e.message);
+  static async saveLog(u, s, r, e, d) {
+    try { 
+      await prisma.scrapeLog.create({ 
+        data: { targetUrl: u, success: s, streamUrl: r, error: e, duration: d } 
+      }); 
+    } catch (err) {
+      console.error("Error guardando log:", err.message);
     }
   }
 }
