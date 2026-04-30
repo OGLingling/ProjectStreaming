@@ -1,41 +1,42 @@
-import 'dart:ui_web' as ui;
 import 'package:flutter/material.dart';
-import 'package:web/web.dart' as web;
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-class WebVideoPlayer extends StatelessWidget {
-  final String url;
-  final String
-  contentId; // Necesitamos un ID único (ej. tmdbId + temporada + episodio)
+class WebPlayerWidget extends StatelessWidget {
+  final String urlEmbed;
+  final Function(String) onVideoFound;
 
-  const WebVideoPlayer({super.key, required this.url, required this.contentId});
+  const WebPlayerWidget({
+    super.key,
+    required this.urlEmbed,
+    required this.onVideoFound,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // Creamos un ID de vista único basado en el contenido y la URL
-    // Esto fuerza a Flutter a registrar una nueva factoría si algo cambia
-    final String viewType = 'video-player-$contentId';
+    return SizedBox(
+      height: 1, // Tamaño mínimo para que el sistema lo procese
+      width: 1,
+      child: InAppWebView(
+        initialUrlRequest: URLRequest(url: WebUri(urlEmbed)),
+        initialSettings: InAppWebViewSettings(
+          useShouldInterceptRequest:
+              true, // Crucial para oler el tráfico de red
+          javaScriptEnabled: true,
+          mediaPlaybackRequiresUserGesture: false,
+        ),
+        shouldInterceptRequest: (controller, request) async {
+          String url = request.url.toString();
 
-    ui.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
-      final iframe = web.HTMLIFrameElement()
-        ..src = url
-        ..style.border = 'none'
-        ..style.width = '100%'
-        ..style.height = '100%'
-        ..allowFullscreen = true;
-
-      // Configuraciones de seguridad y compatibilidad
-      iframe.setAttribute('referrerpolicy', 'origin');
-      iframe.setAttribute(
-        'allow',
-        'autoplay; fullscreen; picture-in-picture; encrypted-media',
-      );
-
-      return iframe;
-    });
-
-    return HtmlElementView(
-      key: ValueKey(viewType), // La key es vital para el refresco en Web
-      viewType: viewType,
+          // Filtramos las peticiones buscando el archivo de video real
+          if (url.contains(".m3u8") ||
+              url.contains("master.m3u8") ||
+              url.contains(".mp4")) {
+            debugPrint("🎯 ¡Enlace de video capturado!: $url");
+            onVideoFound(url);
+          }
+          return null;
+        },
+      ),
     );
   }
 }

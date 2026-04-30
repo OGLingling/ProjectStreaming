@@ -1,10 +1,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart'; // Para la lógica de DB
+import 'package:provider/provider.dart';
 import '../models/movie_model.dart';
-import 'video_player_screen.dart';
-import 'watchlist_providers.dart'; // Tu Provider que conecta con Railway
+import 'video_player_screen.dart'; // Importación necesaria
+import 'watchlist_providers.dart';
 
 class MovieDetailsScreen extends StatefulWidget {
   final Movie movie;
@@ -21,28 +21,33 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
   bool _isProcessing = false;
 
   // --- LÓGICA DE NAVEGACIÓN ---
+  // Esta función conecta los datos de la DB con el Reproductor Scraper
   void _navigateToPlayer({int season = 1, int episode = 1}) {
+    // Extraemos el ID de TMDB que guardaste con tu Seed
     final String? tmdbId = widget.movie.tmdbId?.toString();
 
-    if (tmdbId != null) {
+    if (tmdbId != null && tmdbId.isNotEmpty) {
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => VideoPlayerScreen(
             tmdbId: tmdbId,
             title: widget.movie.title,
-            type: widget.movie.type,
+            type: widget.movie.type, // 'movie' o 'tv'
             season: season,
             episode: episode,
           ),
         ),
       );
     } else {
-      _showSnackBar("Contenido no disponible.", Colors.redAccent);
+      _showSnackBar(
+        "ID de contenido no encontrado (TMDB ID requerido).",
+        Colors.redAccent,
+      );
     }
   }
 
-  // --- LÓGICA FUNCIONAL DE MI LISTA ---
+  // --- LÓGICA DE MI LISTA ---
   Future<void> _handleWatchlistToggle() async {
     if (widget.user == null || widget.user!['id'] == null) {
       _showSnackBar(
@@ -56,9 +61,6 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
 
     try {
       final provider = Provider.of<WatchlistProvider>(context, listen: false);
-
-      // Llamada real al backend (Railway -> Neon)
-      // Usamos el operador ?? 0 para asegurar que el id no sea nulo al enviarlo
       await provider.toggleWatchlist(
         widget.user!['id'].toString(),
         widget.movie.id ?? 0,
@@ -93,8 +95,6 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isTV = widget.movie.type == 'tv';
-
-    // FIX: Se agrega ?? 0 para resolver el error de tipo int? vs int
     final bool isInList = context.watch<WatchlistProvider>().isInWatchlist(
       widget.movie.id ?? 0,
     );
@@ -113,17 +113,12 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                 children: [
                   _buildHeaderInfo(),
                   const SizedBox(height: 20),
-                  _buildPrimaryButtons(),
+                  _buildPrimaryButtons(), // Aquí están los botones de Play/Download
                   const SizedBox(height: 20),
                   _buildDescription(),
                   const SizedBox(height: 25),
-
-                  // FILA DE ACCIONES (MI LISTA FUNCIONAL)
                   _buildActionRow(isInList),
-
                   const SizedBox(height: 30),
-
-                  // SECCIÓN DE TEMPORADAS Y EPISODIOS (RESTABLECIDO)
                   if (isTV &&
                       widget.movie.seasons != null &&
                       widget.movie.seasons!.isNotEmpty) ...[
@@ -230,14 +225,17 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
     return Column(
       children: [
         _buildLargeButton(
-          onTap: () => _navigateToPlayer(),
+          onTap: () => _navigateToPlayer(), // Inicia la reproducción
           icon: Icons.play_arrow,
           label: "Reproducir",
           isPrimary: true,
         ),
         const SizedBox(height: 10),
         _buildLargeButton(
-          onTap: () {},
+          onTap: () => _showSnackBar(
+            "Función de descarga próximamente",
+            Colors.blueGrey,
+          ),
           icon: Icons.download,
           label: "Descargar",
           isPrimary: false,
