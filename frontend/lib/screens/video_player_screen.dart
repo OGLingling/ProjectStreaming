@@ -143,6 +143,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         widget.type.toLowerCase().contains('tv');
     String id = widget.tmdbId ?? widget.imdbId ?? "";
     String mediaType = isTV ? "tv" : "movie";
+
+    // Cambiamos el dominio a .me (que es más estable) y simplificamos la ruta
+    // La estructura correcta es: https://vidsrc.me/embed/movie?tmdb=ID
     return "https://vidsrc.me/embed/$mediaType?tmdb=$id${isTV ? "&season=${widget.season}&episode=${widget.episode}" : ""}";
   }
 
