@@ -1,5 +1,5 @@
 // Importamos el servicio (asegúrate de que el nombre del archivo coincida)
-const VideoScraper = require('./scraper_service.js');
+const VideoScraper = require('./services/scraper_service.js');
 
 async function ejecutarPrueba() {
   const idPrueba = '823464'; // Godzilla x Kong (ejemplo)
