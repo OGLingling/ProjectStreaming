@@ -1,9 +1,9 @@
 const VideoScraper = require('../services/scraper_service');
 
 const extractLink = async (req, res) => {
-  const { url } = req.query;
+  const { url, tmdbId, type, season, episode } = req.query;
 
-  if (!url) {
+  if (!url && !tmdbId) {
     return res.status(400).json({
       success: false,
       error: 'URL o ID TMDB requerido'
@@ -11,7 +11,13 @@ const extractLink = async (req, res) => {
   }
 
   try {
-    const result = await VideoScraper.extractStreamUrl(url);
+    const result = await VideoScraper.extractStreamUrl({
+      url,
+      tmdbId,
+      type,
+      season,
+      episode
+    });
 
     if (!result || !Array.isArray(result.candidates) || result.candidates.length === 0) {
       return res.status(404).json({

@@ -2,6 +2,16 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 class VideoScraper {
+  static normalizeMediaType(value) {
+    const raw = String(value || '').toLowerCase().trim();
+    return raw.includes('serie') || raw.includes('tv') ? 'tv' : 'movie';
+  }
+
+  static normalizePositiveInt(value, fallback) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
   static normalizeInput(value) {
     const raw = String(value || '').trim();
     if (!raw) return { input: '', tmdbId: null, isUrl: false };
@@ -12,29 +22,73 @@ class VideoScraper {
     return { input: raw, tmdbId, isUrl };
   }
 
+  static normalizeRequest(source) {
+    if (source && typeof source === 'object') {
+      const explicitTmdbId = source.tmdbId || source.id;
+      const fallbackInput = source.url || explicitTmdbId || '';
+      const normalizedInput = this.normalizeInput(fallbackInput);
+
+      return {
+        input: String(fallbackInput || '').trim(),
+        tmdbId: explicitTmdbId ? String(explicitTmdbId).trim() : normalizedInput.tmdbId,
+        isUrl: normalizedInput.isUrl,
+        type: this.normalizeMediaType(source.type),
+        season: this.normalizePositiveInt(source.season, 1),
+        episode: this.normalizePositiveInt(source.episode, 1)
+      };
+    }
+
+    const normalizedInput = this.normalizeInput(source);
+    return {
+      ...normalizedInput,
+      type: 'movie',
+      season: 1,
+      episode: 1
+    };
+  }
+
   static buildCandidates(source) {
-    const { input, tmdbId, isUrl } = this.normalizeInput(source);
-    if (!input) return [];
-    if (isUrl) return [input];
+    const { input, tmdbId, isUrl, type, season, episode } = this.normalizeRequest(source);
+    if (!input && !tmdbId) return [];
+    if (!tmdbId && isUrl) return [input];
     if (!tmdbId) return [];
 
-    // Catálogo de proveedores embebidos para resolución client-side en la APK.
-    return [
-      `https://vidsrc.me/embed/movie/${tmdbId}`,
-      `https://vidsrc.to/embed/movie/${tmdbId}`,
-      `https://vidsrc.win/embed/movie/${tmdbId}`,
-      `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}`,
-      `https://www.2embed.cc/embed/${tmdbId}`
+    const isTV = type === 'tv';
+    const vidsrcQuery = isTV
+      ? `tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`
+      : `movie?tmdb=${tmdbId}`;
+    const smashyQuery = isTV
+      ? `playere.php?tmdb=${tmdbId}&season=${season}&episode=${episode}`
+      : `playere.php?tmdb=${tmdbId}`;
+    const twoEmbedPath = isTV
+      ? `embedtv/${tmdbId}&s=${season}&e=${episode}`
+      : `embed/${tmdbId}`;
+
+    const candidates = [
+      `https://vidsrc.me/embed/${vidsrcQuery}`,
+      `https://vidsrc.to/embed/${vidsrcQuery}`,
+      `https://vidsrc.win/embed/${vidsrcQuery}`,
+      `https://embed.smashystream.com/${smashyQuery}`,
+      `https://www.2embed.cc/${twoEmbedPath}`
     ];
+
+    if (isUrl) {
+      candidates.unshift(input);
+    }
+
+    return [...new Set(candidates)];
   }
 
   static createCandidatePayload(source) {
-    const normalized = this.normalizeInput(source);
+    const normalized = this.normalizeRequest(source);
     const candidates = this.buildCandidates(source);
 
     return {
       tmdbId: normalized.tmdbId,
       source: normalized.input,
+      type: normalized.type,
+      season: normalized.season,
+      episode: normalized.episode,
       providerMode: 'client-side-resolution',
       candidates
     };
@@ -54,15 +108,15 @@ class VideoScraper {
     } catch (e) {
       err = e.message;
       return {
-        tmdbId: this.normalizeInput(source).tmdbId,
-        source: String(source || ''),
+        tmdbId: this.normalizeRequest(source).tmdbId,
+        source: typeof source === 'object' ? JSON.stringify(source) : String(source || ''),
         providerMode: 'client-side-resolution',
         candidates: []
       };
     } finally {
       const success = !!(payload && payload.candidates && payload.candidates.length);
       await this.saveLog(
-        String(source || ''),
+        typeof source === 'object' ? JSON.stringify(source) : String(source || ''),
         success,
         payload ? JSON.stringify(payload.candidates) : null,
         err,
@@ -89,20 +143,3 @@ class VideoScraper {
 }
 
 module.exports = VideoScraper;
-
-/**
- * IMPLEMENTACIÓN RECOMENDADA EN LA APK (WEBVIEW OCULTO):
- * 1) Consumir /api/extract?url=<tmdbId_o_url> y obtener `candidates`.
- * 2) Crear un WebView oculto por cada candidato (secuencial, no paralelo agresivo).
- * 3) Cargar el embed y enganchar el interceptador de red del WebView.
- * 4) Filtrar requests/responses que contengan:
- *    - ".m3u8"
- *    - ".mp4"
- *    - "master.m3u8"
- * 5) Ignorar tráfico de audio, trailers y publicidad.
- * 6) Cuando se detecte el primer stream válido, cerrar WebView actual y detener la búsqueda.
- * 7) Reproducir usando ese stream real (IP residencial del usuario), evitando el bloqueo a Data Centers.
- * 8) Si no hay match en un candidato, cerrar el WebView y continuar con el siguiente.
- * 9) Implementar timeout por candidato (10-20s) y timeout global para no bloquear la UI.
- * 10) Guardar telemetría local (proveedor, tiempo, éxito) para priorizar candidatos más estables.
- */
