@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1009904700256",
+    "project_id": "moviewind-app",
+    "storage_bucket": "moviewind-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1009904700256:android:122a4cd68022ad7b1a6c05",
+        "android_client_info": {
+          "package_name": "com.example.frontend"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1009904700256-rm911tkjl73u00246msvfmvgsfuoumsa.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC8ApBQNeUsZGDvUrFPl6FQdVTebXj9L8c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1009904700256-llntfl9rgj6ope6e1pvd14g5jgr2otts.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
