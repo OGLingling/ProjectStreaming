@@ -21,6 +21,17 @@ class _WebPlayerWidgetState extends State<WebPlayerWidget> {
   bool _hasReportedVideo = false;
   bool _hasReportedLoadError = false;
 
+  Map<String, String> get _mobileHeaders {
+    final origin = WebUri(widget.urlEmbed).origin;
+    return {
+      'User-Agent':
+          'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+      'Referer': '$origin/',
+      'Origin': origin,
+      'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
+    };
+  }
+
   bool _isPlayableUrl(String url) {
     final lower = url.toLowerCase();
     if (lower.contains('googlevideo.com/videoplayback')) return true;
@@ -47,13 +58,17 @@ class _WebPlayerWidgetState extends State<WebPlayerWidget> {
       height: 1,
       width: 1,
       child: InAppWebView(
-        initialUrlRequest: URLRequest(url: WebUri(widget.urlEmbed)),
+        initialUrlRequest: URLRequest(
+          url: WebUri(widget.urlEmbed),
+          headers: _mobileHeaders,
+        ),
         initialSettings: InAppWebViewSettings(
           useShouldInterceptRequest: true,
           javaScriptEnabled: true,
           mediaPlaybackRequiresUserGesture: false,
           allowsInlineMediaPlayback: true,
           transparentBackground: true,
+          userAgent: _mobileHeaders['User-Agent'],
         ),
         onReceivedError: (controller, request, error) {
           if (request.isForMainFrame == true) {

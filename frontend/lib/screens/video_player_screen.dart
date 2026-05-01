@@ -48,6 +48,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     return type.contains('serie') || type.contains('tv') ? 'tv' : 'movie';
   }
 
+  Map<String, String> get _streamHeaders {
+    final embedOrigin = Uri.tryParse(_targetEmbedUrl ?? '')?.origin ?? 'https://vidsrc.me';
+    return {
+      'User-Agent':
+          'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+      'Referer': '$embedOrigin/',
+      'Origin': embedOrigin,
+      'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
+    };
+  }
+
   @override
   void initState() {
     super.initState();
@@ -124,11 +135,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       _videoPlayerController = VideoPlayerController.networkUrl(
         Uri.parse(realUrl),
-        httpHeaders: {
-          'User-Agent':
-              'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-          'Referer': Uri.tryParse(_targetEmbedUrl ?? '')?.origin ?? 'https://vidsrc.me/',
-        },
+        httpHeaders: _streamHeaders,
       );
 
       await _videoPlayerController!.initialize();
@@ -154,7 +161,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     } catch (e) {
       _isSettingUpPlayer = false;
       await _disposeControllers();
-      _tryNextCandidate("Error de reproduccion: $e");
+      _tryNextCandidate("Stream rechazado por el servidor: $e");
     }
   }
 

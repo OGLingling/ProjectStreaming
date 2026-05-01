@@ -54,6 +54,9 @@ class VideoScraper {
     if (!tmdbId) return [];
 
     const isTV = type === 'tv';
+    const vidsrcPath = isTV
+      ? `tv/${tmdbId}/${season}/${episode}`
+      : `movie/${tmdbId}`;
     const vidsrcQuery = isTV
       ? `tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`
       : `movie?tmdb=${tmdbId}`;
@@ -65,6 +68,11 @@ class VideoScraper {
       : `embed/${tmdbId}`;
 
     const candidates = [
+      `https://vidsrc.me/embed/${vidsrcPath}`,
+      `https://vidsrc.to/embed/${vidsrcPath}`,
+      `https://vidsrc.win/embed/${vidsrcPath}`,
+      `https://vidsrc.wiki/embed/${vidsrcPath}`,
+      `https://player.vidsrc.co/embed/${vidsrcPath}`,
       `https://vidsrc.me/embed/${vidsrcQuery}`,
       `https://vidsrc.to/embed/${vidsrcQuery}`,
       `https://vidsrc.win/embed/${vidsrcQuery}`,
