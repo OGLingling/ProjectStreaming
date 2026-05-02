@@ -45,21 +45,124 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const emeraldWind = Color(0xFF00C853);
+    const electricCyan = Color(0xFF00D8FF);
+    const darkSurface = Color(0xFF121212);
+    const darkSurfaceHigh = Color(0xFF1B1F22);
+    const alertRed = Color(0xFFFF5252);
+
+    final baseTextTheme =
+        GoogleFonts.openSansTextTheme(ThemeData.dark().textTheme).copyWith(
+          headlineLarge: GoogleFonts.montserrat(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+          ),
+          headlineMedium: GoogleFonts.montserrat(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+          ),
+          titleLarge: GoogleFonts.montserrat(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+          bodyMedium: const TextStyle(color: Colors.white),
+        );
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'MovieWind | Streaming Premium',
 
       theme: ThemeData(
+        useMaterial3: true,
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF141414),
-        primaryColor: const Color(0xFFE50914),
-        textTheme: GoogleFonts.openSansTextTheme(
-          ThemeData.dark().textTheme,
-        ).copyWith(bodyMedium: const TextStyle(color: Colors.white)),
+        scaffoldBackgroundColor: darkSurface,
+        primaryColor: emeraldWind,
+        textTheme: baseTextTheme,
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFE50914),
-          secondary: Color(0xFFE50914),
-          surface: Color(0xFF141414),
+          primary: emeraldWind,
+          onPrimary: Colors.black,
+          secondary: electricCyan,
+          onSecondary: Colors.black,
+          surface: darkSurface,
+          onSurface: Colors.white,
+          error: alertRed,
+          onError: Colors.white,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: emeraldWind,
+          foregroundColor: Colors.black,
+          elevation: 0,
+          centerTitle: false,
+          iconTheme: IconThemeData(color: Colors.black),
+          titleTextStyle: TextStyle(
+            color: Colors.black,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          backgroundColor: emeraldWind,
+          foregroundColor: Colors.black,
+        ),
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: electricCyan,
+          circularTrackColor: Color(0xFF263238),
+        ),
+        sliderTheme: SliderThemeData(
+          activeTrackColor: electricCyan,
+          thumbColor: electricCyan,
+          overlayColor: electricCyan.withValues(alpha: 0.18),
+          inactiveTrackColor: Colors.white24,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: darkSurfaceHigh,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+          labelStyle: const TextStyle(color: Colors.white70),
+          hintStyle: const TextStyle(color: Colors.white54),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Colors.white24),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: electricCyan, width: 1.6),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: alertRed, width: 1.4),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: alertRed, width: 1.6),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size.fromHeight(52),
+            backgroundColor: emeraldWind,
+            foregroundColor: Colors.black,
+            disabledBackgroundColor: Colors.white12,
+            disabledForegroundColor: Colors.white38,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(foregroundColor: electricCyan),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: darkSurfaceHigh,
+          contentTextStyle: const TextStyle(color: Colors.white),
+          actionTextColor: electricCyan,
         ),
       ),
 

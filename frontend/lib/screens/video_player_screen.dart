@@ -49,7 +49,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Map<String, String> get _streamHeaders {
-    final embedOrigin = Uri.tryParse(_targetEmbedUrl ?? '')?.origin ?? 'https://vidsrc.me';
+    final embedOrigin =
+        Uri.tryParse(_targetEmbedUrl ?? '')?.origin ?? 'https://vidsrc.me';
     return {
       'User-Agent':
           'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
@@ -115,7 +116,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       final data = json.decode(response.body);
       final candidates = data['data']?['candidates'];
-      if (data['success'] == true && candidates is List && candidates.isNotEmpty) {
+      if (data['success'] == true &&
+          candidates is List &&
+          candidates.isNotEmpty) {
         _candidateUrls = candidates.map((item) => item.toString()).toList();
         _tryCandidate(0);
       } else {
@@ -143,15 +146,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (!mounted) return;
 
       setState(() {
+        final colorScheme = Theme.of(context).colorScheme;
         _chewieController = ChewieController(
           videoPlayerController: _videoPlayerController!,
           autoPlay: true,
           aspectRatio: _videoPlayerController!.value.aspectRatio,
           showControls: true,
           materialProgressColors: ChewieProgressColors(
-            playedColor: Colors.redAccent,
-            handleColor: Colors.red,
-            backgroundColor: Colors.grey,
+            playedColor: colorScheme.secondary,
+            handleColor: colorScheme.secondary,
+            backgroundColor: Colors.white24,
             bufferedColor: Colors.white.withValues(alpha: 0.3),
           ),
         );
@@ -209,42 +213,61 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _showErrorDialog(String error) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text(
-          'Error de Carga',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(error, style: const TextStyle(color: Colors.grey)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
+      builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1B1F22),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: colorScheme.error.withValues(alpha: 0.45)),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () {
-              Navigator.pop(context);
-              _startVideoDiscovery();
-            },
-            child: const Text('Reintentar'),
+          title: Row(
+            children: [
+              Icon(Icons.error_outline, color: colorScheme.error),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Error de Carga',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+          content: Text(
+            error,
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cerrar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _startVideoDiscovery();
+              },
+              child: const Text('Reintentar'),
+            ),
+          ],
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(
-          widget.title,
-          style: const TextStyle(fontSize: 16, color: Colors.white),
-        ),
+        title: Text(widget.title, style: const TextStyle(fontSize: 16)),
       ),
       body: Consumer<SettingsProvider>(
         builder: (context, settings, child) {
@@ -266,7 +289,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const CircularProgressIndicator(color: Colors.redAccent),
+                      CircularProgressIndicator(color: colorScheme.secondary),
                       const SizedBox(height: 20),
                       Text(
                         _targetEmbedUrl == null
