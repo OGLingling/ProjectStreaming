@@ -1,12 +1,98 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Base URL
-  static const String baseUrl =
-      "https://projectstreaming-1.onrender.com";
+  static const String baseUrl = "https://projectstreaming-1.onrender.com";
+
+  static const Duration _extractTimeout = Duration(seconds: 60);
+  static const int _extractMaxAttempts = 3;
+  static const Set<int> _retryableStatusCodes = {502, 503, 504};
+  static const Map<String, String> _jsonHeaders = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+  };
+
+  static bool _isTransientNetworkError(Object error) {
+    return error is SocketException ||
+        error is http.ClientException ||
+        error is TimeoutException;
+  }
+
+  static Future<http.Response> _getWithRetry(Uri url) async {
+    Object? lastError;
+
+    for (var attempt = 1; attempt <= _extractMaxAttempts; attempt++) {
+      try {
+        final response = await http
+            .get(url, headers: _jsonHeaders)
+            .timeout(_extractTimeout);
+
+        if (!_retryableStatusCodes.contains(response.statusCode) ||
+            attempt == _extractMaxAttempts) {
+          return response;
+        }
+
+        lastError = "HTTP ${response.statusCode}";
+        debugPrint(
+          "Extractor intento $attempt/$_extractMaxAttempts recibio HTTP ${response.statusCode}",
+        );
+      } catch (error) {
+        if (!_isTransientNetworkError(error)) {
+          rethrow;
+        }
+
+        lastError = error;
+        debugPrint(
+          "Extractor intento $attempt/$_extractMaxAttempts fallido: $error",
+        );
+      }
+
+      if (attempt < _extractMaxAttempts) {
+        await Future.delayed(Duration(seconds: 1 << (attempt - 1)));
+      }
+    }
+
+    throw Exception(
+      "Extractor no disponible tras $_extractMaxAttempts intentos: $lastError",
+    );
+  }
+
+  static Future<List<String>> getExtractionCandidates({
+    required String tmdbId,
+    required String type,
+    required int season,
+    required int episode,
+  }) async {
+    final url = Uri.parse("$baseUrl/api/extract").replace(
+      queryParameters: {
+        "tmdbId": tmdbId,
+        "type": type,
+        "season": season.toString(),
+        "episode": episode.toString(),
+      },
+    );
+
+    final response = await _getWithRetry(url);
+
+    if (response.statusCode != 200) {
+      throw Exception("Error del servidor: ${response.statusCode}");
+    }
+
+    final data = jsonDecode(response.body);
+    final candidates = data["data"]?["candidates"];
+    if (data["success"] == true &&
+        candidates is List &&
+        candidates.isNotEmpty) {
+      return candidates.map((item) => item.toString()).toList();
+    }
+
+    throw Exception("No se encontraron candidatos en el servidor");
+  }
 
   // --- OBTENER PELÍCULAS Y SERIES ---
   static Future<List<dynamic>> getMoviesByType(String type) async {

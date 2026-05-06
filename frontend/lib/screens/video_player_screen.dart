@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
-import 'package:http/http.dart' as http;
 import '../providers/settings_provider.dart';
+import '../services/api_service.dart';
 import 'web_player_widget.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -40,8 +39,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Timer? _candidateTimer;
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
-
-  final String _scraperBaseUrl = 'https://projectstreaming-1.onrender.com';
 
   String get _normalizedMediaType {
     final type = widget.type.toLowerCase();
@@ -97,33 +94,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
 
     try {
-      final response = await http
-          .get(
-            Uri.parse('$_scraperBaseUrl/api/extract').replace(
-              queryParameters: {
-                'tmdbId': widget.tmdbId ?? widget.imdbId ?? '',
-                'type': _normalizedMediaType,
-                'season': widget.season.toString(),
-                'episode': widget.episode.toString(),
-              },
-            ),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode != 200) {
-        throw Exception("Error del servidor: ${response.statusCode}");
-      }
-
-      final data = json.decode(response.body);
-      final candidates = data['data']?['candidates'];
-      if (data['success'] == true &&
-          candidates is List &&
-          candidates.isNotEmpty) {
-        _candidateUrls = candidates.map((item) => item.toString()).toList();
-        _tryCandidate(0);
-      } else {
-        throw Exception("No se encontraron candidatos en el servidor");
-      }
+      _candidateUrls = await ApiService.getExtractionCandidates(
+        tmdbId: widget.tmdbId ?? widget.imdbId ?? '',
+        type: _normalizedMediaType,
+        season: widget.season,
+        episode: widget.episode,
+      );
+      _tryCandidate(0);
     } catch (e) {
       _handleError("Fallo al conectar con el motor: $e");
     }

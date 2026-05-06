@@ -27,7 +27,7 @@ app.use(cors({
     return callback(new Error('Origen no permitido por CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Accept', 'Authorization']
 }));
 
 // IMPORTANTE: express.json antes de rutas
