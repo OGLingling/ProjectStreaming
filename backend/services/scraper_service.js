@@ -1,11 +1,13 @@
 const { PrismaClient } = require('@prisma/client');
+const axios = require('axios');
 
 const prisma = new PrismaClient();
 
-// ---------------------------------------------------------------------------
-// Utilidades de sanitización
-// ---------------------------------------------------------------------------
+// ---------------- CACHE Y STATS ----------------
+const cache = new Map();
+const providerStats = {};
 
+// ---------------- UTILS ----------------
 const INVALID_STRINGS = new Set(['null', 'undefined', 'none', 'nan', '']);
 
 const sanitize = (v) => {
@@ -15,204 +17,160 @@ const sanitize = (v) => {
 };
 
 const isValidUrl = (s) => /^https?:\/\//i.test(String(s || ''));
-const isNumericId = (s) => /^\d{1,20}$/.test(String(s || ''));
+const isNumericId = (s) => /^\d+$/.test(String(s || ''));
 
-// ---------------------------------------------------------------------------
-// VideoScraper
-// ---------------------------------------------------------------------------
-
+// ---------------- CLASS ----------------
 class VideoScraper {
 
   static normalizeMediaType(value) {
-    const raw = String(value || '').toLowerCase().trim();
-    return raw.includes('serie') || raw.includes('tv') ? 'tv' : 'movie';
+    const raw = String(value || '').toLowerCase();
+    return raw.includes('tv') ? 'tv' : 'movie';
   }
 
-  static normalizePositiveInt(value, fallback = undefined) {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
-
-  // 🔥 NUEVA NORMALIZACIÓN ROBUSTA
   static normalizeRequest(source) {
-    const raw = source && typeof source === 'object' ? source : {};
+    const raw = source || {};
 
     const url = sanitize(raw.url);
     const tmdbId = sanitize(raw.tmdbId) ?? sanitize(raw.id);
     const type = this.normalizeMediaType(raw.type);
 
     const isTV = type === 'tv';
+    const season = Number(raw.season) || 1;
+    const episode = Number(raw.episode) || 1;
 
-    const season = this.normalizePositiveInt(raw.season);
-    const episode = this.normalizePositiveInt(raw.episode);
-
-    const hasValidUrl = url && isValidUrl(url);
-    const hasValidTmdb = tmdbId && isNumericId(tmdbId);
-
-    // 🎯 Escenario A: URL directa
-    if (hasValidUrl) {
-      return {
-        scenario: 'url',
-        searchMode: false,
-        url,
-        tmdbId,
-        type,
-        isTV,
-        season,
-        episode
-      };
+    if (url && isValidUrl(url)) {
+      return { scenario: 'url', searchMode: false, url, tmdbId, type, isTV, season, episode };
     }
 
-    // 🎯 Escenario B: búsqueda por ID
-    if (hasValidTmdb) {
-      return {
-        scenario: 'tmdb',
-        searchMode: true,
-        url: undefined,
-        tmdbId,
-        type,
-        isTV,
-        season,
-        episode
-      };
+    if (tmdbId && isNumericId(tmdbId)) {
+      return { scenario: 'tmdb', searchMode: true, url: null, tmdbId, type, isTV, season, episode };
     }
 
-    // 🎯 Escenario inválido
-    return {
-      scenario: 'invalid',
-      searchMode: false,
-      url: undefined,
-      tmdbId,
-      type,
-      isTV,
-      season,
-      episode
-    };
+    return { scenario: 'invalid' };
   }
 
-  static validateNormalized({ scenario, tmdbId, isTV, season, episode }) {
+  // ---------------- PROVIDERS ----------------
+  static buildCandidates(n) {
+    const { tmdbId, isTV, season, episode } = n;
 
-    if (scenario === 'url') return { valid: true };
-
-    if (scenario === 'invalid') {
-      return {
-        valid: false,
-        reason: 'missing_identifiers',
-        detail: 'No se proporcionó URL válida ni tmdbId válido.',
-        hint: 'Envía una URL de embed o un tmdbId numérico.'
-      };
-    }
-
-    if (!isNumericId(tmdbId)) {
-      return {
-        valid: false,
-        reason: 'invalid_tmdb_id_format',
-        detail: `tmdbId="${tmdbId}" no es válido.`,
-        hint: 'Debe ser un número (ej: 550, 1396)'
-      };
-    }
-
-    if (isTV && !season) {
-      return {
-        valid: false,
-        reason: 'missing_season',
-        detail: 'TV requiere season ≥ 1'
-      };
-    }
-
-    if (isTV && !episode) {
-      return {
-        valid: false,
-        reason: 'missing_episode',
-        detail: 'TV requiere episode ≥ 1'
-      };
-    }
-
-    return { valid: true };
-  }
-
-  static buildCandidates(normalized) {
-    const { scenario, url, tmdbId, isTV, season = 1, episode = 1 } = normalized;
-
-    if (scenario === 'url') return [url];
-
-    if (!tmdbId) return [];
-
-    const s = season ?? 1;
-    const e = episode ?? 1;
-
-    const pathSegment = isTV ? `tv/${tmdbId}/${s}/${e}` : `movie/${tmdbId}`;
+    const path = isTV
+      ? `tv/${tmdbId}/${season}/${episode}`
+      : `movie/${tmdbId}`;
 
     return [
-      `https://vidsrc.me/embed/${pathSegment}`,
-      `https://vidsrc.to/embed/${pathSegment}`,
-      `https://vidsrc.xyz/embed/${pathSegment}`,
-      `https://vidsrc.win/embed/${pathSegment}`,
-      `https://vidsrc.wiki/embed/${pathSegment}`,
-      `https://player.vidsrc.co/embed/${pathSegment}`,
-      `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}`,
+      `https://vidsrc.me/embed/${path}`,
+      `https://vidsrc.to/embed/${path}`,
+      `https://vidsrc.xyz/embed/${path}`,
+      `https://vidsrc.win/embed/${path}`,
+      `https://player.vidsrc.co/embed/${path}`,
       `https://www.2embed.cc/embed/${tmdbId}`
     ];
   }
 
-  static searchByTmdbId(normalized) {
-    console.log(`[scraper] 🔍 searchMode ACTIVADO → tmdbId=${normalized.tmdbId}`);
-    return this.buildCandidates(normalized);
+  // ---------------- HEALTH CHECK ----------------
+  static async isAlive(url) {
+    try {
+      const res = await axios.get(url, {
+        timeout: 4000,
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        validateStatus: () => true
+      });
+
+      if (res.status !== 200) return false;
+
+      const html = res.data || '';
+
+      return html.includes('iframe') || html.length > 1000;
+
+    } catch {
+      return false;
+    }
   }
 
-  static createPayload(source) {
-    const normalized = this.normalizeRequest(source);
-    const validation = this.validateNormalized(normalized);
+  // ---------------- RANKING ----------------
+  static updateScore(url, ok) {
+    const domain = new URL(url).hostname;
 
-    if (!validation.valid) {
-      return {
-        success: false,
-        candidates: [],
-        debug_info: { status: 'error', ...validation }
-      };
+    if (!providerStats[domain]) {
+      providerStats[domain] = { ok: 0, fail: 0 };
+    }
+
+    ok ? providerStats[domain].ok++ : providerStats[domain].fail++;
+  }
+
+  static sortProviders(list) {
+    return list.sort((a, b) => {
+      const da = providerStats[new URL(a).hostname] || {};
+      const db = providerStats[new URL(b).hostname] || {};
+
+      const sa = (da.ok || 0) - (da.fail || 0);
+      const sb = (db.ok || 0) - (db.fail || 0);
+
+      return sb - sa;
+    });
+  }
+
+  // ---------------- CORE ----------------
+  static async getWorkingProviders(candidates) {
+
+    const results = [];
+
+    for (const url of candidates) {
+      const ok = await this.isAlive(url);
+
+      this.updateScore(url, ok);
+
+      console.log(`[check] ${url} → ${ok}`);
+
+      if (ok) results.push(url);
+    }
+
+    return this.sortProviders(results);
+  }
+
+  // ---------------- MAIN ----------------
+  static async createPayload(source) {
+
+    const normalized = this.normalizeRequest(source);
+
+    if (normalized.scenario === 'invalid') {
+      return { success: false, candidates: [] };
+    }
+
+    const cacheKey = `${normalized.tmdbId}-${normalized.season}-${normalized.episode}`;
+
+    if (cache.has(cacheKey)) {
+      console.log('[cache] HIT');
+      return cache.get(cacheKey);
     }
 
     let candidates = [];
 
     if (normalized.searchMode) {
-      candidates = this.searchByTmdbId(normalized);
+      candidates = this.buildCandidates(normalized);
     } else {
       candidates = [normalized.url];
     }
 
-    return {
-      success: candidates.length > 0,
-      searchMode: normalized.searchMode,
-      tmdbId: normalized.tmdbId ?? null,
-      type: normalized.type,
-      season: normalized.season ?? null,
-      episode: normalized.episode ?? null,
-      candidates,
-      debug_info: {
-        status: 'ok',
-        searchMode: normalized.searchMode,
-        candidateCount: candidates.length
-      }
+    const working = await this.getWorkingProviders(candidates);
+
+    const payload = {
+      success: working.length > 0,
+      candidates: working,
+      tmdbId: normalized.tmdbId,
+      searchMode: normalized.searchMode
     };
+
+    cache.set(cacheKey, payload);
+
+    if (cache.size > 200) cache.clear();
+
+    return payload;
   }
 
   static async extractStreamUrl(source) {
-    try {
-      return this.createPayload(source);
-    } catch (e) {
-      return {
-        success: false,
-        candidates: [],
-        debug_info: {
-          status: 'error',
-          reason: 'internal_exception',
-          detail: e.message
-        }
-      };
-    }
+    return await this.createPayload(source);
   }
-
-  static async saveLog() { } // opcional mantener igual
 }
 
 module.exports = VideoScraper;
