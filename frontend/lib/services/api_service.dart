@@ -75,21 +75,29 @@ class ApiService {
     required int season,
     required int episode,
   }) async {
+    final normalizedTmdbId = tmdbId.trim();
+
     debugPrint(
-      "Extractor params -> tmdbId=$tmdbId (${tmdbId.runtimeType}), "
+      "Extractor params -> tmdbId=$normalizedTmdbId (${normalizedTmdbId.runtimeType}), "
       "type=$type (${type.runtimeType}), "
       "season=$season (${season.runtimeType}), "
       "episode=$episode (${episode.runtimeType})",
     );
 
+    if (normalizedTmdbId.isEmpty) {
+      throw Exception("TMDB ID vacio antes de llamar al extractor");
+    }
+
     final url = Uri.parse("$baseUrl/api/extract").replace(
       queryParameters: {
-        "tmdbId": tmdbId,
+        "tmdbId": normalizedTmdbId,
         "type": type,
         "season": season.toString(),
         "episode": episode.toString(),
       },
     );
+
+    debugPrint("Extractor final URL: ${url.toString()}");
 
     final response = await _getWithRetry(url);
 

@@ -94,8 +94,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
 
     try {
+      final tmdbId = widget.tmdbId?.trim() ?? '';
+
       _candidateUrls = await ApiService.getExtractionCandidates(
-        tmdbId: widget.tmdbId ?? widget.imdbId ?? '',
+        tmdbId: tmdbId,
         type: _normalizedMediaType,
         season: widget.season,
         episode: widget.episode,

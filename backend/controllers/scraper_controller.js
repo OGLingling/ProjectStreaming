@@ -15,13 +15,31 @@ const isPositiveIntegerLike = (value) => {
   return Number.isInteger(Number(value)) && Number(value) > 0;
 };
 
+const firstValue = (...values) => {
+  const value = values.find((item) => item !== undefined && item !== null && item !== '');
+  return Array.isArray(value) ? value[0] : value;
+};
+
 const extractLink = async (req, res) => {
   console.log('[extract] method:', req.method);
   console.log('[extract] originalUrl:', req.originalUrl);
   console.log('[extract] query:', describeParams(req.query));
   console.log('[extract] body:', describeParams(req.body));
 
-  const { url, tmdbId, type, season, episode } = req.query;
+  const url = firstValue(req.query.url, req.body?.url);
+  const tmdbId = firstValue(
+    req.query.tmdbId,
+    req.query.id,
+    req.query.tmdb_id,
+    req.body?.tmdbId,
+    req.body?.id,
+    req.body?.tmdb_id
+  );
+  const type = firstValue(req.query.type, req.body?.type);
+  const season = firstValue(req.query.season, req.body?.season);
+  const episode = firstValue(req.query.episode, req.body?.episode);
+
+  console.log('[extract] normalized:', describeParams({ url, tmdbId, type, season, episode }));
 
   if (!url && !tmdbId) {
     return res.status(400).json({
@@ -29,7 +47,8 @@ const extractLink = async (req, res) => {
       error: 'Falta el parametro requerido: tmdbId o url',
       received: {
         query: describeParams(req.query),
-        body: describeParams(req.body)
+        body: describeParams(req.body),
+        acceptedIdNames: ['tmdbId', 'id', 'tmdb_id']
       }
     });
   }
