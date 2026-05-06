@@ -15,8 +15,15 @@ const isPositiveIntegerLike = (value) => {
   return Number.isInteger(Number(value)) && Number(value) > 0;
 };
 
+// Strings que nunca deben considerarse valores válidos (Dart null.toString(), etc.)
+const _INVALID_STRINGS = new Set(['null', 'undefined', 'none', 'nan']);
+
 const firstValue = (...values) => {
-  const value = values.find((item) => item !== undefined && item !== null && item !== '');
+  const value = values.find((item) => {
+    if (item === undefined || item === null) return false;
+    const s = String(item).toLowerCase().trim();
+    return s !== '' && !_INVALID_STRINGS.has(s);
+  });
   return Array.isArray(value) ? value[0] : value;
 };
 
@@ -57,6 +64,7 @@ const extractLink = async (req, res) => {
     return res.status(400).json({
       success: false,
       error: 'Parametro invalido: tmdbId debe ser un numero entero positivo',
+      hint: 'Asegúrate de que el campo tmdbId en tu base de datos no sea NULL y sea un ID numérico válido de TMDB',
       received: describeParams({ tmdbId })
     });
   }

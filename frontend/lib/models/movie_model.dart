@@ -30,11 +30,19 @@ class Movie {
   });
 
   factory Movie.fromJson(Map<String, dynamic> json) {
+    // Acepta tanto tmdb_id (Prisma @map) como tmdbId (camelCase)
+    // Coerciona a String si viene como int, rechaza "null" literal
+    String? parseTmdbId(dynamic raw) {
+      if (raw == null) return null;
+      final s = raw.toString().trim();
+      if (s.isEmpty || s.toLowerCase() == 'null') return null;
+      if (int.tryParse(s) == null) return null; // no numérico = inválido
+      return s;
+    }
+
     return Movie(
       id: json['id'],
-      tmdbId:
-          json['tmdb_id'] ??
-          json['tmdbId'], // Maneja ambos formatos (Prisma usa tmdb_id)
+      tmdbId: parseTmdbId(json['tmdb_id'] ?? json['tmdbId']),
       title: json['title'] ?? 'Sin título',
       description: json['description'],
       releaseDate: json['releaseDate'] ?? 'Sin fecha de estreno',
@@ -46,7 +54,6 @@ class Movie {
           : 0.0,
       category: json['category'],
       type: json['type'] ?? 'movie',
-      // Mapeo de temporadas si existen en el JSON
       seasons: json['seasons'] != null
           ? (json['seasons'] as List).map((i) => Season.fromJson(i)).toList()
           : null,

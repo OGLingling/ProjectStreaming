@@ -84,8 +84,18 @@ class ApiService {
       "episode=$episode (${episode.runtimeType})",
     );
 
-    if (normalizedTmdbId.isEmpty) {
-      throw Exception("TMDB ID vacio antes de llamar al extractor");
+    if (normalizedTmdbId.isEmpty || normalizedTmdbId == 'null') {
+      throw Exception(
+        'TMDB ID inválido: "$normalizedTmdbId". '
+        'Verifica que el contenido tenga un tmdbId numérico válido en la base de datos.',
+      );
+    }
+
+    if (int.tryParse(normalizedTmdbId) == null) {
+      throw Exception(
+        'TMDB ID no numérico: "$normalizedTmdbId". '
+        'El campo tmdbId debe ser un entero positivo (ej: 550, 1396).',
+      );
     }
 
     final url = Uri.parse("$baseUrl/api/extract").replace(

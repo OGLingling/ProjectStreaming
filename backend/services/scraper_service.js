@@ -17,20 +17,30 @@ class VideoScraper {
     if (!raw) return { input: '', tmdbId: null, isUrl: false };
 
     const isUrl = /^https?:\/\//i.test(raw);
-    const tmdbMatch = raw.match(/tmdb[:=]?(\d+)/i) || raw.match(/^(\d{2,10})$/);
+    // Acepta hasta 20 dígitos — future-proof para IDs muy largos
+    const tmdbMatch = raw.match(/tmdb[:=]?(\d+)/i) || raw.match(/^(\d{2,20})$/);
     const tmdbId = tmdbMatch ? tmdbMatch[1] : null;
     return { input: raw, tmdbId, isUrl };
   }
 
   static normalizeRequest(source) {
+    // Strings inválidos que puede producir Dart cuando un campo es null
+    const INVALID = new Set(['null', 'undefined', 'none', 'nan', '']);
+    const sanitize = (v) => {
+      if (v === undefined || v === null) return undefined;
+      const s = String(v).trim();
+      return INVALID.has(s.toLowerCase()) ? undefined : s;
+    };
+
     if (source && typeof source === 'object') {
-      const explicitTmdbId = source.tmdbId || source.id;
-      const fallbackInput = source.url || explicitTmdbId || '';
+      const explicitTmdbId = sanitize(source.tmdbId) || sanitize(source.id);
+      const sourceUrl = sanitize(source.url);
+      const fallbackInput = sourceUrl || explicitTmdbId || '';
       const normalizedInput = this.normalizeInput(fallbackInput);
 
       return {
-        input: String(fallbackInput || '').trim(),
-        tmdbId: explicitTmdbId ? String(explicitTmdbId).trim() : normalizedInput.tmdbId,
+        input: String(fallbackInput).trim(),
+        tmdbId: explicitTmdbId ?? normalizedInput.tmdbId,
         isUrl: normalizedInput.isUrl,
         type: this.normalizeMediaType(source.type),
         season: this.normalizePositiveInt(source.season, 1),
