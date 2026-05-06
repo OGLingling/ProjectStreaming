@@ -76,56 +76,84 @@ class ApiService {
     required int episode,
   }) async {
     final normalizedTmdbId = tmdbId.trim();
+    final isTV = type.toLowerCase().contains('tv') ||
+        type.toLowerCase().contains('serie');
 
     debugPrint(
-      "Extractor params -> tmdbId=$normalizedTmdbId (${normalizedTmdbId.runtimeType}), "
-      "type=$type (${type.runtimeType}), "
-      "season=$season (${season.runtimeType}), "
-      "episode=$episode (${episode.runtimeType})",
+      '[Extractor] Params → tmdbId=$normalizedTmdbId '
+      '(${normalizedTmdbId.runtimeType}), type=$type, isTV=$isTV, '
+      'season=$season, episode=$episode',
     );
 
+    // ── Validaciones client-side (fail-fast, sin roundtrip al backend) ──
     if (normalizedTmdbId.isEmpty || normalizedTmdbId == 'null') {
       throw Exception(
-        'TMDB ID inválido: "$normalizedTmdbId". '
-        'Verifica que el contenido tenga un tmdbId numérico válido en la base de datos.',
+        '[Extractor] TMDB ID inválido: "$normalizedTmdbId". '
+        'Verifica que el contenido tenga un tmdbId numérico válido en la DB.',
       );
     }
 
     if (int.tryParse(normalizedTmdbId) == null) {
       throw Exception(
-        'TMDB ID no numérico: "$normalizedTmdbId". '
+        '[Extractor] TMDB ID no numérico: "$normalizedTmdbId". '
         'El campo tmdbId debe ser un entero positivo (ej: 550, 1396).',
       );
     }
 
-    final url = Uri.parse("$baseUrl/api/extract").replace(
-      queryParameters: {
-        "tmdbId": normalizedTmdbId,
-        "type": type,
-        "season": season.toString(),
-        "episode": episode.toString(),
-      },
-    );
+    // ── Construcción de query params ──
+    // Para películas no enviamos season/episode: el backend no los necesita
+    // y evitamos que un valor por defecto (1,1) genere logs confusos.
+    final queryParams = <String, String>{
+      'tmdbId': normalizedTmdbId,
+      'type': type,
+      if (isTV) 'season': season.toString(),
+      if (isTV) 'episode': episode.toString(),
+    };
 
-    debugPrint("Extractor final URL: ${url.toString()}");
+    final url = Uri.parse('$baseUrl/api/extract')
+        .replace(queryParameters: queryParams);
+
+    // ── Log de la URL final — lo primero que comparas con los logs de Render ──
+    debugPrint('[Extractor] → URL final: ${url.toString()}');
 
     final response = await _getWithRetry(url);
 
     if (response.statusCode != 200) {
-      throw Exception(
-        "Error del servidor: ${response.statusCode} - ${response.body}",
-      );
+      final detail = _parseServerError(response.statusCode, response.body);
+      throw Exception('[Extractor] Error del servidor: $detail');
     }
 
     final data = jsonDecode(response.body);
-    final candidates = data["data"]?["candidates"];
-    if (data["success"] == true &&
+    final candidates = data['data']?['candidates'];
+    if (data['success'] == true &&
         candidates is List &&
         candidates.isNotEmpty) {
       return candidates.map((item) => item.toString()).toList();
     }
 
-    throw Exception("No se encontraron candidatos en el servidor");
+    // 200 OK pero sin candidatos — usar debug_info del servidor
+    final debugInfo = data['data']?['debug_info'];
+    final reason = debugInfo?['reason'] ?? 'empty_candidates';
+    final serverDetail = debugInfo?['detail'] ?? 'El servidor no devolvió candidatos';
+    throw Exception('[Extractor] Sin candidatos: reason=$reason | $serverDetail');
+  }
+
+  /// Parsea el body de un error HTTP y extrae debug_info si está disponible.
+  static String _parseServerError(int statusCode, String body) {
+    try {
+      final errData = jsonDecode(body);
+      final debugInfo = errData['debug_info'];
+      if (debugInfo != null) {
+        final reason  = debugInfo['reason']  ?? '';
+        final detail  = debugInfo['detail']  ?? '';
+        final hint    = debugInfo['hint']    != null ? ' | hint: ${debugInfo['hint']}' : '';
+        final errMsg  = errData['error']     ?? 'Error $statusCode';
+        return '$errMsg | reason=$reason | $detail$hint';
+      }
+      return errData['error'] ?? 'HTTP $statusCode';
+    } catch (_) {
+      return 'HTTP $statusCode → $body';
+    }
   }
 
   // --- OBTENER PELÍCULAS Y SERIES ---

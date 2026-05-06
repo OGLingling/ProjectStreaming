@@ -1,140 +1,233 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// ---------------------------------------------------------------------------
+// Utilidades de sanitización
+// ---------------------------------------------------------------------------
+
+/** Strings que nunca son valores reales (Dart null.toString(), etc.) */
+const INVALID_STRINGS = new Set(['null', 'undefined', 'none', 'nan', '']);
+
+const sanitize = (v) => {
+  if (v === undefined || v === null) return undefined;
+  const s = String(v).trim();
+  return INVALID_STRINGS.has(s.toLowerCase()) ? undefined : s;
+};
+
+const isValidUrl  = (s) => /^https?:\/\//i.test(String(s || ''));
+const isNumericId = (s) => /^\d{1,20}$/.test(String(s || ''));
+
+// ---------------------------------------------------------------------------
+// VideoScraper
+// ---------------------------------------------------------------------------
+
 class VideoScraper {
+  // -------------------------------------------------------------------------
+  // Helpers de normalización primitivos
+  // -------------------------------------------------------------------------
+
   static normalizeMediaType(value) {
     const raw = String(value || '').toLowerCase().trim();
     return raw.includes('serie') || raw.includes('tv') ? 'tv' : 'movie';
   }
 
-  static normalizePositiveInt(value, fallback) {
+  static normalizePositiveInt(value, fallback = undefined) {
     const parsed = Number.parseInt(value, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 
-  static normalizeInput(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return { input: '', tmdbId: null, isUrl: false };
-
-    const isUrl = /^https?:\/\//i.test(raw);
-    // Acepta hasta 20 dígitos — future-proof para IDs muy largos
-    const tmdbMatch = raw.match(/tmdb[:=]?(\d+)/i) || raw.match(/^(\d{2,20})$/);
-    const tmdbId = tmdbMatch ? tmdbMatch[1] : null;
-    return { input: raw, tmdbId, isUrl };
-  }
+  // -------------------------------------------------------------------------
+  // normalizeRequest — detecta el escenario y produce un objeto canónico
+  //
+  // Escenarios:
+  //   A) 'url'   — Se recibió una URL directa de embed válida (https://...)
+  //   B) 'tmdb'  — Se recibió tmdbId numérico (movie o tv)
+  // -------------------------------------------------------------------------
 
   static normalizeRequest(source) {
-    // Strings inválidos que puede producir Dart cuando un campo es null
-    const INVALID = new Set(['null', 'undefined', 'none', 'nan', '']);
-    const sanitize = (v) => {
-      if (v === undefined || v === null) return undefined;
-      const s = String(v).trim();
-      return INVALID.has(s.toLowerCase()) ? undefined : s;
-    };
+    const raw = source && typeof source === 'object' ? source : {};
 
-    if (source && typeof source === 'object') {
-      const explicitTmdbId = sanitize(source.tmdbId) || sanitize(source.id);
-      const sourceUrl = sanitize(source.url);
-      const fallbackInput = sourceUrl || explicitTmdbId || '';
-      const normalizedInput = this.normalizeInput(fallbackInput);
+    const url    = sanitize(raw.url);
+    const tmdbId = sanitize(raw.tmdbId) ?? sanitize(raw.id);
+    const type   = this.normalizeMediaType(raw.type);
+    const isTV   = type === 'tv';
+    const season  = this.normalizePositiveInt(raw.season);
+    const episode = this.normalizePositiveInt(raw.episode);
 
+    // Escenario A: URL directa de embed
+    if (url && isValidUrl(url)) {
+      return { scenario: 'url', url, tmdbId, type, isTV, season, episode };
+    }
+
+    // Escenario B/C: por tmdbId (movie o tv)
+    return { scenario: 'tmdb', url: undefined, tmdbId, type, isTV, season, episode };
+  }
+
+  // -------------------------------------------------------------------------
+  // validateNormalized — retorna { valid, reason, detail, hint }
+  // -------------------------------------------------------------------------
+
+  static validateNormalized({ scenario, tmdbId, isTV, season, episode }) {
+    if (scenario === 'url') return { valid: true };
+
+    if (!tmdbId) {
       return {
-        input: String(fallbackInput).trim(),
-        tmdbId: explicitTmdbId ?? normalizedInput.tmdbId,
-        isUrl: normalizedInput.isUrl,
-        type: this.normalizeMediaType(source.type),
-        season: this.normalizePositiveInt(source.season, 1),
-        episode: this.normalizePositiveInt(source.episode, 1)
+        valid:  false,
+        reason: 'missing_tmdb_id',
+        detail: 'No se recibió un tmdbId válido ni una URL directa de embed.',
+        hint:   'Verifica que el campo tmdb_id en tu DB no sea NULL y sea un ID numérico de TMDB.'
       };
     }
 
-    const normalizedInput = this.normalizeInput(source);
-    return {
-      ...normalizedInput,
-      type: 'movie',
-      season: 1,
-      episode: 1
-    };
-  }
-
-  static buildCandidates(source) {
-    const { input, tmdbId, isUrl, type, season, episode } = this.normalizeRequest(source);
-    if (!input && !tmdbId) return [];
-    if (!tmdbId && isUrl) return [input];
-    if (!tmdbId) return [];
-
-    const isTV = type === 'tv';
-    const vidsrcPath = isTV
-      ? `tv/${tmdbId}/${season}/${episode}`
-      : `movie/${tmdbId}`;
-    const vidsrcQuery = isTV
-      ? `tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`
-      : `movie?tmdb=${tmdbId}`;
-    const smashyQuery = isTV
-      ? `playere.php?tmdb=${tmdbId}&season=${season}&episode=${episode}`
-      : `playere.php?tmdb=${tmdbId}`;
-    const twoEmbedPath = isTV
-      ? `embedtv/${tmdbId}&s=${season}&e=${episode}`
-      : `embed/${tmdbId}`;
-
-    const candidates = [
-      `https://vidsrc.me/embed/${vidsrcPath}`,
-      `https://vidsrc.to/embed/${vidsrcPath}`,
-      `https://vidsrc.win/embed/${vidsrcPath}`,
-      `https://vidsrc.wiki/embed/${vidsrcPath}`,
-      `https://player.vidsrc.co/embed/${vidsrcPath}`,
-      `https://vidsrc.me/embed/${vidsrcQuery}`,
-      `https://vidsrc.to/embed/${vidsrcQuery}`,
-      `https://vidsrc.win/embed/${vidsrcQuery}`,
-      `https://embed.smashystream.com/${smashyQuery}`,
-      `https://www.2embed.cc/${twoEmbedPath}`
-    ];
-
-    if (isUrl) {
-      candidates.unshift(input);
+    if (!isNumericId(tmdbId)) {
+      return {
+        valid:  false,
+        reason: 'invalid_tmdb_id_format',
+        detail: `tmdbId="${tmdbId}" no es un entero positivo.`,
+        hint:   'Usa el ID numérico de TMDB (ej: 550, 1396). Los IDs de IMDB (tt...) no son válidos aquí.'
+      };
     }
 
-    return [...new Set(candidates)];
+    if (isTV && !season) {
+      return {
+        valid:  false,
+        reason: 'missing_season',
+        detail: 'type=tv requiere season ≥ 1.',
+        hint:   'Asegúrate de enviar el parámetro season cuando el tipo es tv o serie.'
+      };
+    }
+
+    if (isTV && !episode) {
+      return {
+        valid:  false,
+        reason: 'missing_episode',
+        detail: 'type=tv requiere episode ≥ 1.',
+        hint:   'Asegúrate de enviar el parámetro episode cuando el tipo es tv o serie.'
+      };
+    }
+
+    return { valid: true };
   }
 
-  static createCandidatePayload(source) {
+  // -------------------------------------------------------------------------
+  // buildCandidates — construye la lista de URLs de providers conocidos
+  //
+  // Prioridad:
+  //   1. vidsrc.me  (más estable históricamente)
+  //   2. vidsrc.to  (segunda opción)
+  //   3. variantes adicionales de vidsrc
+  //   4. SmashyStream
+  //   5. 2embed
+  //   6. multiembed (fallback genérico)
+  // -------------------------------------------------------------------------
+
+  static buildCandidates(normalized) {
+    const { scenario, url, tmdbId, isTV, season = 1, episode = 1 } = normalized;
+
+    // Escenario A: URL directa → candidato único
+    if (scenario === 'url') return [url];
+
+    if (!tmdbId) return [];
+
+    const s = season  ?? 1;
+    const e = episode ?? 1;
+
+    // Fragmentos reutilizables de path / query
+    const pathSegment  = isTV ? `tv/${tmdbId}/${s}/${e}`        : `movie/${tmdbId}`;
+    const queryVariant = isTV ? `tv?tmdb=${tmdbId}&season=${s}&episode=${e}` : `movie?tmdb=${tmdbId}`;
+    const smashyPath   = isTV ? `playere.php?tmdb=${tmdbId}&season=${s}&episode=${e}` : `playere.php?tmdb=${tmdbId}`;
+    const twoEmbedPath = isTV ? `embedtv/${tmdbId}&s=${s}&e=${e}` : `embed/${tmdbId}`;
+    const multiEmbed   = `https://multiembed.mov/directstream.php?video_id=${tmdbId}&tmdb=1` +
+                         (isTV ? `&s=${s}&e=${e}` : '');
+
+    return [
+      // --- vidsrc path-based (mayor prioridad) ---
+      `https://vidsrc.me/embed/${pathSegment}`,
+      `https://vidsrc.to/embed/${pathSegment}`,
+      `https://vidsrc.xyz/embed/${pathSegment}`,
+      `https://vidsrc.win/embed/${pathSegment}`,
+      `https://vidsrc.wiki/embed/${pathSegment}`,
+      `https://player.vidsrc.co/embed/${pathSegment}`,
+      // --- vidsrc query-param variants ---
+      `https://vidsrc.me/embed/${queryVariant}`,
+      `https://vidsrc.to/embed/${queryVariant}`,
+      `https://vidsrc.win/embed/${queryVariant}`,
+      // --- otros providers ---
+      `https://embed.smashystream.com/${smashyPath}`,
+      `https://www.2embed.cc/${twoEmbedPath}`,
+      // --- fallback genérico ---
+      multiEmbed
+    ];
+  }
+
+  // -------------------------------------------------------------------------
+  // createPayload — punto de entrada principal
+  // -------------------------------------------------------------------------
+
+  static createPayload(source) {
     const normalized = this.normalizeRequest(source);
-    const candidates = this.buildCandidates(source);
+    const validation = this.validateNormalized(normalized);
+
+    if (!validation.valid) {
+      return {
+        success:    false,
+        candidates: [],
+        debug_info: { status: 'error', ...validation }
+      };
+    }
+
+    const candidates = this.buildCandidates(normalized);
 
     return {
-      tmdbId: normalized.tmdbId,
-      source: normalized.input,
-      type: normalized.type,
-      season: normalized.season,
-      episode: normalized.episode,
+      success:      candidates.length > 0,
+      tmdbId:       normalized.tmdbId  ?? null,
+      source:       normalized.url     ?? normalized.tmdbId ?? '',
+      type:         normalized.type,
+      season:       normalized.season  ?? null,
+      episode:      normalized.episode ?? null,
+      scenario:     normalized.scenario,
       providerMode: 'client-side-resolution',
-      candidates
+      candidates,
+      debug_info: candidates.length > 0
+        ? { status: 'ok', candidateCount: candidates.length, scenario: normalized.scenario }
+        : {
+            status:  'error',
+            reason:  'empty_candidates',
+            detail:  'Los proveedores no generaron candidatos para este input.',
+            scenario: normalized.scenario
+          }
     };
   }
+
+  // -------------------------------------------------------------------------
+  // extractStreamUrl — wrapper async con logging
+  // -------------------------------------------------------------------------
 
   static async extractStreamUrl(source) {
     const start = Date.now();
     let payload = null;
-    let err = null;
+    let err     = null;
 
     try {
-      payload = this.createCandidatePayload(source);
-      if (!payload.candidates.length) {
-        throw new Error('No se pudieron generar candidatos para el ID/URL recibido');
-      }
+      payload = this.createPayload(source);
       return payload;
     } catch (e) {
       err = e.message;
+      console.error('[scraper_service] Error inesperado:', e.message);
       return {
-        tmdbId: this.normalizeRequest(source).tmdbId,
-        source: typeof source === 'object' ? JSON.stringify(source) : String(source || ''),
-        providerMode: 'client-side-resolution',
-        candidates: []
+        success:      false,
+        candidates:   [],
+        debug_info: { status: 'error', reason: 'internal_exception', detail: e.message }
       };
     } finally {
-      const success = !!(payload && payload.candidates && payload.candidates.length);
+      const success = !!(payload?.candidates?.length);
+      // Evita loggear URLs completas con tokens; solo identifica el recurso
+      const logTarget = typeof source === 'object'
+        ? JSON.stringify({ tmdbId: sanitize(source?.tmdbId), url: sanitize(source?.url) })
+        : String(source || '');
+
       await this.saveLog(
-        typeof source === 'object' ? JSON.stringify(source) : String(source || ''),
+        logTarget,
         success,
         payload ? JSON.stringify(payload.candidates) : null,
         err,
@@ -143,19 +236,17 @@ class VideoScraper {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // saveLog
+  // -------------------------------------------------------------------------
+
   static async saveLog(targetUrl, success, result, error, duration) {
     try {
       await prisma.scrapeLog.create({
-        data: {
-          targetUrl,
-          success,
-          streamUrl: result,
-          error,
-          duration
-        }
+        data: { targetUrl, success, streamUrl: result, error, duration }
       });
     } catch (dbError) {
-      console.error('Error BD Log:', dbError.message);
+      console.error('[scraper_service] Error BD Log:', dbError.message);
     }
   }
 }
