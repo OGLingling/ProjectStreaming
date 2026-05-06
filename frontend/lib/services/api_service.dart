@@ -28,9 +28,16 @@ class ApiService {
 
     for (var attempt = 1; attempt <= _extractMaxAttempts; attempt++) {
       try {
+        debugPrint("Extractor GET attempt $attempt URL: $url");
+        debugPrint("Extractor GET body: <none>");
+
         final response = await http
             .get(url, headers: _jsonHeaders)
             .timeout(_extractTimeout);
+
+        debugPrint(
+          "Extractor response ${response.statusCode}: ${response.body}",
+        );
 
         if (!_retryableStatusCodes.contains(response.statusCode) ||
             attempt == _extractMaxAttempts) {
@@ -68,6 +75,13 @@ class ApiService {
     required int season,
     required int episode,
   }) async {
+    debugPrint(
+      "Extractor params -> tmdbId=$tmdbId (${tmdbId.runtimeType}), "
+      "type=$type (${type.runtimeType}), "
+      "season=$season (${season.runtimeType}), "
+      "episode=$episode (${episode.runtimeType})",
+    );
+
     final url = Uri.parse("$baseUrl/api/extract").replace(
       queryParameters: {
         "tmdbId": tmdbId,
@@ -80,7 +94,9 @@ class ApiService {
     final response = await _getWithRetry(url);
 
     if (response.statusCode != 200) {
-      throw Exception("Error del servidor: ${response.statusCode}");
+      throw Exception(
+        "Error del servidor: ${response.statusCode} - ${response.body}",
+      );
     }
 
     final data = jsonDecode(response.body);
