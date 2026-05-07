@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-
   // Base URL
   static const String baseUrl = "https://projectstreaming-1.onrender.com";
 
@@ -51,7 +50,6 @@ class ApiService {
         if (!_isTransientNetworkError(error)) {
           rethrow;
         }
-
         lastError = error;
       }
 
@@ -65,14 +63,12 @@ class ApiService {
     );
   }
 
-  // ✅ FIX LIMPIO (SIN TOCAR AUTH NI LOGIN)
   static Future<List<String>> getExtractionCandidates({
     required String tmdbId,
     required String type,
     int? season,
     int? episode,
   }) async {
-
     final normalizedTmdbId = tmdbId.trim();
 
     final isTV = type.toLowerCase().contains('tv') ||
@@ -83,14 +79,10 @@ class ApiService {
       'season=$season, episode=$episode',
     );
 
-    // VALIDACIÓN
     if (normalizedTmdbId.isEmpty || int.tryParse(normalizedTmdbId) == null) {
-      throw Exception(
-        '[Extractor] TMDB ID inválido: "$normalizedTmdbId"',
-      );
+      throw Exception('[Extractor] TMDB ID inválido: "$normalizedTmdbId"');
     }
 
-    // 🔥 CLAVE: NO enviar season/episode si es movie
     final queryParams = <String, String>{
       'tmdbId': normalizedTmdbId,
       'type': type,
@@ -112,7 +104,8 @@ class ApiService {
 
     final data = jsonDecode(response.body);
 
-    final candidates = data['data']?['candidates'];
+    // ✅ FIX: Acceso directo a la raíz del JSON
+    final candidates = data['candidates'];
 
     if (data['success'] == true &&
         candidates is List &&
@@ -120,53 +113,32 @@ class ApiService {
       return candidates.map((item) => item.toString()).toList();
     }
 
-    final debugInfo = data['data']?['debug_info'];
-    final reason = debugInfo?['reason'] ?? 'empty_candidates';
-    final serverDetail =
-        debugInfo?['detail'] ?? 'El servidor no devolvió candidatos';
+    // ✅ FIX: Manejo de error adaptado a la nueva estructura del backend
+    final reason = data['reason'] ?? 'empty_candidates';
+    final serverDetail = data['error'] ?? 'El servidor no devolvió candidatos';
 
     throw Exception(
       '[Extractor] Sin candidatos: reason=$reason | $serverDetail',
     );
   }
 
-  /// Parser de errores (SE MANTIENE IGUAL)
   static String _parseServerError(int statusCode, String body) {
     try {
       final errData = jsonDecode(body);
-      final debugInfo = errData['debug_info'];
-
-      if (debugInfo != null) {
-        final reason  = debugInfo['reason']  ?? '';
-        final detail  = debugInfo['detail']  ?? '';
-        final hint    = debugInfo['hint'] != null
-            ? ' | hint: ${debugInfo['hint']}'
-            : '';
-        final errMsg  = errData['error'] ?? 'Error $statusCode';
-
-        return '$errMsg | reason=$reason | $detail$hint';
-      }
-
-      return errData['error'] ?? 'HTTP $statusCode';
+      final errMsg = errData['error'] ?? 'Error $statusCode';
+      return errMsg;
     } catch (_) {
       return 'HTTP $statusCode → $body';
     }
   }
 
-  // --- OBTENER PELÍCULAS Y SERIES (SIN CAMBIOS) ---
+  // --- MÉTODOS DE PELÍCULAS, AUTH Y OTROS SE MANTIENEN IGUAL ---
   static Future<List<dynamic>> getMoviesByType(String type) async {
     try {
       final url = Uri.parse("$baseUrl/api/movies")
           .replace(queryParameters: {"type": type});
-
-      final response = await http.get(
-        url,
-        headers: {"Content-Type": "application/json"},
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as List<dynamic>;
-      }
+      final response = await http.get(url, headers: {"Content-Type": "application/json"});
+      if (response.statusCode == 200) return jsonDecode(response.body) as List<dynamic>;
       return [];
     } catch (e) {
       debugPrint("❌ Error obteniendo contenido ($type): $e");
@@ -174,7 +146,6 @@ class ApiService {
     }
   }
 
-  // --- REGISTRO (INTOCADO) ---
   static Future<Map<String, dynamic>?> registerUser({
     required String email,
     required String name,
@@ -192,22 +163,13 @@ class ApiService {
           "password": password,
         }),
       );
-
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
-
-      debugPrint(
-        "⚠️ Registro fallido: ${response.statusCode} - ${response.body}",
-      );
+      if (response.statusCode == 201 || response.statusCode == 200) return jsonDecode(response.body);
       return null;
     } catch (e) {
-      debugPrint("❌ Error en registro: $e");
       return null;
     }
   }
 
-  // --- OTP Y LOGIN (INTOCADO) ---
   static Future<bool> sendOTP(String email) async {
     try {
       final response = await http.post(
@@ -217,94 +179,57 @@ class ApiService {
       );
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint("❌ Error enviando OTP: $e");
       return false;
     }
   }
 
-  static Future<Map<String, dynamic>?> verifyOTP(
-    String email,
-    String code,
-  ) async {
+  static Future<Map<String, dynamic>?> verifyOTP(String email, String code) async {
     try {
       final response = await http.post(
         Uri.parse("$baseUrl/api/auth/verify-otp"),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "email": email.toLowerCase().trim(),
-          "code": code
-        }),
+        body: jsonEncode({"email": email.toLowerCase().trim(), "code": code}),
       );
-
-      return response.statusCode == 200
-          ? jsonDecode(response.body)
-          : null;
+      return response.statusCode == 200 ? jsonDecode(response.body) : null;
     } catch (e) {
-      debugPrint("❌ Error verificando OTP: $e");
       return null;
     }
   }
 
-  // --- USER DATA (INTOCADO) ---
   static Future<Map<String, dynamic>?> getUserDataByEmail(String email) async {
     try {
       final url = Uri.parse('$baseUrl/api/users')
           .replace(queryParameters: {'email': email.toLowerCase().trim()});
-
-      final response = await http.get(
-        url,
-        headers: {"Content-Type": "application/json"},
-      );
-
-      debugPrint("🔍 Buscando usuario: ${url.toString()}");
-      debugPrint("📥 Respuesta servidor (${response.statusCode}): ${response.body}");
-
+      final response = await http.get(url, headers: {"Content-Type": "application/json"});
       if (response.statusCode == 200) {
         final dynamic decoded = jsonDecode(response.body);
-
-        if (decoded is List && decoded.isNotEmpty) {
-          return decoded[0] as Map<String, dynamic>;
-        }
-
-        if (decoded is Map && decoded.isNotEmpty) {
-          return decoded as Map<String, dynamic>;
-        }
+        if (decoded is List && decoded.isNotEmpty) return decoded[0] as Map<String, dynamic>;
+        if (decoded is Map && decoded.isNotEmpty) return decoded as Map<String, dynamic>;
       }
-
       return null;
     } catch (e) {
-      debugPrint("❌ Error crítico obteniendo usuario: $e");
       return null;
     }
   }
 
-  // --- UPDATE USER (INTOCADO) ---
-  static Future<bool> updateUser(
-    String userId,
-    Map<String, dynamic> data,
-  ) async {
+  static Future<bool> updateUser(String userId, Map<String, dynamic> data) async {
     try {
       final response = await http.put(
         Uri.parse("$baseUrl/api/users/$userId"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode(data),
       );
-
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint("❌ Error actualizando usuario: $e");
       return false;
     }
   }
 
-  // --- LOGOUT (INTOCADO) ---
   static Future<void> logout(BuildContext context) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
-
       if (!context.mounted) return;
-
       Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
     } catch (e) {
       debugPrint("❌ Error en logout: $e");

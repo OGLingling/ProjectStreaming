@@ -8,7 +8,7 @@ class TmdbService {
   static Future<Movie?> getMovieDetails(dynamic tmdbId, String type) async {
     if (tmdbId == null || tmdbId.toString() == 'null') return null;
 
-    // Normalizar el tipo (convertir 'serie' a 'tv' si es necesario)
+    // Normalizar el tipo
     String mediaType =
         (type.toLowerCase().contains('serie') || type.toLowerCase() == 'tv')
         ? 'tv'
@@ -33,7 +33,10 @@ class TmdbService {
           rating: (data['vote_average'] as num?)?.toDouble() ?? 0.0,
           category: '',
           type: mediaType,
-          seasons: data['seasons'] ?? [],
+          // ✅ FIX: Mapeo correcto de la lista de temporadas al modelo Season
+          seasons: (data['seasons'] as List?)
+              ?.map((s) => Season.fromJson(s))
+              .toList(),
         );
       }
     } catch (e) {
