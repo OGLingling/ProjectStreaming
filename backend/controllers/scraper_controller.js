@@ -28,11 +28,8 @@ const firstValue = (...values) => {
 // ---------------------------------------------------------------------------
 
 const extractLink = async (req, res) => {
-
-  console.log('[extract] method:', req.method);
-  console.log('[extract] originalUrl:', req.originalUrl);
-  console.log('[extract] query:', describeParams(req.query));
-  console.log('[extract] body:', describeParams(req.body));
+  // Logs de auditoría
+  console.log('[extract] Request recibida:', req.method, req.originalUrl);
 
   // Extracción flexible de parámetros
   const url = firstValue(req.query.url, req.body?.url);
@@ -44,29 +41,26 @@ const extractLink = async (req, res) => {
   const season = firstValue(req.query.season, req.body?.season);
   const episode = firstValue(req.query.episode, req.body?.episode);
 
+  // Normalización básica para logs
   const normalizedType = String(type || 'movie').toLowerCase().trim();
-  const hasDirectUrl = url && /^https?:\/\//i.test(url);
 
-  console.log('[extract] normalized:', describeParams({
-    url, tmdbId, type: normalizedType, season, episode, hasDirectUrl
+  console.log('[extract] Parametros normalizados:', describeParams({
+    url, tmdbId, type: normalizedType, season, episode
   }));
 
-  // Validación mínima
+  // Validación mínima: Si no hay ID ni URL, no hay nada que buscar
   if (!url && !tmdbId) {
     return res.status(400).json({
       success: false,
-      error: 'Falta url o tmdbId',
       data: {
         candidates: [],
-        debug_info: {
-          reason: 'missing_identifiers',
-          detail: 'Se requiere al menos una URL válida o un tmdbId'
-        }
+        debug_info: { reason: 'missing_identifiers', detail: 'Se requiere tmdbId' }
       }
     });
   }
 
   try {
+    // Llamada al servicio (que ya no hace Health Checks bloqueantes)
     const result = await VideoScraper.extractStreamUrl({
       url,
       tmdbId,
@@ -75,38 +69,43 @@ const extractLink = async (req, res) => {
       episode
     });
 
-    // FIX: estructura de respuesta consistente en éxito y error.
-    // Flutter siempre busca data.candidates y data.debug_info,
-    // así que ambos caminos deben tener esa forma.
-    if (!result.success) {
+    /**
+     * ADAPTACIÓN PARA FLUTTER:
+     * El servicio devuelve 'results' (objetos url+headers).
+     * Mantenemos la compatibilidad con tu frontend transformando 'results' a 'candidates'.
+     */
+    const candidates = result.results ? result.results.map(r => r.url) : [];
+
+    if (!result.success || candidates.length === 0) {
       return res.status(200).json({
         success: false,
         data: {
           candidates: [],
-          debug_info: result.debug_info || {
-            reason: 'no_working_providers',
-            detail: 'El scraper no encontró providers funcionales'
+          debug_info: {
+            reason: 'empty_candidates',
+            detail: 'El motor no generó candidatos para este ID'
           }
         }
       });
     }
 
+    // Respuesta exitosa
     return res.status(200).json({
       success: true,
       data: {
-        candidates: result.candidates,
+        candidates: candidates, // Array de strings para tu lógica actual de Flutter
+        raw_results: result.results, // Por si decides usar los headers en el futuro
         tmdbId: result.tmdbId,
         type: result.type,
-        searchMode: result.searchMode,
+        searchMode: true
       }
     });
 
   } catch (error) {
-    console.error('[extract] Error crítico:', error.message);
+    console.error('[extract] Error crítico en controlador:', error.message);
 
     return res.status(500).json({
       success: false,
-      error: error.message,
       data: {
         candidates: [],
         debug_info: {
