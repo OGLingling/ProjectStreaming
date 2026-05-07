@@ -1,7 +1,7 @@
 const VideoScraper = require('../services/scraper_service');
 
 // ---------------------------------------------------------------------------
-// Helpers del controlador
+// Helpers
 // ---------------------------------------------------------------------------
 
 const describeParams = (params) =>
@@ -34,45 +34,39 @@ const extractLink = async (req, res) => {
   console.log('[extract] query:', describeParams(req.query));
   console.log('[extract] body:', describeParams(req.body));
 
-  // --- Extracción flexible ---
+  // Extracción flexible de parámetros
   const url = firstValue(req.query.url, req.body?.url);
-
   const tmdbId = firstValue(
     req.query.tmdbId, req.query.id, req.query.tmdb_id,
     req.body?.tmdbId, req.body?.id, req.body?.tmdb_id
   );
-
   const type = firstValue(req.query.type, req.body?.type);
   const season = firstValue(req.query.season, req.body?.season);
   const episode = firstValue(req.query.episode, req.body?.episode);
 
   const normalizedType = String(type || 'movie').toLowerCase().trim();
-
   const hasDirectUrl = url && /^https?:\/\//i.test(url);
 
   console.log('[extract] normalized:', describeParams({
-    url,
-    tmdbId,
-    type: normalizedType,
-    season,
-    episode,
-    hasDirectUrl
+    url, tmdbId, type: normalizedType, season, episode, hasDirectUrl
   }));
 
-  // 🔥 VALIDACIÓN MÍNIMA (no más lógica duplicada)
+  // Validación mínima
   if (!url && !tmdbId) {
     return res.status(400).json({
       success: false,
       error: 'Falta url o tmdbId',
-      debug_info: {
-        reason: 'missing_identifiers',
-        detail: 'Se requiere al menos una URL válida o un tmdbId'
+      data: {
+        candidates: [],
+        debug_info: {
+          reason: 'missing_identifiers',
+          detail: 'Se requiere al menos una URL válida o un tmdbId'
+        }
       }
     });
   }
 
   try {
-
     const result = await VideoScraper.extractStreamUrl({
       url,
       tmdbId,
@@ -81,30 +75,44 @@ const extractLink = async (req, res) => {
       episode
     });
 
-    // 🔥 No forzamos 404 innecesario → dejamos que el cliente decida
+    // FIX: estructura de respuesta consistente en éxito y error.
+    // Flutter siempre busca data.candidates y data.debug_info,
+    // así que ambos caminos deben tener esa forma.
     if (!result.success) {
       return res.status(200).json({
         success: false,
-        data: result
+        data: {
+          candidates: [],
+          debug_info: result.debug_info || {
+            reason: 'no_working_providers',
+            detail: 'El scraper no encontró providers funcionales'
+          }
+        }
       });
     }
 
     return res.status(200).json({
       success: true,
-      data: result
+      data: {
+        candidates: result.candidates,
+        tmdbId: result.tmdbId,
+        type: result.type,
+        searchMode: result.searchMode,
+      }
     });
 
   } catch (error) {
-
     console.error('[extract] Error crítico:', error.message);
 
     return res.status(500).json({
       success: false,
       error: error.message,
-      debug_info: {
-        status: 'error',
-        reason: 'internal_server_error',
-        detail: error.message
+      data: {
+        candidates: [],
+        debug_info: {
+          reason: 'internal_server_error',
+          detail: error.message
+        }
       }
     });
   }
