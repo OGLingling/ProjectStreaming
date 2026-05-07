@@ -31,38 +31,44 @@ class VideoScraper {
     const isTV = type === 'tv';
     const s = season || 1;
     const e = episode || 1;
+
+    // Construcción de rutas según el estándar de los providers
     const path = isTV ? `tv/${tmdbId}/${s}/${e}` : `movie/${tmdbId}`;
 
-    return [
+    const urls = [
       `https://vidsrc.me/embed/${path}`,
       `https://vidsrc.to/embed/${path}`,
       `https://vidsrc.xyz/embed/${path}`,
       `https://vidsrc.win/embed/${path}`,
-      `https://player.vidsrc.co/embed/${path}`,
-      isTV ? `https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}` : `https://www.2embed.cc/embed/${tmdbId}`
-    ].map(url => ({
+      `https://player.vidsrc.co/embed/${path}`
+    ];
+
+    if (isTV) {
+      urls.push(`https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}`);
+    } else {
+      urls.push(`https://www.2embed.cc/embed/${tmdbId}`);
+    }
+
+    return urls.map(url => ({
       url,
-      headers: { 'Referer': new URL(url).origin, 'User-Agent': 'Mozilla/5.0...' }
+      headers: { 'Referer': new URL(url).origin }
     }));
   }
 
   static async extractStreamUrl(data) {
-    const tmdbId = data.tmdbId || data.id;
-    if (!tmdbId) throw new Error('MISSING_ID');
-
-    const type = String(data.type || '').toLowerCase().includes('tv') ? 'tv' : 'movie';
+    // Si llegamos aquí es porque el controlador ya validó el tmdbId
     const results = this.buildCandidates({
-      tmdbId,
-      type,
-      season: parseInt(data.season),
-      episode: parseInt(data.episode)
+      tmdbId: data.tmdbId,
+      type: data.type,
+      season: data.season,
+      episode: data.episode
     });
 
     return {
-      success: true,
-      tmdbId,
-      type,
-      results
+      success: true, // Siempre true si hay candidatos construidos
+      tmdbId: data.tmdbId,
+      type: data.type,
+      results: results
     };
   }
 }
