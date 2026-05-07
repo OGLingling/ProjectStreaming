@@ -16,32 +16,39 @@ const extractLink = async (req, res) => {
   const season = parseInt(firstValue(req.query.season, req.body?.season)) || 1;
   const episode = parseInt(firstValue(req.query.episode, req.body?.episode)) || 1;
 
-  console.log(`[extract] START -> ID: ${tmdbId}, Type: ${type}`);
+  console.log(`[extract] Iniciando para ID: ${tmdbId}`);
 
   if (!tmdbId) {
-    console.log('[extract] ERROR: No hay tmdbId');
     return res.status(400).json({ success: false, candidates: [], error: 'No ID' });
   }
 
   try {
     const result = await VideoScraper.extractStreamUrl({ tmdbId, type, season, episode });
-    const candidates = result.results.map(r => r.url);
+
+    // Generamos ambos formatos: Lista de strings y Lista de objetos
+    const candidateStrings = result.results.map(r => r.url);
+    const candidateObjects = result.results.map(r => ({
+      url: r.url,
+      name: 'Server Mirror',
+      quality: 'Auto'
+    }));
 
     const finalResponse = {
-      success: candidates.length > 0,
-      candidates: candidates,
+      success: true,
+      candidates: candidateStrings, // Formato string []
+      sources: candidateObjects,    // Formato objeto {}
+      urls: candidateStrings,       // Backup común
       tmdbId: tmdbId,
+      tmdb_id: parseInt(tmdbId),    // Lo enviamos como string y como int por si acaso
       type: type,
       searchMode: true
     };
 
-    console.log('[extract] SUCCESS: Enviando', candidates.length, 'candidatos');
-    console.log('[extract] JSON FINAL:', JSON.stringify(finalResponse));
-
+    console.log('[extract] SUCCESS: Enviando respuesta universal');
     return res.status(200).json(finalResponse);
 
   } catch (error) {
-    console.error('[extract] CRITICAL ERROR:', error.message);
+    console.error('[extract] ERROR:', error.message);
     return res.status(500).json({ success: false, candidates: [], error: error.message });
   }
 };
