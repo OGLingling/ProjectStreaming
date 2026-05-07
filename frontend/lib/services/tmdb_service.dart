@@ -6,13 +6,13 @@ class TmdbService {
   static const String _apiKey = 'd8a00b94f5c00821e497b569fec9a61f';
 
   static Future<Movie?> getMovieDetails(dynamic tmdbId, String type) async {
-    // Protección contra IDs nulos o inválidos
+    // Protección contra IDs vacíos o nulos
     if (tmdbId == null || tmdbId.toString() == 'null' || tmdbId.toString().isEmpty) {
       return null;
     }
 
     final String cleanId = tmdbId.toString().trim();
-    // Normalizar tipo para TMDB (solo 'tv' o 'movie')
+    // Normalizar media_type para TMDB
     final String mediaType = (type.toLowerCase().contains('serie') || type.toLowerCase() == 'tv') 
         ? 'tv' 
         : 'movie';
@@ -38,16 +38,16 @@ class TmdbService {
           rating: (data['vote_average'] as num?)?.toDouble() ?? 0.0,
           category: '',
           type: mediaType,
-          // ✅ MAPEADO CORRECTO DE TEMPORADAS
+          // Mapeo seguro de la lista de temporadas
           seasons: (data['seasons'] as List?)
               ?.map((s) => Season.fromJson(s))
               .toList(),
         );
       } else {
-        print("TMDB Error ${response.statusCode}: No se encontró el ID $cleanId");
+        print("❌ [TmdbService] Error ${response.statusCode} buscando ID: $cleanId");
       }
     } catch (e) {
-      print("Error crítico en TmdbService: $e");
+      print("❌ [TmdbService] Error crítico: $e");
     }
     return null;
   }
