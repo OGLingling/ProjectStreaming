@@ -28,7 +28,7 @@ const firstValue = (...values) => {
 // ---------------------------------------------------------------------------
 
 const extractLink = async (req, res) => {
-  // Logs de auditoría
+  // Logs de auditoría para verificar qué llega desde Render
   console.log('[extract] Request recibida:', req.method, req.originalUrl);
 
   // Extracción flexible de parámetros
@@ -41,26 +41,22 @@ const extractLink = async (req, res) => {
   const season = firstValue(req.query.season, req.body?.season);
   const episode = firstValue(req.query.episode, req.body?.episode);
 
-  // Normalización básica para logs
   const normalizedType = String(type || 'movie').toLowerCase().trim();
 
   console.log('[extract] Parametros normalizados:', describeParams({
     url, tmdbId, type: normalizedType, season, episode
   }));
 
-  // Validación mínima: Si no hay ID ni URL, no hay nada que buscar
+  // Validación mínima
   if (!url && !tmdbId) {
     return res.status(400).json({
       success: false,
-      data: {
-        candidates: [],
-        debug_info: { reason: 'missing_identifiers', detail: 'Se requiere tmdbId' }
-      }
+      candidates: [],
+      debug_info: { reason: 'missing_identifiers', detail: 'Falta tmdbId' }
     });
   }
 
   try {
-    // Llamada al servicio (que ya no hace Health Checks bloqueantes)
     const result = await VideoScraper.extractStreamUrl({
       url,
       tmdbId,
@@ -69,36 +65,33 @@ const extractLink = async (req, res) => {
       episode
     });
 
-    /**
-     * ADAPTACIÓN PARA FLUTTER:
-     * El servicio devuelve 'results' (objetos url+headers).
-     * Mantenemos la compatibilidad con tu frontend transformando 'results' a 'candidates'.
-     */
+    // Mapeamos los resultados a un array simple de strings para Flutter
     const candidates = result.results ? result.results.map(r => r.url) : [];
 
     if (!result.success || candidates.length === 0) {
       return res.status(200).json({
         success: false,
-        data: {
-          candidates: [],
-          debug_info: {
-            reason: 'empty_candidates',
-            detail: 'El motor no generó candidatos para este ID'
-          }
+        candidates: [],
+        debug_info: {
+          reason: 'empty_candidates',
+          detail: 'El motor no generó candidatos para este ID'
         }
       });
     }
 
-    // Respuesta exitosa
+    /**
+     * ESTRUCTURA PLANA (FIX SINCRONIZACIÓN):
+     * Eliminamos el objeto "data" intermedio. 
+     * Flutter ahora encontrará "success" y "candidates" en la raíz del JSON.
+     */
     return res.status(200).json({
       success: true,
-      data: {
-        candidates: candidates, // Array de strings para tu lógica actual de Flutter
-        raw_results: result.results, // Por si decides usar los headers en el futuro
-        tmdbId: result.tmdbId,
-        type: result.type,
-        searchMode: true
-      }
+      candidates: candidates,
+      tmdbId: result.tmdbId,
+      type: result.type,
+      searchMode: true,
+      // Opcional: enviamos raw_results por si tu modelo de Flutter los requiere
+      raw_results: result.results
     });
 
   } catch (error) {
@@ -106,12 +99,10 @@ const extractLink = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      data: {
-        candidates: [],
-        debug_info: {
-          reason: 'internal_server_error',
-          detail: error.message
-        }
+      candidates: [],
+      debug_info: {
+        reason: 'internal_server_error',
+        detail: error.message
       }
     });
   }
