@@ -31,45 +31,25 @@ class VideoScraper {
     const isTV = type === 'tv';
     const s = season || 1;
     const e = episode || 1;
-
-    // Construcción de rutas según el estándar de los providers
     const path = isTV ? `tv/${tmdbId}/${s}/${e}` : `movie/${tmdbId}`;
 
+    // Lista de espejos (mirrors)
     const urls = [
       `https://vidsrc.me/embed/${path}`,
       `https://vidsrc.to/embed/${path}`,
       `https://vidsrc.xyz/embed/${path}`,
       `https://vidsrc.win/embed/${path}`,
-      `https://player.vidsrc.co/embed/${path}`
+      `https://player.vidsrc.co/embed/${path}`,
+      isTV ? `https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}` : `https://www.2embed.cc/embed/${tmdbId}`
     ];
 
-    if (isTV) {
-      urls.push(`https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}`);
-    } else {
-      urls.push(`https://www.2embed.cc/embed/${tmdbId}`);
-    }
-
-    return urls.map(url => ({
-      url,
-      headers: { 'Referer': new URL(url).origin }
-    }));
+    return urls.map(url => ({ url, origin: new URL(url).origin }));
   }
 
   static async extractStreamUrl(data) {
-    // Si llegamos aquí es porque el controlador ya validó el tmdbId
-    const results = this.buildCandidates({
-      tmdbId: data.tmdbId,
-      type: data.type,
-      season: data.season,
-      episode: data.episode
-    });
-
-    return {
-      success: true, // Siempre true si hay candidatos construidos
-      tmdbId: data.tmdbId,
-      type: data.type,
-      results: results
-    };
+    console.log('[service] Generando candidatos para:', data.tmdbId);
+    const results = this.buildCandidates(data);
+    return { success: true, results };
   }
 }
 
