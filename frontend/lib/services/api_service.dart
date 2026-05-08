@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart'; // Para debugPrint
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // Cambia esto por tu URL real de Render
+  // ✅ CORRECCIÓN: Mantén tu URL de Render aquí
   static const String _baseUrl = "https://tu-proyecto-en-render.com/api";
+
+  // Headers comunes para evitar ser bloqueado por proveedores de streaming
+  static const Map<String, String> _defaultHeaders = {
+    'Content-Type': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  };
 
   // ===================================================
   // 1. MÉTODOS DE CONTENIDO (Películas y Series)
@@ -15,13 +21,16 @@ class ApiService {
 
   static Future<List<dynamic>> getMoviesByType(String type) async {
     try {
-      final response = await http.get(Uri.parse("$_baseUrl/movies?type=$type"));
+      final response = await http
+          .get(Uri.parse("$_baseUrl/movies?type=$type"))
+          .timeout(const Duration(seconds: 10));
+
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        return json.decode(response.body) as List<dynamic>;
       }
       return [];
     } catch (e) {
-      print("Error en getMoviesByType: $e");
+      debugPrint("Error en getMoviesByType ($type): $e");
       return [];
     }
   }
@@ -32,25 +41,30 @@ class ApiService {
 
   static Future<Map<String, dynamic>?> getUserDataByEmail(String email) async {
     try {
-      final response = await http.get(Uri.parse("$_baseUrl/users/$email"));
+      final response = await http
+          .get(Uri.parse("$_baseUrl/users/${email.trim().toLowerCase()}"))
+          .timeout(const Duration(seconds: 7));
+
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        return json.decode(response.body) as Map<String, dynamic>;
       }
-      return null;
     } catch (e) {
-      return null;
+      debugPrint("Error en getUserDataByEmail: $e");
     }
+    return null;
   }
 
   static Future<bool> sendOTP(String email) async {
     try {
       final response = await http.post(
         Uri.parse("$_baseUrl/auth/send-otp"),
-        body: json.encode({'email': email}),
-        headers: {'Content-Type': 'application/json'},
-      );
+        body: json.encode({'email': email.trim().toLowerCase()}),
+        headers: _defaultHeaders,
+      ).timeout(const Duration(seconds: 10));
+
       return response.statusCode == 200;
     } catch (e) {
+      debugPrint("Error en sendOTP: $e");
       return false;
     }
   }
@@ -59,16 +73,20 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse("$_baseUrl/auth/verify-otp"),
-        body: json.encode({'email': email, 'otp': otp}),
-        headers: {'Content-Type': 'application/json'},
-      );
+        body: json.encode({
+          'email': email.trim().toLowerCase(), 
+          'otp': otp.trim()
+        }),
+        headers: _defaultHeaders,
+      ).timeout(const Duration(seconds: 10));
+
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        return json.decode(response.body) as Map<String, dynamic>;
       }
-      return null;
     } catch (e) {
-      return null;
+      debugPrint("Error en verifyOTP: $e");
     }
+    return null;
   }
 
   static Future<Map<String, dynamic>?> registerUser(Map<String, dynamic> data) async {
@@ -76,22 +94,22 @@ class ApiService {
       final response = await http.post(
         Uri.parse("$_baseUrl/auth/register"),
         body: json.encode(data),
-        headers: {'Content-Type': 'application/json'},
-      );
+        headers: _defaultHeaders,
+      ).timeout(const Duration(seconds: 15));
+
       if (response.statusCode == 200 || response.statusCode == 201) {
-        return json.decode(response.body);
+        return json.decode(response.body) as Map<String, dynamic>;
       }
-      return null;
     } catch (e) {
-      return null;
+      debugPrint("Error en registerUser: $e");
     }
+    return null;
   }
 
   // ===================================================
-  // 3. LÓGICA DE SCRAPING (Validación en el Cliente)
+  // 3. LÓGICA DE SCRAPING (Optimizado)
   // ===================================================
 
-  /// Obtiene la lista de URLs candidatas desde el Backend
   static Future<List<String>> getExtractionCandidates({
     required String tmdbId,
     required String type,
@@ -107,19 +125,21 @@ class ApiService {
       };
 
       final uri = Uri.parse("$_baseUrl/extract").replace(queryParameters: queryParams);
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      final response = await http.get(uri).timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return List<String>.from(data['candidates'] ?? []);
+        // ✅ CORRECCIÓN: Manejo seguro de la lista de candidatos
+        if (data is Map && data.containsKey('candidates')) {
+          return List<String>.from(data['candidates']);
+        }
       }
     } catch (e) {
-      print("Error obteniendo candidatos: $e");
+      debugPrint("Error obteniendo candidatos: $e");
     }
     return [];
   }
 
-  /// Prueba los candidatos desde el celular y devuelve la primera URL que responda
   static Future<String?> getValidStreamUrl({
     required String tmdbId,
     required String type,
@@ -137,20 +157,22 @@ class ApiService {
 
     for (String url in candidates) {
       try {
-        print("[ClientScraper] Probando: $url");
+        debugPrint("[ClientScraper] Probando: $url");
+        
+        // Usamos un HEAD request si es posible para ahorrar datos, 
+        // pero muchos providers requieren GET. Usamos GET con un timeout corto.
         final res = await http.get(
           Uri.parse(url),
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          },
-        ).timeout(const Duration(seconds: 4));
+          headers: _defaultHeaders,
+        ).timeout(const Duration(seconds: 5));
 
-        if (res.statusCode == 200 && res.body.length > 800) {
-          print("[ClientScraper] ✅ Éxito en: $url");
+        // ✅ Validación mejorada: Un cuerpo muy pequeño suele ser una página de error o captcha
+        if (res.statusCode == 200 && res.body.length > 1000) {
+          debugPrint("[ClientScraper] ✅ URL Válida encontrada");
           return url;
         }
       } catch (e) {
-        print("[ClientScraper] ❌ Falló: $url");
+        debugPrint("[ClientScraper] ❌ Falló: $url - Error: $e");
         continue;
       }
     }

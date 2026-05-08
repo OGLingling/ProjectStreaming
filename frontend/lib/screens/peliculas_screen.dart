@@ -30,7 +30,7 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
 
   Future<void> _loadMovies() async {
     try {
-      // ✅ CORRECCIÓN: Llamada estática al servicio
+      // ✅ Uso correcto del método estático
       final List<dynamic> data = await ApiService.getMoviesByType('movie');
 
       if (mounted) {
@@ -70,6 +70,13 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
     });
   }
 
+  void _navigateToDetails(Movie movie) {
+    Navigator.push(
+      context, 
+      MaterialPageRoute(builder: (c) => MovieDetailsScreen(movie: movie))
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -93,84 +100,87 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
 
     return SizedBox(
       height: size.height * 0.7,
-      child: Stack(
-        children: [
-          PageView.builder(
-            controller: _pageController,
-            itemCount: topRatedMovies.length,
-            onPageChanged: (index) => setState(() => _currentPage = index),
-            itemBuilder: (context, index) {
-              final movie = topRatedMovies[index];
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(
-                    movie.backdropUrl ?? movie.imageUrl ?? '',
-                    fit: BoxFit.cover,
-                    errorBuilder: (c, e, s) => Container(color: Colors.black),
+      child: PageView.builder(
+        controller: _pageController,
+        itemCount: topRatedMovies.length,
+        onPageChanged: (index) => setState(() => _currentPage = index),
+        itemBuilder: (context, index) {
+          final movie = topRatedMovies[index];
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(
+                movie.backdropUrl ?? movie.imageUrl ?? '',
+                fit: BoxFit.cover,
+                errorBuilder: (c, e, s) => Container(color: Colors.black),
+              ),
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black45,
+                      Colors.transparent,
+                      Color(0xFF141414)
+                    ],
+                    stops: [0.0, 0.6, 1.0],
                   ),
-                  Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Colors.transparent, Color(0xFF141414)],
-                        stops: [0.0, 0.5, 1.0],
+                ),
+              ),
+              Positioned(
+                bottom: 60, left: 20, right: 20,
+                child: Column(
+                  children: [
+                    Text(
+                      movie.title.toUpperCase(),
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.bebasNeue(
+                        color: Colors.white,
+                        fontSize: 45,
+                        letterSpacing: 2,
                       ),
                     ),
-                  ),
-                  Positioned(
-                    bottom: 60, left: 20, right: 20,
-                    child: Column(
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        const Icon(Icons.star, color: Colors.amber, size: 20),
+                        const SizedBox(width: 5),
                         Text(
-                          movie.title.toUpperCase(),
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.bebasNeue(
-                            color: Colors.white,
-                            fontSize: 50, // Ajustado para evitar overflow
-                            letterSpacing: 2,
+                          "${movie.rating ?? 0.0} | Tendencia",
+                          style: const TextStyle(
+                            color: Colors.green, 
+                            fontWeight: FontWeight.bold
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.star, color: Colors.amber, size: 20),
-                            const SizedBox(width: 5),
-                            Text(
-                              "${movie.rating ?? 0.0} | Tendencia",
-                              style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 25),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _HoverButton(
-                              text: "Reproducir",
-                              icon: Icons.play_arrow,
-                              isPrimary: true,
-                              onTap: () => _navigateToDetails(movie),
-                            ),
-                            const SizedBox(width: 15),
-                            _HoverButton(
-                              text: "Información",
-                              icon: Icons.info_outline,
-                              isPrimary: false,
-                              onTap: () => _navigateToDetails(movie),
-                            ),
-                          ],
                         ),
                       ],
                     ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
+                    const SizedBox(height: 25),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _HoverButton(
+                          text: "Reproducir",
+                          icon: Icons.play_arrow,
+                          isPrimary: true,
+                          onTap: () => _navigateToDetails(movie),
+                        ),
+                        const SizedBox(width: 15),
+                        _HoverButton(
+                          text: "Información",
+                          icon: Icons.info_outline,
+                          isPrimary: false,
+                          onTap: () => _navigateToDetails(movie),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -179,7 +189,14 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.only(left: 20, top: 30, bottom: 15),
-        child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        child: Text(
+          title, 
+          style: const TextStyle(
+            color: Colors.white, 
+            fontSize: 22, 
+            fontWeight: FontWeight.bold
+          )
+        ),
       ),
     );
   }
@@ -202,14 +219,113 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
     );
   }
 
-  void _navigateToDetails(Movie movie) {
-    Navigator.push(context, MaterialPageRoute(builder: (c) => MovieDetailsScreen(movie: movie)));
-  }
-
   @override
   void dispose() {
     _carouselTimer?.cancel();
     _pageController.dispose();
     super.dispose();
+  }
+}
+
+// ─── COMPONENTES REQUERIDOS PARA LA COMPILACIÓN ──────────────────────────────
+
+class _HoverButton extends StatelessWidget {
+  final String text;
+  final IconData icon;
+  final bool isPrimary;
+  final VoidCallback onTap;
+
+  const _HoverButton({
+    required this.text,
+    required this.icon,
+    required this.isPrimary,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+          decoration: BoxDecoration(
+            color: isPrimary ? Colors.white : Colors.white.withOpacity(0.25),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon, 
+                color: isPrimary ? Colors.black : Colors.white, 
+                size: 26
+              ),
+              const SizedBox(width: 8),
+              Text(
+                text,
+                style: TextStyle(
+                  color: isPrimary ? Colors.black : Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MoviePosterCard extends StatelessWidget {
+  final Movie movie;
+
+  const _MoviePosterCard({required this.movie});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (c) => MovieDetailsScreen(movie: movie)),
+        );
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              movie.imageUrl ?? '',
+              fit: BoxFit.cover,
+              errorBuilder: (c, e, s) => Container(
+                color: Colors.grey[900],
+                child: const Icon(Icons.movie, color: Colors.white24),
+              ),
+            ),
+            // Sombra inferior para legibilidad del título si decides mostrarlo
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 40,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black87, Colors.transparent],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

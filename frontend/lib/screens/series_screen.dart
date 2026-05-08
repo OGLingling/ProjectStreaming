@@ -30,14 +30,15 @@ class _SeriesScreenState extends State<SeriesScreen> {
 
   Future<void> _loadSeries() async {
     try {
-      // ✅ CORRECCIÓN: Uso estático de ApiService
+      // ✅ Uso del método estático corregido
       final List<dynamic> data = await ApiService.getMoviesByType('tv');
 
       if (mounted) {
         setState(() {
+          // Filtrado defensivo: evitamos nulos y verificamos el tipo 'tv'
           seriesList = data
               .map((m) => Movie.fromJson(m))
-              .where((m) => m.type.toLowerCase() == 'tv')
+              .where((m) => m.type.toLowerCase() == 'tv' || m.type.toLowerCase() == 'serie')
               .toList();
 
           topRatedSeries = List.from(seriesList);
@@ -70,6 +71,13 @@ class _SeriesScreenState extends State<SeriesScreen> {
     });
   }
 
+  void _navigateToDetails(Movie series) {
+    Navigator.push(
+      context, 
+      MaterialPageRoute(builder: (c) => MovieDetailsScreen(movie: series))
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -93,15 +101,11 @@ class _SeriesScreenState extends State<SeriesScreen> {
 
     return SizedBox(
       height: size.height * 0.7,
-      child: Stack(
-        children: [
-          PageView.builder(
-            controller: _pageController,
-            itemCount: topRatedSeries.length,
-            onPageChanged: (index) => setState(() => _currentPage = index),
-            itemBuilder: (context, index) => _buildCarouselItem(topRatedSeries[index]),
-          ),
-        ],
+      child: PageView.builder(
+        controller: _pageController,
+        itemCount: topRatedSeries.length,
+        onPageChanged: (index) => setState(() => _currentPage = index),
+        itemBuilder: (context, index) => _buildCarouselItem(topRatedSeries[index]),
       ),
     );
   }
@@ -132,7 +136,11 @@ class _SeriesScreenState extends State<SeriesScreen> {
               Text(
                 series.title.toUpperCase(),
                 textAlign: TextAlign.center,
-                style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 50, letterSpacing: 2),
+                style: GoogleFonts.bebasNeue(
+                  color: Colors.white, 
+                  fontSize: 50, 
+                  letterSpacing: 2
+                ),
               ),
               const SizedBox(height: 10),
               Row(
@@ -142,7 +150,10 @@ class _SeriesScreenState extends State<SeriesScreen> {
                   const SizedBox(width: 5),
                   Text(
                     "${series.rating ?? 0.0} | Top Serie",
-                    style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      color: Colors.white70, 
+                      fontWeight: FontWeight.w600
+                    ),
                   ),
                 ],
               ),
@@ -176,7 +187,14 @@ class _SeriesScreenState extends State<SeriesScreen> {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.only(left: 20, top: 30, bottom: 15),
-        child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        child: Text(
+          title, 
+          style: const TextStyle(
+            color: Colors.white, 
+            fontSize: 22, 
+            fontWeight: FontWeight.bold
+          )
+        ),
       ),
     );
   }
@@ -187,7 +205,7 @@ class _SeriesScreenState extends State<SeriesScreen> {
       sliver: SliverGrid(
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 180,
-          childAspectRatio: 0.7,
+          childAspectRatio: 0.65,
           crossAxisSpacing: 12,
           mainAxisSpacing: 18,
         ),
@@ -199,14 +217,113 @@ class _SeriesScreenState extends State<SeriesScreen> {
     );
   }
 
-  void _navigateToDetails(Movie series) {
-    Navigator.push(context, MaterialPageRoute(builder: (c) => MovieDetailsScreen(movie: series)));
-  }
-
   @override
   void dispose() {
     _carouselTimer?.cancel();
     _pageController.dispose();
     super.dispose();
+  }
+}
+
+// ─── WIDGETS DE APOYO (REQUERIDOS PARA COMPILAR) ─────────────────────────────
+
+class _HoverButton extends StatelessWidget {
+  final String text;
+  final IconData icon;
+  final bool isPrimary;
+  final VoidCallback onTap;
+
+  const _HoverButton({
+    required this.text,
+    required this.icon,
+    required this.isPrimary,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: isPrimary ? Colors.white : Colors.white.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: isPrimary ? Colors.black : Colors.white),
+            const SizedBox(width: 8),
+            Text(
+              text,
+              style: TextStyle(
+                color: isPrimary ? Colors.black : Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SeriesPosterCard extends StatelessWidget {
+  final Movie series;
+
+  const _SeriesPosterCard({required this.series});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (c) => MovieDetailsScreen(movie: series)),
+        );
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              series.imageUrl ?? '',
+              fit: BoxFit.cover,
+              errorBuilder: (c, e, s) => Container(
+                color: Colors.grey[900],
+                child: const Icon(Icons.movie, color: Colors.white24),
+              ),
+            ),
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black87, Colors.transparent],
+                  ),
+                ),
+                child: Text(
+                  series.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
