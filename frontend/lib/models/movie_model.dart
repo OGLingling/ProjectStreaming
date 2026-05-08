@@ -131,11 +131,11 @@ class Episode {
 
   factory Episode.fromJson(Map<String, dynamic> json) {
     return Episode(
-      id: json['id'],
-      episodeNumber: json['episodeNumber'],
+      id: json['id'] ?? 0,
+      episodeNumber: json['episodeNumber'] ?? 0,
       title: json['title'] ?? 'Sin título',
-      description: json['description'],
-      stillPath: json['stillPath'],
+      description: json['description'] ?? json['overview'],
+      stillPath: json['stillPath'] ?? json['still_path'],
     );
   }
 

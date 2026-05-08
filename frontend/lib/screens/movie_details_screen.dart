@@ -462,11 +462,11 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                     const Icon(Icons.download_for_offline_outlined, color: Colors.white54),
                   ],
                 ),
-                if (ep.overview != null && ep.overview!.isNotEmpty)
+                if (ep.description != null && ep.description!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      ep.overview!,
+                      ep.description!,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Colors.white70, fontSize: 13),
