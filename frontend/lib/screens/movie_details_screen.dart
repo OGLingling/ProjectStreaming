@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../models/movie_model.dart';
-import 'video_player_screen.dart'; // Importación necesaria
+import '../services/api_service.dart'; // Asegúrate de tener este import
+import 'video_player_screen.dart'; 
 import 'watchlist_providers.dart';
 
 class MovieDetailsScreen extends StatefulWidget {
@@ -19,41 +20,60 @@ class MovieDetailsScreen extends StatefulWidget {
 class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
   int _selectedSeasonIndex = 0;
   bool _isProcessing = false;
+  bool _isValidating = false; // Nuevo: Para el estado de carga del scraping
+  final ApiService _apiService = ApiService(); // Instancia del servicio
 
-  // --- LÓGICA DE NAVEGACIÓN ---
-  // Esta función conecta los datos de la DB con el Reproductor Scraper
-  void _navigateToPlayer({int season = 1, int episode = 1}) {
-    // Extraemos el ID de TMDB que guardaste con tu Seed
+  // --- LÓGICA DE NAVEGACIÓN CON CLIENT-SIDE SCRAPING ---
+  Future<void> _navigateToPlayer({int season = 1, int episode = 1}) async {
     final String? tmdbId = widget.movie.tmdbId?.toString();
 
-    if (tmdbId != null && tmdbId.isNotEmpty) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => VideoPlayerScreen(
-            tmdbId: tmdbId,
-            title: widget.movie.title,
-            type: widget.movie.type, // 'movie' o 'tv'
-            season: season,
-            episode: episode,
+    if (tmdbId == null || tmdbId.isEmpty) {
+      _showSnackBar("ID de contenido no encontrado.", Colors.redAccent);
+      return;
+    }
+
+    setState(() => _isValidating = true);
+
+    try {
+      // Intentamos obtener una URL que REALMENTE funcione desde la IP del usuario
+      final String? workingUrl = await _apiService.getValidStreamUrl(
+        tmdbId: tmdbId,
+        type: widget.movie.type,
+        season: season,
+        episode: episode,
+      );
+
+      if (workingUrl != null && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VideoPlayerScreen(
+              streamUrl: workingUrl, // Pasamos la URL ya validada
+              title: widget.movie.title,
+              tmdbId: tmdbId,
+              type: widget.movie.type,
+              season: season,
+              episode: episode,
+            ),
           ),
-        ),
-      );
-    } else {
-      _showSnackBar(
-        "ID de contenido no encontrado (TMDB ID requerido).",
-        Colors.redAccent,
-      );
+        );
+      } else {
+        _showSnackBar(
+          "No hay servidores disponibles en este momento. Reintenta más tarde.",
+          Colors.orangeAccent,
+        );
+      }
+    } catch (e) {
+      _showSnackBar("Error al conectar con los servidores.", Colors.redAccent);
+    } finally {
+      if (mounted) setState(() => _isValidating = false);
     }
   }
 
   // --- LÓGICA DE MI LISTA ---
   Future<void> _handleWatchlistToggle() async {
     if (widget.user == null || widget.user!['id'] == null) {
-      _showSnackBar(
-        "Inicia sesión para guardar favoritos",
-        Colors.orangeAccent,
-      );
+      _showSnackBar("Inicia sesión para guardar favoritos", Colors.orangeAccent);
       return;
     }
 
@@ -85,7 +105,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
       SnackBar(
         content: Text(message),
         backgroundColor: color,
-        duration: const Duration(seconds: 2),
+        duration: const Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -101,36 +121,58 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          _buildSliverAppBar(size),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeaderInfo(),
-                  const SizedBox(height: 20),
-                  _buildPrimaryButtons(), // Aquí están los botones de Play/Download
-                  const SizedBox(height: 20),
-                  _buildDescription(),
-                  const SizedBox(height: 25),
-                  _buildActionRow(isInList),
-                  const SizedBox(height: 30),
-                  if (isTV &&
-                      widget.movie.seasons != null &&
-                      widget.movie.seasons!.isNotEmpty) ...[
-                    _buildSeasonSelector(),
-                    const SizedBox(height: 15),
-                    _buildEpisodesList(),
+      body: Stack(
+        children: [
+          CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              _buildSliverAppBar(size),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeaderInfo(),
+                      const SizedBox(height: 20),
+                      _buildPrimaryButtons(),
+                      const SizedBox(height: 20),
+                      _buildDescription(),
+                      const SizedBox(height: 25),
+                      _buildActionRow(isInList),
+                      const SizedBox(height: 30),
+                      if (isTV &&
+                          widget.movie.seasons != null &&
+                          widget.movie.seasons!.isNotEmpty) ...[
+                        _buildSeasonSelector(),
+                        const SizedBox(height: 15),
+                        _buildEpisodesList(),
+                      ],
+                      const SizedBox(height: 50),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          // Overlay de carga cuando estamos validando servidores
+          if (_isValidating)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.green),
+                    SizedBox(height: 20),
+                    Text(
+                      "Sincronizando mejor servidor...",
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
                   ],
-                  const SizedBox(height: 50),
-                ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -187,7 +229,9 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
         Row(
           children: [
             Text(
-              widget.movie.releaseDate.substring(0, 4),
+              widget.movie.releaseDate.length >= 4 
+                  ? widget.movie.releaseDate.substring(0, 4) 
+                  : widget.movie.releaseDate,
               style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(width: 15),
@@ -225,7 +269,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
     return Column(
       children: [
         _buildLargeButton(
-          onTap: () => _navigateToPlayer(), // Inicia la reproducción
+          onTap: _isValidating ? () {} : () => _navigateToPlayer(), 
           icon: Icons.play_arrow,
           label: "Reproducir",
           isPrimary: true,
@@ -350,7 +394,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
       itemBuilder: (context, index) {
         final ep = episodes[index];
         return InkWell(
-          onTap: () => _navigateToPlayer(
+          onTap: _isValidating ? null : () => _navigateToPlayer(
             season: widget.movie.seasons![_selectedSeasonIndex].seasonNumber,
             episode: ep.episodeNumber,
           ),

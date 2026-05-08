@@ -21,8 +21,6 @@ function cacheGet(key) {
   return value;
 }
 
-const providerStats = {};
-
 // ---------------- UTILS ----------------
 const INVALID_STRINGS = new Set(['null', 'undefined', 'none', 'nan', '']);
 
@@ -65,133 +63,40 @@ class VideoScraper {
     const { tmdbId, isTV, season, episode } = n;
     const path = isTV ? `tv/${tmdbId}/${season}/${episode}` : `movie/${tmdbId}`;
 
-    const candidates = [
+    // Lista completa de candidatos para que el cliente pruebe
+    return [
       `https://vidsrc.me/embed/${path}`,
       `https://vidsrc.to/embed/${path}`,
       `https://vidsrc.xyz/embed/${path}`,
       `https://vidsrc.win/embed/${path}`,
       `https://player.vidsrc.co/embed/${path}`,
+      isTV
+        ? `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`
+        : `https://www.2embed.cc/embed/${tmdbId}`
     ];
-
-    if (isTV) {
-      candidates.push(`https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`);
-    } else {
-      candidates.push(`https://www.2embed.cc/embed/${tmdbId}`);
-    }
-    return candidates;
-  }
-
-  static async isAlive(url) {
-    const userAgents = [
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0'
-    ];
-
-    const randomAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
-
-    try {
-      const res = await axios.get(url, {
-        timeout: 8000,
-        headers: {
-          'User-Agent': randomAgent,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-          'Referer': new URL(url).origin,
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        },
-        validateStatus: () => true,
-        maxRedirects: 5,
-      });
-
-      if (res.status !== 200) return false;
-
-      const html = String(res.data || '');
-      if (html.length < 800) return false;
-
-      const videoSignals = [/player/i, /video/i, /source\s+src/i, /\.m3u8/i, /\.mp4/i, /iframe/i];
-      const blockSignals = [/access denied/i, /403 forbidden/i, /cloudflare/i, /captcha/i];
-
-      const hasVideoSignal = videoSignals.some((p) => p.test(html));
-      const isBlocked = blockSignals.some((p) => p.test(html));
-
-      return hasVideoSignal && !isBlocked;
-
-    } catch {
-      return false;
-    }
-  }
-
-  static updateScore(url, ok) {
-    try {
-      const domain = new URL(url).hostname;
-      if (!providerStats[domain]) providerStats[domain] = { ok: 0, fail: 0 };
-      ok ? providerStats[domain].ok++ : providerStats[domain].fail++;
-    } catch (e) {
-      console.error("[ranking] Error actualizando score:", e.message);
-    }
-  }
-
-  static sortProviders(list) {
-    if (!Array.isArray(list) || list.length === 0) return [];
-    return list.sort((a, b) => {
-      const da = providerStats[new URL(a).hostname] || { ok: 0, fail: 0 };
-      const db = providerStats[new URL(b).hostname] || { ok: 0, fail: 0 };
-      return (db.ok - db.fail) - (da.ok - da.fail);
-    });
-  }
-
-  static async getWorkingProviders(candidates) {
-    if (!Array.isArray(candidates) || candidates.length === 0) return [];
-
-    const checks = candidates.map((url) =>
-      this.isAlive(url).then((ok) => {
-        this.updateScore(url, ok);
-        console.log(`[check] ${url} → ${ok}`);
-        return { url, ok };
-      }).catch(() => ({ url, ok: false }))
-    );
-
-    const results = await Promise.allSettled(checks);
-
-    const working = results
-      .filter((r) => r.status === 'fulfilled' && r.value && r.value.ok)
-      .map((r) => r.value.url);
-
-    // Protección contra 'reading map' y lista vacía
-    if (working.length === 0) return [];
-
-    return this.sortProviders(working);
   }
 
   static async createPayload(source) {
     const n = this.normalizeRequest(source);
+
     if (n.scenario === 'invalid') {
       return { success: false, candidates: [], debug_info: { reason: 'invalid_params' } };
     }
 
-    const cacheKey = `${n.type}-${n.tmdbId}-${n.season}-${n.episode}`;
+    const cacheKey = `raw-${n.type}-${n.tmdbId}-${n.season}-${n.episode}`;
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
+    // Generamos todos los candidatos sin probarlos (Client-Side responsibility)
     const candidates = n.searchMode ? this.buildCandidates(n) : [n.url];
-    const working = await this.getWorkingProviders(candidates);
 
     const payload = {
-      success: working.length > 0,
-      candidates: working,
+      success: candidates.length > 0,
+      candidates: candidates, // Enviamos la lista completa
       tmdbId: n.tmdbId,
       type: n.type,
       searchMode: n.searchMode,
-      ...(working.length === 0 && {
-        debug_info: {
-          reason: 'no_working_providers',
-          detail: 'Todos fallaron el check',
-          checked_count: candidates.length
-        }
-      })
+      clientSideCheck: true // Bandera para que Flutter sepa que debe validar
     };
 
     if (payload.success) cacheSet(cacheKey, payload);
