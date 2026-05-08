@@ -18,7 +18,6 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
   List<Movie> topRatedMovies = [];
   bool isLoading = true;
 
-  // Controles para el carrusel de las Top 5
   final PageController _pageController = PageController();
   int _currentPage = 0;
   Timer? _carouselTimer;
@@ -31,8 +30,8 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
 
   Future<void> _loadMovies() async {
     try {
-      // Llamada al servicio (Asegúrate de que ApiService devuelva List<dynamic>)
-      final data = await ApiService.getMoviesByType('movie');
+      // ✅ CORRECCIÓN: Llamada estática al servicio
+      final List<dynamic> data = await ApiService.getMoviesByType('movie');
 
       if (mounted) {
         setState(() {
@@ -79,15 +78,9 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
           ? const Center(child: CircularProgressIndicator(color: Colors.red))
           : CustomScrollView(
               slivers: [
-                // 1. CARRUSEL DINÁMICO (BANNER)
                 SliverToBoxAdapter(child: _buildDynamicBanner()),
-
-                // 2. TÍTULO DE SECCIÓN
                 _buildTitleSection("Películas para ti"),
-
-                // 3. GRID DE PELÍCULAS (CON EFECTO POP-UP)
                 _buildMovieGrid(),
-
                 const SliverToBoxAdapter(child: SizedBox(height: 50)),
               ],
             ),
@@ -116,26 +109,18 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
                     fit: BoxFit.cover,
                     errorBuilder: (c, e, s) => Container(color: Colors.black),
                   ),
-                  // Gradiente estilo Netflix
                   Container(
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.transparent,
-                          Color(0xFF141414),
-                        ],
+                        colors: [Colors.transparent, Colors.transparent, Color(0xFF141414)],
                         stops: [0.0, 0.5, 1.0],
                       ),
                     ),
                   ),
-                  // Info de la Película
                   Positioned(
-                    bottom: 60,
-                    left: 20,
-                    right: 20,
+                    bottom: 60, left: 20, right: 20,
                     child: Column(
                       children: [
                         Text(
@@ -143,7 +128,7 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
                           textAlign: TextAlign.center,
                           style: GoogleFonts.bebasNeue(
                             color: Colors.white,
-                            fontSize: 60,
+                            fontSize: 50, // Ajustado para evitar overflow
                             letterSpacing: 2,
                           ),
                         ),
@@ -151,19 +136,11 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(
-                              Icons.star,
-                              color: Colors.amber,
-                              size: 20,
-                            ),
+                            const Icon(Icons.star, color: Colors.amber, size: 20),
                             const SizedBox(width: 5),
                             Text(
-                              "${movie.rating} | Tendencia",
-                              style: const TextStyle(
-                                color: Colors.green,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
+                              "${movie.rating ?? 0.0} | Tendencia",
+                              style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
@@ -193,28 +170,6 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
               );
             },
           ),
-          // Indicadores (Dots)
-          Positioned(
-            bottom: 20,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                topRatedMovies.length,
-                (index) => AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  height: 8,
-                  width: _currentPage == index ? 20 : 8,
-                  decoration: BoxDecoration(
-                    color: _currentPage == index ? Colors.red : Colors.grey,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -224,14 +179,7 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.only(left: 20, top: 30, bottom: 15),
-        child: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -255,10 +203,7 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
   }
 
   void _navigateToDetails(Movie movie) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (c) => MovieDetailsScreen(movie: movie)),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (c) => MovieDetailsScreen(movie: movie)));
   }
 
   @override
@@ -266,144 +211,5 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
     _carouselTimer?.cancel();
     _pageController.dispose();
     super.dispose();
-  }
-}
-
-// --- WIDGET DE BOTONES CON HOVER ---
-class _HoverButton extends StatefulWidget {
-  final String text;
-  final IconData icon;
-  final bool isPrimary;
-  final VoidCallback onTap;
-
-  const _HoverButton({
-    required this.text,
-    required this.icon,
-    required this.isPrimary,
-    required this.onTap,
-  });
-
-  @override
-  State<_HoverButton> createState() => _HoverButtonState();
-}
-
-class _HoverButtonState extends State<_HoverButton> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _isHovered ? 1.05 : 1.0,
-          duration: const Duration(milliseconds: 200),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-            decoration: BoxDecoration(
-              color: widget.isPrimary
-                  ? (_isHovered
-                        ? Colors.white.withValues(alpha: 0.9)
-                        : Colors.white)
-                  : (_isHovered
-                        ? Colors.grey.withValues(alpha: 0.5)
-                        : Colors.grey.withValues(alpha: 0.3)),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  widget.icon,
-                  color: widget.isPrimary ? Colors.black : Colors.white,
-                  size: 26,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  widget.text,
-                  style: TextStyle(
-                    color: widget.isPrimary ? Colors.black : Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// --- WIDGET DE POSTER CON EFECTO POP-UP ---
-class _MoviePosterCard extends StatefulWidget {
-  final Movie movie;
-  const _MoviePosterCard({required this.movie});
-
-  @override
-  State<_MoviePosterCard> createState() => _MoviePosterCardState();
-}
-
-class _MoviePosterCardState extends State<_MoviePosterCard> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => MovieDetailsScreen(movie: widget.movie),
-            ),
-          );
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-          transform: _isHovered
-              ? (Matrix4.identity()..scale(1.1))
-              : Matrix4.identity(),
-          transformAlignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: _isHovered
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.6),
-                      blurRadius: 15,
-                      spreadRadius: 2,
-                    ),
-                  ]
-                : [],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.network(widget.movie.imageUrl ?? '', fit: BoxFit.cover),
-                if (_isHovered)
-                  Container(
-                    color: Colors.black.withOpacity(0.3),
-                    child: const Icon(
-                      Icons.play_circle_fill,
-                      color: Colors.white,
-                      size: 50,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
