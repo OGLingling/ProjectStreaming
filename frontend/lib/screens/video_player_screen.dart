@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import 'web_player_widget.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
+  final String? streamUrl; // <--- CORRECCIÓN: Agregamos este parámetro
   final String? tmdbId;
   final String? imdbId;
   final String title;
@@ -17,6 +18,7 @@ class VideoPlayerScreen extends StatefulWidget {
 
   const VideoPlayerScreen({
     super.key,
+    this.streamUrl, // <--- CORRECCIÓN: Lo incluimos en el constructor
     this.tmdbId,
     this.imdbId,
     required this.title,
@@ -46,11 +48,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Map<String, String> get _streamHeaders {
-    final embedOrigin =
-        Uri.tryParse(_targetEmbedUrl ?? '')?.origin ?? 'https://vidsrc.me';
+    final embedOrigin = Uri.tryParse(_targetEmbedUrl ?? '')?.origin ?? 'https://vidsrc.me';
     return {
-      'User-Agent':
-          'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
       'Referer': '$embedOrigin/',
       'Origin': embedOrigin,
       'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -60,7 +60,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    _startVideoDiscovery();
+    // CORRECCIÓN: Si ya recibimos una URL validada, la usamos directo
+    if (widget.streamUrl != null && widget.streamUrl!.isNotEmpty) {
+      _setupFromPreValidatedUrl(widget.streamUrl!);
+    } else {
+      _startVideoDiscovery();
+    }
+  }
+
+  // Nueva función para manejar la URL que viene de MovieDetails
+  void _setupFromPreValidatedUrl(String url) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      setState(() {
+        _targetEmbedUrl = url;
+        _isLoading = true;
+        _isScraping = true; // Activamos el WebPlayer para extraer el .m3u8 final
+      });
+      // El WebPlayerWidget en el build detectará _targetEmbedUrl e iniciará la extracción
+    });
   }
 
   @override
@@ -135,7 +152,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             playedColor: colorScheme.secondary,
             handleColor: colorScheme.secondary,
             backgroundColor: Colors.white24,
-            bufferedColor: Colors.white.withValues(alpha: 0.3),
+            bufferedColor: Colors.white.withOpacity(0.3),
           ),
         );
         _isLoading = false;
@@ -152,9 +169,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (!mounted) return;
 
     if (index >= _candidateUrls.length) {
-      _handleError(
-        "No se pudo sincronizar ningun servidor disponible para este contenido.",
-      );
+      _handleError("No se pudo sincronizar ningún servidor disponible.");
       return;
     }
 
@@ -175,7 +190,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _tryNextCandidate(String reason) {
     debugPrint("Servidor descartado: $reason");
     _candidateTimer?.cancel();
-    _tryCandidate(_currentCandidateIndex + 1);
+    
+    // Si la URL venía pre-validada y falló la extracción de video real,
+    // intentamos buscar otros candidatos como respaldo.
+    if (widget.streamUrl != null && _candidateUrls.isEmpty) {
+      _startVideoDiscovery();
+    } else {
+      _tryCandidate(_currentCandidateIndex + 1);
+    }
   }
 
   void _handleError(String message) {
@@ -194,38 +216,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       context: context,
       builder: (context) {
         final colorScheme = Theme.of(context).colorScheme;
-
         return AlertDialog(
           backgroundColor: const Color(0xFF1B1F22),
-          surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: BorderSide(color: colorScheme.error.withValues(alpha: 0.45)),
-          ),
-          title: Row(
-            children: [
-              Icon(Icons.error_outline, color: colorScheme.error),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Error de Carga',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            error,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
-          ),
+          title: const Text('Error de Carga', style: TextStyle(color: Colors.white)),
+          content: Text(error, style: const TextStyle(color: Colors.white70)),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cerrar'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
@@ -273,7 +269,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       Text(
                         _targetEmbedUrl == null
                             ? "Obteniendo fuentes..."
-                            : "Sincronizando servidor ${_currentCandidateIndex + 1}/${_candidateUrls.length}...",
+                            : "Sincronizando video...",
                         style: const TextStyle(color: Colors.white),
                       ),
                     ],

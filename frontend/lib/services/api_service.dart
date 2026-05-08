@@ -6,17 +6,99 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  final String _baseUrl = "https://tu-proyecto-en-render.com/api";
+  // Cambia esto por tu URL real de Render
+  static const String _baseUrl = "https://tu-proyecto-en-render.com/api";
 
-  /// Función principal para obtener el stream funcional
-  Future<String?> getValidStreamUrl({
+  // ===================================================
+  // 1. MÉTODOS DE CONTENIDO (Películas y Series)
+  // ===================================================
+
+  static Future<List<dynamic>> getMoviesByType(String type) async {
+    try {
+      final response = await http.get(Uri.parse("$_baseUrl/movies?type=$type"));
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return [];
+    } catch (e) {
+      print("Error en getMoviesByType: $e");
+      return [];
+    }
+  }
+
+  // ===================================================
+  // 2. MÉTODOS DE AUTENTICACIÓN Y USUARIOS (OTP)
+  // ===================================================
+
+  static Future<Map<String, dynamic>?> getUserDataByEmail(String email) async {
+    try {
+      final response = await http.get(Uri.parse("$_baseUrl/users/$email"));
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<bool> sendOTP(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$_baseUrl/auth/send-otp"),
+        body: json.encode({'email': email}),
+        headers: {'Content-Type': 'application/json'},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> verifyOTP(String email, String otp) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$_baseUrl/auth/verify-otp"),
+        body: json.encode({'email': email, 'otp': otp}),
+        headers: {'Content-Type': 'application/json'},
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> registerUser(Map<String, dynamic> data) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$_baseUrl/auth/register"),
+        body: json.encode(data),
+        headers: {'Content-Type': 'application/json'},
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ===================================================
+  // 3. LÓGICA DE SCRAPING (Validación en el Cliente)
+  // ===================================================
+
+  /// Obtiene la lista de URLs candidatas desde el Backend
+  static Future<List<String>> getExtractionCandidates({
     required String tmdbId,
     required String type,
     int? season,
     int? episode,
   }) async {
     try {
-      // 1. Llamada al Backend para obtener la lista de candidatos
       final queryParams = {
         'tmdbId': tmdbId,
         'type': type,
@@ -25,37 +107,37 @@ class ApiService {
       };
 
       final uri = Uri.parse("$_baseUrl/extract").replace(queryParameters: queryParams);
-      final response = await http.get(uri);
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
 
-      if (response.statusCode != 200) {
-        throw Exception("Error en el backend: ${response.statusCode}");
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<String>.from(data['candidates'] ?? []);
       }
-
-      final data = json.decode(response.body);
-      
-      if (data['success'] != true || data['candidates'] == null) {
-        throw Exception("El backend no devolvió candidatos válidos.");
-      }
-
-      List<String> candidates = List<String>.from(data['candidates']);
-
-      // 2. Client-Side Scraping: Validar cuál funciona desde la IP del usuario
-      return await _findFirstWorkingUrl(candidates);
-
     } catch (e) {
-      print("Error en ApiService: $e");
-      rethrow;
+      print("Error obteniendo candidatos: $e");
     }
+    return [];
   }
 
-  /// Prueba cada URL de la lista y devuelve la primera que responda exitosamente
-  Future<String?> _findFirstWorkingUrl(List<String> urls) async {
-    for (String url in urls) {
-      try {
-        print("[Check] Probando proveedor: $url");
+  /// Prueba los candidatos desde el celular y devuelve la primera URL que responda
+  static Future<String?> getValidStreamUrl({
+    required String tmdbId,
+    required String type,
+    int? season,
+    int? episode,
+  }) async {
+    final List<String> candidates = await getExtractionCandidates(
+      tmdbId: tmdbId,
+      type: type,
+      season: season,
+      episode: episode,
+    );
 
-        // Usamos un timeout corto para no hacer esperar al usuario
-        // Hacemos un GET ligero para verificar si el servidor responde
+    if (candidates.isEmpty) return null;
+
+    for (String url in candidates) {
+      try {
+        print("[ClientScraper] Probando: $url");
         final res = await http.get(
           Uri.parse(url),
           headers: {
@@ -63,18 +145,15 @@ class ApiService {
           },
         ).timeout(const Duration(seconds: 4));
 
-        // Si responde 200 y tiene contenido, es un candidato viable
         if (res.statusCode == 200 && res.body.length > 800) {
-          print("[Check] ✅ Proveedor funcional encontrado: $url");
+          print("[ClientScraper] ✅ Éxito en: $url");
           return url;
         }
       } catch (e) {
-        print("[Check] ❌ Falló $url: $e");
-        continue; // Probar el siguiente si este falla
+        print("[ClientScraper] ❌ Falló: $url");
+        continue;
       }
     }
-    
-    // Si llegamos aquí, ninguno funcionó desde la IP del usuario
     return null;
   }
 }
