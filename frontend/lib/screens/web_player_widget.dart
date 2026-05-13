@@ -5,12 +5,14 @@ class WebPlayerWidget extends StatefulWidget {
   final String urlEmbed;
   final ValueChanged<String> onVideoFound;
   final ValueChanged<String> onLoadFailed;
+  final bool captureOnly;
 
   const WebPlayerWidget({
     super.key,
     required this.urlEmbed,
     required this.onVideoFound,
     required this.onLoadFailed,
+    this.captureOnly = true,
   });
 
   @override
@@ -41,56 +43,66 @@ class _WebPlayerWidgetState extends State<WebPlayerWidget> {
   }
 
   void _reportVideo(String url) {
-    if (_hasReportedVideo || !mounted) return;
+    if (!widget.captureOnly || _hasReportedVideo || !mounted) return;
     _hasReportedVideo = true;
     widget.onVideoFound(url);
   }
 
   void _reportLoadError(String message) {
-    if (_hasReportedVideo || _hasReportedLoadError || !mounted) return;
+    if (!widget.captureOnly ||
+        _hasReportedVideo ||
+        _hasReportedLoadError ||
+        !mounted) {
+      return;
+    }
     _hasReportedLoadError = true;
     widget.onLoadFailed(message);
   }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 1,
-      width: 1,
-      child: InAppWebView(
-        initialUrlRequest: URLRequest(
-          url: WebUri(widget.urlEmbed),
-          headers: _mobileHeaders,
-        ),
-        initialSettings: InAppWebViewSettings(
-          useShouldInterceptRequest: true,
-          javaScriptEnabled: true,
-          mediaPlaybackRequiresUserGesture: false,
-          allowsInlineMediaPlayback: true,
-          transparentBackground: true,
-          userAgent: _mobileHeaders['User-Agent'],
-        ),
-        onReceivedError: (controller, request, error) {
-          if (request.isForMainFrame == true) {
-            _reportLoadError("WebView error: ${error.description}");
-          }
-        },
-        onReceivedHttpError: (controller, request, errorResponse) {
-          if (request.isForMainFrame == true && errorResponse.statusCode != null) {
-            _reportLoadError("HTTP ${errorResponse.statusCode}");
-          }
-        },
-        shouldInterceptRequest: (controller, request) async {
-          final url = request.url.toString();
-
-          if (_isPlayableUrl(url)) {
-            debugPrint("Enlace de video capturado: $url");
-            _reportVideo(url);
-          }
-
-          return null;
-        },
+    final webView = InAppWebView(
+      initialUrlRequest: URLRequest(
+        url: WebUri(widget.urlEmbed),
+        headers: _mobileHeaders,
       ),
+      initialSettings: InAppWebViewSettings(
+        useShouldInterceptRequest: true,
+        javaScriptEnabled: true,
+        mediaPlaybackRequiresUserGesture: false,
+        allowsInlineMediaPlayback: true,
+        transparentBackground: widget.captureOnly,
+        userAgent: _mobileHeaders['User-Agent'],
+        iframeAllowFullscreen: true,
+        supportZoom: false,
+      ),
+      onReceivedError: (controller, request, error) {
+        if (request.isForMainFrame == true) {
+          _reportLoadError("WebView error: ${error.description}");
+        }
+      },
+      onReceivedHttpError: (controller, request, errorResponse) {
+        if (request.isForMainFrame == true &&
+            errorResponse.statusCode != null) {
+          _reportLoadError("HTTP ${errorResponse.statusCode}");
+        }
+      },
+      shouldInterceptRequest: (controller, request) async {
+        final url = request.url.toString();
+
+        if (_isPlayableUrl(url)) {
+          debugPrint("Enlace de video capturado: $url");
+          _reportVideo(url);
+        }
+
+        return null;
+      },
     );
+
+    if (!widget.captureOnly) {
+      return SizedBox.expand(child: webView);
+    }
+
+    return SizedBox(height: 1, width: 1, child: webView);
   }
 }
