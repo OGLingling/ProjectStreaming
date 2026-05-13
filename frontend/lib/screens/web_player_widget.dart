@@ -38,6 +38,7 @@ class _WebPlayerWidgetState extends State<WebPlayerWidget> {
     final lower = url.toLowerCase();
     if (lower.contains('googlevideo.com/videoplayback')) return true;
     if (lower.contains('.m3u8') || lower.contains('master.m3u8')) return true;
+    if (lower.contains('application/x-mpegurl')) return true;
     if (lower.contains('.mp4')) return true;
     return false;
   }
@@ -68,6 +69,7 @@ class _WebPlayerWidgetState extends State<WebPlayerWidget> {
       ),
       initialSettings: InAppWebViewSettings(
         useShouldInterceptRequest: true,
+        useOnLoadResource: true,
         javaScriptEnabled: true,
         mediaPlaybackRequiresUserGesture: false,
         allowsInlineMediaPlayback: true,
@@ -75,7 +77,17 @@ class _WebPlayerWidgetState extends State<WebPlayerWidget> {
         userAgent: _mobileHeaders['User-Agent'],
         iframeAllowFullscreen: true,
         supportZoom: false,
+        mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+        thirdPartyCookiesEnabled: true,
+        domStorageEnabled: true,
       ),
+      onLoadResource: (controller, resource) {
+        final url = resource.url.toString();
+        if (_isPlayableUrl(url)) {
+          debugPrint("Recurso de video detectado: $url");
+          _reportVideo(url);
+        }
+      },
       onReceivedError: (controller, request, error) {
         if (request.isForMainFrame == true) {
           _reportLoadError("WebView error: ${error.description}");
@@ -103,6 +115,8 @@ class _WebPlayerWidgetState extends State<WebPlayerWidget> {
       return SizedBox.expand(child: webView);
     }
 
-    return SizedBox(height: 1, width: 1, child: webView);
+    return IgnorePointer(
+      child: Opacity(opacity: 0.01, child: SizedBox.expand(child: webView)),
+    );
   }
 }
