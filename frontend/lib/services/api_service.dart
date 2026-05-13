@@ -172,7 +172,7 @@ class ApiService {
               'episode': episode?.toString(),
             }),
           )
-          .timeout(const Duration(seconds: 12));
+          .timeout(const Duration(seconds: 60));
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);

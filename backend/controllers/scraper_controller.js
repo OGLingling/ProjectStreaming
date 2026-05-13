@@ -55,7 +55,8 @@ const extractLink = async (req, res) => {
       tmdb_id: tmdbId ? parseInt(tmdbId) : null,    // Lo enviamos como string y como int por si acaso
       type: type,
       searchMode: Boolean(result.searchMode),
-      clientSideCheck: Boolean(result.clientSideCheck)
+      clientSideCheck: Boolean(result.clientSideCheck),
+      debug_info: result.debug_info || null
     };
 
     console.log('[extract] SUCCESS: Enviando respuesta universal');
