@@ -12,24 +12,30 @@ const firstValue = (...values) => {
 
 const extractLink = async (req, res) => {
   const tmdbId = firstValue(req.query.tmdbId, req.query.id, req.body?.tmdbId);
+  const url = firstValue(req.query.url, req.body?.url);
   const type = (firstValue(req.query.type, req.body?.type) || 'movie').toLowerCase();
   const season = parseInt(firstValue(req.query.season, req.body?.season)) || 1;
   const episode = parseInt(firstValue(req.query.episode, req.body?.episode)) || 1;
 
-  console.log(`[extract] Iniciando para ID: ${tmdbId}`);
+  console.log(`[extract] Iniciando para ID: ${tmdbId || 'direct-url'}`);
 
-  if (!tmdbId) {
-    return res.status(400).json({ success: false, candidates: [], error: 'No ID' });
+  if (!tmdbId && !url) {
+    return res.status(400).json({ success: false, candidates: [], error: 'No ID or URL' });
   }
 
   try {
-    const result = await VideoScraper.extractStreamUrl({ tmdbId, type, season, episode });
+    const result = await VideoScraper.extractStreamUrl({ url, tmdbId, type, season, episode });
 
-    // Generamos ambos formatos: Lista de strings y Lista de objetos
-    const candidateStrings = result.results.map(r => r.url);
-    const candidateObjects = result.results.map(r => ({
-      url: r.url,
-      name: 'Server Mirror',
+    const resultCandidates = Array.isArray(result.candidates)
+      ? result.candidates
+      : Array.isArray(result.results)
+        ? result.results.map(r => r.url).filter(Boolean)
+        : [];
+
+    const candidateStrings = [...new Set(resultCandidates)];
+    const candidateObjects = candidateStrings.map((candidateUrl, index) => ({
+      url: candidateUrl,
+      name: `Server Mirror ${index + 1}`,
       quality: 'Auto'
     }));
 
@@ -38,10 +44,11 @@ const extractLink = async (req, res) => {
       candidates: candidateStrings, // Formato string []
       sources: candidateObjects,    // Formato objeto {}
       urls: candidateStrings,       // Backup común
-      tmdbId: tmdbId,
-      tmdb_id: parseInt(tmdbId),    // Lo enviamos como string y como int por si acaso
+      tmdbId: result.tmdbId || tmdbId || null,
+      tmdb_id: tmdbId ? parseInt(tmdbId) : null,    // Lo enviamos como string y como int por si acaso
       type: type,
-      searchMode: true
+      searchMode: Boolean(result.searchMode),
+      clientSideCheck: Boolean(result.clientSideCheck)
     };
 
     console.log('[extract] SUCCESS: Enviando respuesta universal');

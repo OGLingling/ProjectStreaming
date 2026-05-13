@@ -120,6 +120,7 @@ class Episode {
   final String title;
   final String? description;
   final String? stillPath;
+  final String? videoUrl;
 
   Episode({
     required this.id,
@@ -127,6 +128,7 @@ class Episode {
     required this.title,
     this.description,
     this.stillPath,
+    this.videoUrl,
   });
 
   factory Episode.fromJson(Map<String, dynamic> json) {
@@ -136,6 +138,7 @@ class Episode {
       title: json['title'] ?? 'Sin título',
       description: json['description'] ?? json['overview'],
       stillPath: json['stillPath'] ?? json['still_path'],
+      videoUrl: json['videoUrl'] ?? json['video_url'],
     );
   }
 
@@ -145,5 +148,6 @@ class Episode {
     'title': title,
     'description': description,
     'stillPath': stillPath,
+    'videoUrl': videoUrl,
   };
 }

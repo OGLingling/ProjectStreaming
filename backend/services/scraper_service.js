@@ -83,7 +83,9 @@ class VideoScraper {
       return { success: false, candidates: [], debug_info: { reason: 'invalid_params' } };
     }
 
-    const cacheKey = `raw-${n.type}-${n.tmdbId}-${n.season}-${n.episode}`;
+    const cacheKey = n.scenario === 'url'
+      ? `raw-url-${n.url}`
+      : `raw-${n.type}-${n.tmdbId}-${n.season}-${n.episode}`;
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
