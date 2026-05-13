@@ -5,16 +5,18 @@ WORKDIR /app
 
 COPY package*.json ./
 
-# Instalamos sin ejecutar scripts automáticos que rompan el build
-RUN npm install --ignore-scripts
+# Sin --ignore-scripts para que los postinstalls corran
+RUN npm install
 
-RUN npx playwright install chromium
+# Playwright ya viene en la imagen base, pero reinstalamos chromium explícito
+RUN npx playwright install chromium --with-deps
 
 COPY . .
 
-# Generamos Prisma localmente (esto no necesita conexión a la BD activa)
 RUN npx prisma generate
 
-EXPOSE 8080
+# Variable que usará tu código para encontrar el ejecutable
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
+EXPOSE 8080
 CMD ["node", "index.js"]
