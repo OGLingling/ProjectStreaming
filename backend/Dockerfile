@@ -1,4 +1,5 @@
 FROM mcr.microsoft.com/playwright:v1.43.0-jammy
+COPY . .
 
 USER root
 WORKDIR /app
@@ -10,8 +11,6 @@ RUN npm install
 
 # Playwright ya viene en la imagen base, pero reinstalamos chromium explícito
 RUN npx playwright install chromium --with-deps
-
-COPY . .
 
 RUN npx prisma generate
 
