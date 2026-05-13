@@ -11,6 +11,7 @@ const adminRoutes = require('./routes/admin_routes');
 const authController = require('./controllers/auth_controller');
 const watchlistRoutes = require('./routes/watchlist_routes');
 const scraperRoutes = require('./routes/scraper_routes');
+const streamRoutes = require('./routes/stream_routes');
 
 // 1. CONFIGURACIÓN DE MIDDLEWARES
 const allowedOrigins = [
@@ -42,6 +43,7 @@ app.use('/api/watchlist', watchlistRoutes);
 
 // IMPORTANTE: prefijo correcto para scraper
 app.use('/api', scraperRoutes);
+app.use('/api', streamRoutes);
 
 app.get('/api/users', authController.getUserByEmail);
 

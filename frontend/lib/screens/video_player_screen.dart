@@ -60,8 +60,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   String? _targetEmbedUrl;
 
-  String? _webFallbackUrl;
-
   List<String> _candidateUrls = [];
 
   int _currentCandidateIndex = 0;
@@ -145,8 +143,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       _targetEmbedUrl = null;
 
-      _webFallbackUrl = null;
-
       _candidateUrls = [];
 
       _currentCandidateIndex = 0;
@@ -191,10 +187,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _isSettingUpPlayer = true;
 
     try {
-      _videoPlayerController = VideoPlayerController.networkUrl(
-        Uri.parse(realUrl),
+      final proxiedUrl = await ApiService.createStreamSession(
+        url: realUrl,
+        sourceUrl: _targetEmbedUrl,
+        headers: _streamHeaders,
+      );
 
-        httpHeaders: _streamHeaders,
+      final playbackUrl = proxiedUrl ?? realUrl;
+
+      _videoPlayerController = VideoPlayerController.networkUrl(
+        Uri.parse(playbackUrl),
+
+        httpHeaders: proxiedUrl == null ? _streamHeaders : const {},
       );
 
       await _videoPlayerController!.initialize().timeout(
@@ -243,23 +247,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (!mounted) return;
 
     if (index >= _candidateUrls.length) {
-      final fallbackUrl = _candidateUrls.firstWhere(
-        (url) => !_isDirectStreamUrl(url),
-        orElse: () => '',
-      );
-
-      if (fallbackUrl.isNotEmpty) {
-        _candidateTimer?.cancel();
-        setState(() {
-          _webFallbackUrl = fallbackUrl;
-          _targetEmbedUrl = fallbackUrl;
-          _isLoading = false;
-          _isScraping = false;
-          _isSettingUpPlayer = false;
-        });
-        return;
-      }
-
       _handleError(
         "No se pudo sincronizar ningun servidor disponible para este contenido.",
       );
@@ -406,15 +393,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   onVideoFound: (url) => _setupRealPlayer(url),
 
                   onLoadFailed: (error) => _tryNextCandidate(error),
-                ),
-
-              if (_webFallbackUrl != null && !_isLoading)
-                WebPlayerWidget(
-                  key: ValueKey('fallback-$_webFallbackUrl'),
-                  urlEmbed: _webFallbackUrl!,
-                  captureOnly: false,
-                  onVideoFound: (_) {},
-                  onLoadFailed: (_) {},
                 ),
 
               if (_chewieController != null && !_isLoading)

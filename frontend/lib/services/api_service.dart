@@ -225,4 +225,43 @@ class ApiService {
     }
     return null;
   }
+
+  static Future<String?> createStreamSession({
+    required String url,
+    String? sourceUrl,
+    Map<String, String>? headers,
+  }) async {
+    try {
+      final payload = <String, dynamic>{
+        'url': url.trim(),
+        if (sourceUrl != null && sourceUrl.trim().isNotEmpty)
+          'sourceUrl': sourceUrl.trim(),
+      };
+
+      if (headers != null) {
+        payload['headers'] = headers;
+      }
+
+      final response = await http
+          .post(
+            _apiUri('stream/register'),
+            headers: _jsonHeaders,
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          final streamUrl = decoded['streamUrl']?.toString();
+          if (streamUrl != null && streamUrl.startsWith('http')) {
+            return streamUrl;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error createStreamSession: $e');
+    }
+    return null;
+  }
 }
