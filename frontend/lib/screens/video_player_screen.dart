@@ -12,8 +12,6 @@ import '../providers/settings_provider.dart';
 
 import '../services/api_service.dart';
 
-import 'web_player_widget.dart';
-
 class VideoPlayerScreen extends StatefulWidget {
   final String? tmdbId;
 
@@ -54,8 +52,6 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
 
-  bool _isScraping = false;
-
   bool _isSettingUpPlayer = false;
 
   String? _targetEmbedUrl;
@@ -78,7 +74,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Map<String, String> get _streamHeaders {
     final embedOrigin =
-        Uri.tryParse(_targetEmbedUrl ?? '')?.origin ?? 'https://vidsrc.me';
+        Uri.tryParse(_targetEmbedUrl ?? '')?.origin ?? 'https://moviewind.app';
 
     return {
       'User-Agent':
@@ -137,8 +133,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() {
       _isLoading = true;
 
-      _isScraping = true;
-
       _isSettingUpPlayer = false;
 
       _targetEmbedUrl = null;
@@ -171,7 +165,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ),
       );
 
-      _candidateUrls = candidates.toSet().toList();
+      _candidateUrls = candidates
+          .where(_isDirectStreamUrl)
+          .where((url) => !url.contains('/embed/'))
+          .toSet()
+          .toList();
+
+      if (_candidateUrls.isEmpty) {
+        _handleError(
+          "No hay un stream directo disponible para este contenido. El backend debe entregar una URL .m3u8 o .mp4, no un embed del proveedor.",
+        );
+        return;
+      }
 
       _tryCandidate(0);
     } catch (e) {
@@ -189,7 +194,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       final proxiedUrl = await ApiService.createStreamSession(
         url: realUrl,
-        sourceUrl: _targetEmbedUrl,
+        sourceUrl: _targetEmbedUrl ?? realUrl,
         headers: _streamHeaders,
       );
 
@@ -231,8 +236,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         );
 
         _isLoading = false;
-
-        _isScraping = false;
       });
     } catch (e) {
       _isSettingUpPlayer = false;
@@ -266,8 +269,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       _isLoading = true;
 
-      _isScraping = !isDirectStream;
-
       _isSettingUpPlayer = false;
     });
 
@@ -276,9 +277,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return;
     }
 
-    _candidateTimer = Timer(const Duration(seconds: 18), () {
-      _tryNextCandidate("Tiempo agotado en servidor ${index + 1}");
-    });
+    _tryNextCandidate("Candidato no es un stream directo: $candidateUrl");
   }
 
   void _tryNextCandidate(String reason) {
@@ -295,8 +294,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       setState(() {
         _isLoading = false;
-
-        _isScraping = false;
       });
 
       _showErrorDialog(message);
@@ -384,17 +381,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         builder: (context, settings, child) {
           return Stack(
             children: [
-              if (_isScraping && _targetEmbedUrl != null)
-                WebPlayerWidget(
-                  key: ValueKey(_targetEmbedUrl),
-
-                  urlEmbed: _targetEmbedUrl!,
-
-                  onVideoFound: (url) => _setupRealPlayer(url),
-
-                  onLoadFailed: (error) => _tryNextCandidate(error),
-                ),
-
               if (_chewieController != null && !_isLoading)
                 Center(child: Chewie(controller: _chewieController!)),
 

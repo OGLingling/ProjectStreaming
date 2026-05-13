@@ -10,6 +10,13 @@ const firstValue = (...values) => {
   });
 };
 
+const isDirectStreamUrl = (url) => {
+  const lower = String(url || '').toLowerCase();
+  return lower.includes('.m3u8') ||
+    lower.includes('.mp4') ||
+    lower.includes('googlevideo.com/videoplayback');
+};
+
 const extractLink = async (req, res) => {
   const tmdbId = firstValue(req.query.tmdbId, req.query.id, req.body?.tmdbId);
   const url = firstValue(req.query.url, req.body?.url);
@@ -32,7 +39,7 @@ const extractLink = async (req, res) => {
         ? result.results.map(r => r.url).filter(Boolean)
         : [];
 
-    const candidateStrings = [...new Set(resultCandidates)];
+    const candidateStrings = [...new Set(resultCandidates)].filter(isDirectStreamUrl);
     const candidateObjects = candidateStrings.map((candidateUrl, index) => ({
       url: candidateUrl,
       name: `Server Mirror ${index + 1}`,
