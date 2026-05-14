@@ -32,16 +32,10 @@ const MOBILE_USER_AGENT =
   'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
 
 const AD_HOST_HINTS = [
-  'doubleclick',
-  'googlesyndication',
-  'google-analytics',
-  'adservice',
-  'adsterra',
-  'popads',
-  'propeller',
-  'taboola',
-  'onclick',
-  'tracking'
+  'doubleclick', 'googlesyndication', 'google-analytics',
+  'adservice', 'adsterra', 'popads', 'propeller',
+  'taboola', 'onclick', 'tracking', 'sharethis',
+  'dtscout', 'crwdcntrl', 'lijit', 'pxdrop'
 ];
 
 const sanitize = (v) => {
@@ -72,7 +66,7 @@ function buildHeaders(targetUrl, refererUrl) {
 
   return {
     'User-Agent': MOBILE_USER_AGENT,
-    Referer: `${origin}/`,
+    Referer: refererUrl && isValidUrl(refererUrl) ? refererUrl : `${origin}/`,
     Origin: origin,
     Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7'
@@ -102,13 +96,8 @@ function extractDirectUrlsFromText(text, baseUrl) {
   for (const match of decoded.matchAll(absoluteUrlPattern)) {
     urls.push(match[0]);
   }
-
   for (const match of decoded.matchAll(relativeUrlPattern)) {
-    try {
-      urls.push(new URL(match[1], baseUrl).toString());
-    } catch (_) {
-      // ignore malformed relative candidates
-    }
+    try { urls.push(new URL(match[1], baseUrl).toString()); } catch (_) { }
   }
 
   return unique(urls.map((url) => url.replace(/[),;]+$/g, ''))).filter(isDirectStreamUrl);
@@ -119,10 +108,19 @@ function isAdOrNoiseUrl(url) {
   return AD_HOST_HINTS.some((hint) => lower.includes(hint));
 }
 
-// ---------------- BROWSER (PLAYWRIGHT) ----------------
-// Se elimina getBrowserStack() y todo rastro de Puppeteer.
-// Playwright es el que está instalado en la imagen Docker y el que debe usarse.
+// ─── WAIT HELPER ─────────────────────────────────────────────────────────────
+// Espera hasta encontrar una stream URL o hasta que se acabe el tiempo.
+// Más confiable que un waitForTimeout fijo.
+async function waitForStreamOrTimeout(found, maxMs = 15000, checkIntervalMs = 500) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    if (found.some(isDirectStreamUrl)) return true;
+    await new Promise(r => setTimeout(r, checkIntervalMs));
+  }
+  return found.some(isDirectStreamUrl);
+}
 
+// ---------------- BROWSER (PLAYWRIGHT) ----------------
 async function extractWithBrowser(embedUrl) {
   const found = [];
   let browser;
@@ -146,104 +144,176 @@ async function extractWithBrowser(embedUrl) {
       userAgent: MOBILE_USER_AGENT,
       viewport: { width: 412, height: 915 },
       isMobile: true,
-      hasTouch: true,
-      extraHTTPHeaders: buildHeaders(embedUrl)
+      hasTouch: true
     });
 
     // ── Función reutilizable para scrapear una página ─────────────────────
-    async function scrapePage(page, url, referer = null) {
+    // FIX #1: referer se propaga correctamente como header HTTP, no solo como
+    // extraHTTPHeaders del contexto (que a veces no se aplica en navegaciones).
+    async function scrapePage(url, refererUrl = null) {
+      const page = await context.newPage();
 
-      const headers = {
-        ...buildHeaders(url),
-        ...(referer ? { 'Referer': referer, 'Origin': new URL(referer).origin } : {})
-      };
+      // FIX #2: el referer exacto es crítico para player.vidsrc.co y vsembed.ru.
+      // Si viene de vsembed.ru, el Origin debe ser vsembed.ru, no vidsrc.to.
+      const effectiveReferer = refererUrl || `${new URL(url).origin}/`;
+      const effectiveOrigin = isValidUrl(refererUrl)
+        ? new URL(refererUrl).origin
+        : new URL(url).origin;
 
-      await page.setExtraHTTPHeaders(headers);
+      await page.setExtraHTTPHeaders({
+        'User-Agent': MOBILE_USER_AGENT,
+        'Referer': effectiveReferer,
+        'Origin': effectiveOrigin,
+        'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8'
+      });
 
+      // FIX #3: interceptar ANTES de navegar, incluir XHR y Fetch, no solo "document".
       await page.route('**/*', async (route) => {
         const reqUrl = route.request().url();
-        const resourceType = route.request().resourceType();
-        if (isDirectStreamUrl(reqUrl) && !isAdOrNoiseUrl(reqUrl)) found.push(reqUrl);
-        if (resourceType === 'font' || isAdOrNoiseUrl(reqUrl)) {
-          await route.abort();
-          return;
+        const resType = route.request().resourceType();
+
+        if (isDirectStreamUrl(reqUrl) && !isAdOrNoiseUrl(reqUrl)) {
+          found.push(reqUrl);
+          console.log(`[browser] ✅ Stream capturado (route): ${reqUrl.substring(0, 80)}`);
         }
-        await route.continue();
+
+        // Bloquear ruido que solo consume ancho de banda
+        if (resType === 'font' || resType === 'image' || isAdOrNoiseUrl(reqUrl)) {
+          return route.abort();
+        }
+        return route.continue();
       });
 
       page.on('request', (request) => {
         const reqUrl = request.url();
-        if (isDirectStreamUrl(reqUrl) && !isAdOrNoiseUrl(reqUrl)) found.push(reqUrl);
+        if (isDirectStreamUrl(reqUrl) && !isAdOrNoiseUrl(reqUrl)) {
+          found.push(reqUrl);
+          console.log(`[browser] ✅ Stream capturado (event): ${reqUrl.substring(0, 80)}`);
+        }
       });
 
+      // FIX #4: usar 'domcontentloaded' en lugar de 'networkidle'.
+      // Los players de vidsrc tienen polling continuo → networkidle NUNCA llega,
+      // el timeout corta la ejecución antes de que el m3u8 se solicite.
       try {
-        await page.goto(url, { waitUntil: 'networkidle', timeout: 25000 });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
       } catch (e) {
-        if (!e.message.toLowerCase().includes('timeout')) throw e;
+        if (!e.message.toLowerCase().includes('timeout')) {
+          await page.close().catch(() => { });
+          throw e;
+        }
+        console.log(`[browser] goto timeout (ignorado): ${url}`);
       }
 
-      // Click en el player
+      // FIX #5: esperar que el player exista en el DOM antes de clickear.
+      // El click ciego en querySelector falla si el player aún no renderizó.
+      try {
+        await page.waitForSelector('video, [class*="play"], .jw-display, .plyr__control', {
+          timeout: 5000
+        });
+      } catch (_) {
+        // El selector no apareció — intentar click genérico igual
+      }
+
       await page.evaluate(() => {
-        const selectors = ['video', '[class*="play"]', '[role="button"]', 'button', '.play', '#play'];
+        const selectors = [
+          'video',
+          '.jw-display-icon-container',
+          '.plyr__control--overlaid',
+          '[class*="play"]',
+          '[role="button"]',
+          'button',
+          '.play',
+          '#play'
+        ];
         for (const sel of selectors) {
           const el = document.querySelector(sel);
           if (el) { el.click(); return; }
         }
       }).catch(() => { });
 
-      await page.waitForTimeout(8000);
+      // FIX #6: espera adaptativa — no esperar tiempo fijo, sino hasta detectar
+      // el stream o hasta que pasen 15s. Si ya hay stream, termina antes.
+      await waitForStreamOrTimeout(found, 15000);
 
-      const iframeList = await page.evaluate(() =>
+      // Si aún no hay stream, un segundo click puede ser necesario
+      // (algunos players requieren dos interacciones para iniciar)
+      if (!found.some(isDirectStreamUrl)) {
+        await page.evaluate(() => {
+          const el = document.querySelector('video, [class*="play"], button');
+          if (el) el.click();
+        }).catch(() => { });
+        await waitForStreamOrTimeout(found, 8000);
+      }
+
+      // Extraer iframes para la siguiente capa
+      const iframes = await page.evaluate(() =>
         [...document.querySelectorAll('iframe')]
           .map(f => f.src)
-          .filter(s => s && s.startsWith('http') && !s.includes('google') && !s.includes('ads'))
+          .filter(s => s && s.startsWith('http'))
       ).catch(() => []);
 
-      // Cloudnestra primero, luego el resto
-      return iframeList.sort((a, b) =>
-        b.includes('cloudnestra') - a.includes('cloudnestra')
-      );
+      await page.close();
+
+      // FIX #7: ampliar la lista de noise a filtrar al extraer iframes.
+      const IFRAME_NOISE = [
+        'google', 'ads', 'sharethis', 'dtscout',
+        'crwdcntrl', 'lijit', 'pxdrop', 'facebook',
+        'twitter', 'analytics'
+      ];
+      return iframes.filter(u => !IFRAME_NOISE.some(n => u.includes(n)));
     }
 
-    // ── Paso 1: scrapea la página principal ──────────────────────────────
-    const page1 = await context.newPage();
-    const iframes = await scrapePage(page1, embedUrl, null);
-    await page1.close();
+    // ── Paso 1: scrape de la URL de entrada ──────────────────────────────
+    console.log(`[browser] Iniciando: ${embedUrl}`);
+    const level1Iframes = await scrapePage(embedUrl, null);
+    console.log(`[browser] Iframes L1:`, level1Iframes);
 
-    console.log(`[browser] Iframes en ${embedUrl}:`, iframes);
+    // ── Paso 2: seguir iframes si no hay stream aún ──────────────────────
+    if (!found.some(isDirectStreamUrl) && level1Iframes.length > 0) {
+      // Priorizar los proveedores conocidos
+      const PRIORITY_HOSTS = ['vsembed', 'cloudnestra', 'vidsrc', 'embedrise'];
+      const sorted = [...level1Iframes].sort((a, b) => {
+        const aScore = PRIORITY_HOSTS.findIndex(h => a.includes(h));
+        const bScore = PRIORITY_HOSTS.findIndex(h => b.includes(h));
+        return (aScore === -1 ? 99 : aScore) - (bScore === -1 ? 99 : bScore);
+      });
 
-    // ── Paso 2: si no encontró .m3u8, sigue la cadena de iframes ─────────
-    if (!found.some(isDirectStreamUrl) && iframes.length > 0) {
-      console.log(`[browser] Siguiendo cadena de iframes...`);
-
-      const usefulIframes = iframes.filter(url =>
-        !url.includes('sharethis') &&
-        !url.includes('dtscout') &&
-        !url.includes('crwdcntrl') &&
-        !url.includes('lijit') &&
-        url.startsWith('http')
-      );
-
-      for (const iframeUrl of usefulIframes.slice(0, 3)) {
+      for (const iframeUrl of sorted.slice(0, 3)) {
         if (found.some(isDirectStreamUrl)) break;
+        console.log(`[browser] → L2 iframe: ${iframeUrl}`);
         try {
-          console.log(`[browser] Navegando iframe: ${iframeUrl}`);
-          const page2 = await context.newPage();
-          await scrapePage(page2, iframeUrl, embedUrl);
-          await page2.close();
+          const level2Iframes = await scrapePage(iframeUrl, embedUrl);
+          console.log(`[browser] Iframes L2 desde ${iframeUrl}:`, level2Iframes);
+
+          // ── Paso 3: tercer nivel si hace falta ──────────────────────
+          // FIX #8: el problema original es exactamente aquí.
+          // vidsrc.me → vsembed.ru → player.vidsrc.co (era nivel 3, no explorado)
+          if (!found.some(isDirectStreamUrl) && level2Iframes.length > 0) {
+            for (const deepUrl of level2Iframes.slice(0, 2)) {
+              if (found.some(isDirectStreamUrl)) break;
+              console.log(`[browser] → L3 iframe: ${deepUrl}`);
+              try {
+                await scrapePage(deepUrl, iframeUrl);
+              } catch (e) {
+                console.log(`[browser] L3 falló: ${e.message}`);
+              }
+            }
+          }
         } catch (e) {
-          console.log(`[browser] Iframe fallido: ${e.message}`);
+          console.log(`[browser] L2 falló: ${e.message}`);
         }
       }
     }
 
-    // ── Paso 3: último recurso — HTML renderizado ─────────────────────────
+    // ── Fallback: extracción del HTML renderizado ────────────────────────
     if (!found.some(isDirectStreamUrl)) {
-      const page3 = await context.newPage();
-      await page3.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => { });
-      const content = await page3.content().catch(() => '');
+      console.log(`[browser] Fallback: extrayendo del HTML estático`);
+      const page = await context.newPage();
+      await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => { });
+      const content = await page.content().catch(() => '');
       found.push(...extractDirectUrlsFromText(content, embedUrl));
-      await page3.close();
+      await page.close();
     }
 
     await context.close();
@@ -255,7 +325,9 @@ async function extractWithBrowser(embedUrl) {
     if (browser) await browser.close().catch(() => { });
   }
 
-  return { urls: unique(found).filter(isDirectStreamUrl), error: null };
+  const result = unique(found).filter(isDirectStreamUrl);
+  console.log(`[browser] Total streams encontrados: ${result.length}`);
+  return { urls: result, error: null };
 }
 
 // ---------------- CLASS ----------------
@@ -287,25 +359,25 @@ class VideoScraper {
     const { tmdbId, isTV, season, episode } = n;
     const path = isTV ? `tv/${tmdbId}/${season}/${episode}` : `movie/${tmdbId}`;
 
-    return [
-      `https://vidsrc.me/embed/${path}`,
+    // FIX #9: agregar vsembed.ru como candidato directo ya que es el player real.
+    // Saltarse la capa intermedia de vidsrc.me reduce un nivel de indirección.
+    const candidates = [
       `https://vidsrc.to/embed/${path}`,
-      `https://player.vidsrc.co/embed/${path}`,
+      `https://vidsrc.me/embed/${path}`,
+      `https://vsembed.ru/embed/${path}/`,
       isTV
         ? `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`
-        : `https://www.2embed.cc/embed/${tmdbId}`
+        : `https://www.2embed.cc/embed/${tmdbId}`,
+      `https://player.vidsrc.co/embed/${path}`
     ];
+
+    return candidates;
   }
 
   static async extractFromEmbed(embedUrl, options = {}) {
     const useBrowser = options.useBrowser !== false;
     const debug = { embedUrl, browserCount: 0, errors: [] };
     const urls = [];
-
-    // ELIMINADO: el fetch estático previo era trabajo inútil.
-    // Ninguno de los providers (vidsrc, 2embed) tiene el .m3u8 en el HTML estático.
-    // Todos lo generan mediante JavaScript dentro de iframes anidados.
-    // Hacer un fetch estático primero solo agrega latencia sin resultado.
 
     if (useBrowser) {
       const browserResult = await extractWithBrowser(embedUrl);
@@ -350,19 +422,15 @@ class VideoScraper {
     const candidates = [];
     const debug = [];
 
-    // SCRAPER_BROWSER_LIMIT controla cuántos providers intentamos con browser
-    // Default 3: suficiente para tener redundancia sin consumir demasiada RAM
     const browserLimit = Number(process.env.SCRAPER_BROWSER_LIMIT) || 3;
 
     for (const [index, embedUrl] of embeds.entries()) {
+      if (candidates.length >= 2) break;
       const result = await this.extractFromEmbed(embedUrl, {
         useBrowser: index < browserLimit
       });
       debug.push(result.debug);
       candidates.push(...result.urls);
-
-      // Con 2 streams encontrados es suficiente para dar opciones al usuario
-      if (candidates.length >= 2) break;
     }
 
     const streamCandidates = unique(candidates).filter(isDirectStreamUrl);
@@ -380,7 +448,6 @@ class VideoScraper {
       }
     };
 
-    // Solo cachear si encontramos algo — no tiene sentido cachear fallos
     if (payload.success) cacheSet(cacheKey, payload);
     return payload;
   }
