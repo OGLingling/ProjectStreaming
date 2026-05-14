@@ -151,7 +151,15 @@ async function extractWithBrowser(embedUrl) {
     });
 
     // ── Función reutilizable para scrapear una página ─────────────────────
-    async function scrapePage(page, url) {
+    async function scrapePage(page, url, referer = null) {
+
+      const headers = {
+        ...buildHeaders(url),
+        ...(referer ? { 'Referer': referer, 'Origin': new URL(referer).origin } : {})
+      };
+
+      await page.setExtraHTTPHeaders(headers);
+
       await page.route('**/*', async (route) => {
         const reqUrl = route.request().url();
         const resourceType = route.request().resourceType();
@@ -183,7 +191,7 @@ async function extractWithBrowser(embedUrl) {
         }
       }).catch(() => { });
 
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(8000);
 
       const iframeList = await page.evaluate(() =>
         [...document.querySelectorAll('iframe')]
@@ -199,7 +207,7 @@ async function extractWithBrowser(embedUrl) {
 
     // ── Paso 1: scrapea la página principal ──────────────────────────────
     const page1 = await context.newPage();
-    const iframes = await scrapePage(page1, embedUrl);
+    const iframes = await scrapePage(page1, embedUrl, null);
     await page1.close();
 
     console.log(`[browser] Iframes en ${embedUrl}:`, iframes);
@@ -221,7 +229,7 @@ async function extractWithBrowser(embedUrl) {
         try {
           console.log(`[browser] Navegando iframe: ${iframeUrl}`);
           const page2 = await context.newPage();
-          await scrapePage(page2, iframeUrl);
+          await scrapePage(page2, iframeUrl, embedUrl);
           await page2.close();
         } catch (e) {
           console.log(`[browser] Iframe fallido: ${e.message}`);
