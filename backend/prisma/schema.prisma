@@ -1,3 +1,7 @@
+// prisma/schema.prisma — SCHEMA COMPLETO ACTUALIZADO
+// Solo se agregan campos nuevos a modelos existentes.
+// NO se rompe nada de lo que ya tienes.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,71 +12,81 @@ datasource db {
 }
 
 model Content {
-  id           Int      @id @default(autoincrement())
-  tmdbId       String?  @unique @map("tmdb_id")
-  title        String
-  description  String?  @db.Text
-  releaseDate  String?
-  
-  // Visuales
-  imageUrl     String?
-  backdropUrl  String?
-  trailerUrl   String?  @map("trailer_url")
-  
-  // Clasificación y Tipo
-  category     String?
-  type         String   @default("movie") // "movie" o "tv"
-  rating       Float    @default(0.0)
-  
-  // Relaciones
-  seasons      Season[]
-  watchlist    Watchlist[] // Relación con "Mi Lista"
+  id          Int    @id @default(autoincrement())
+  tmdbId      String? @unique @map("tmdb_id")
+  title       String
+  description String? @db.Text
+  releaseDate String?
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt 
+  imageUrl    String?
+  backdropUrl String?
+  trailerUrl  String? @map("trailer_url")
 
-  @@index([title]) 
+  category String?
+  type     String  @default("movie")
+  rating   Float   @default(0.0)
+
+  // ── NUEVO: stream para películas ──────────────────────────────────────────
+  videoUrl        String?  @db.Text // URL .m3u8 o .mp4
+  streamSource    String?            // "vidsrc.me", "vidsrc.to", etc.
+  streamExpiresAt DateTime?          // cuándo vence el token de la URL
+  // ─────────────────────────────────────────────────────────────────────────
+
+  seasons   Season[]
+  watchlist Watchlist[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([title])
+  @@index([streamExpiresAt]) // NUEVO: para que el worker encuentre rápido las que vencen
 }
 
-// Modelo para "Mi Lista" (Antes Favoritos)
 model Watchlist {
-  id        Int      @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
   contentId Int
-  content   Content  @relation(fields: [contentId], references: [id])
+  content   Content @relation(fields: [contentId], references: [id])
 
   createdAt DateTime @default(now())
 
-  @@unique([userId, contentId]) // Evita duplicados en la lista
+  @@unique([userId, contentId])
 }
 
 model Season {
-  id           Int       @id @default(autoincrement())
+  id           Int    @id @default(autoincrement())
   seasonNumber Int
   title        String?
-  tmdbId       String?   @unique @map("tmdb_id")
-  
-  contentId    Int
-  content      Content   @relation(fields: [contentId], references: [id], onDelete: Cascade)
-  episodes     Episode[]
+  tmdbId       String? @unique @map("tmdb_id")
 
-  createdAt    DateTime  @default(now())
+  contentId Int
+  content   Content   @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  episodes  Episode[]
+
+  createdAt DateTime @default(now())
 }
 
 model Episode {
-  id            Int      @id @default(autoincrement())
+  id            Int    @id @default(autoincrement())
   episodeNumber Int
   title         String
-  description   String?  @db.Text
+  description   String? @db.Text
   stillPath     String?
-  videoUrl      String?
+  videoUrl      String? // ya existía — aquí guardamos el .m3u8
   duration      String?
-  
-  seasonId      Int
-  season        Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
 
-  createdAt     DateTime @default(now())
+  // ── NUEVO: metadata del stream del episodio ───────────────────────────────
+  streamSource    String?   // "vidsrc.me", "vidsrc.to", etc.
+  streamExpiresAt DateTime? // cuándo vence el token
+  // ─────────────────────────────────────────────────────────────────────────
+
+  seasonId Int
+  season   Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([streamExpiresAt]) // NUEVO: para el worker de refresh
 }
 
 enum PlanType {
@@ -82,14 +96,13 @@ enum PlanType {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String?   @default("123456")
-  name      String
+  id         String  @id @default(uuid())
+  email      String  @unique
+  password   String? @default("123456")
+  name       String
   profilePic String? @default("assets/avatars/usuario5.webp")
-  createdAt DateTime @default(now())
-  plan      PlanType @default(basico)
-  isVerified Boolean @default(false)
+  plan       PlanType @default(basico)
+  isVerified Boolean  @default(false)
   pin          String?
   pinExpiresAt DateTime?
   language          String  @default("es")
@@ -98,32 +111,53 @@ model User {
   subtitleSize      String  @default("medium")
   autoPlay          Boolean @default(true)
   myList        Watchlist[]
+
+  createdAt DateTime @default(now())
 }
 
-// Modelo para logs de scraping
 model ScrapeLog {
-  id          Int      @id @default(autoincrement())
-  targetUrl   String   @db.Text
-  success     Boolean
-  streamUrl   String?  @db.Text
-  error       String?  @db.Text
-  duration    Int?     // Duración en milisegundos
-  createdAt   DateTime @default(now())
-  
+  id        Int    @id @default(autoincrement())
+  targetUrl String @db.Text
+  success   Boolean
+  streamUrl String? @db.Text
+  error     String? @db.Text
+  duration  Int?
+
+  createdAt DateTime @default(now())
+
   @@index([targetUrl])
   @@index([success])
   @@index([createdAt])
 }
 
-// Modelo para enlaces rotos detectados por el scraper
 model BrokenLink {
-  id        Int      @id @default(autoincrement())
-  url       String   @db.Text
-  error     String?  @db.Text
+  id        Int    @id @default(autoincrement())
+  url       String @db.Text
+  error     String? @db.Text
   provider  String?
   timestamp DateTime @default(now())
-  
+
   @@index([url])
   @@index([provider])
   @@index([timestamp])
+}
+
+// ── NUEVO: cola de scraping persistente ──────────────────────────────────────
+// Registra qué contenido está pendiente de scrapear.
+// Evita encolar el mismo contenido dos veces si el servidor se reinicia.
+model ScrapeJob {
+  id        Int    @id @default(autoincrement())
+  tmdbId    String
+  type      String // "movie" | "tv"
+  season    Int    @default(1)
+  episode   Int    @default(1)
+  status    String @default("pending") // "pending" | "processing" | "done" | "failed"
+  attempts  Int    @default(0)
+  error     String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tmdbId, type, season, episode])
+  @@index([status, createdAt])
 }

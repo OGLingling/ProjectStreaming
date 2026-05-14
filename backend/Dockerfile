@@ -1,14 +1,10 @@
 FROM mcr.microsoft.com/playwright:v1.43.0-jammy
-
+USER root
 WORKDIR /app
-
-# Primero copiamos TODO (incluyendo la carpeta prisma)
-COPY . .
-
-# Al ejecutar install, el postinstall de Prisma encontrará el archivo correctamente
+COPY package*.json ./
 RUN npm install
-
-RUN npx playwright install chromium
-
+RUN npx playwright install chromium --with-deps
+COPY . .
+RUN npx prisma generate
 EXPOSE 8080
 CMD ["node", "index.js"]

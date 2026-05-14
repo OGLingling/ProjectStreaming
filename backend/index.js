@@ -12,6 +12,8 @@ const authController = require('./controllers/auth_controller');
 const watchlistRoutes = require('./routes/watchlist_routes');
 const scraperRoutes = require('./routes/scraper_routes');
 const streamRoutes = require('./routes/stream_routes');
+const { getStreamLink, getStatus } = require('./controllers/stream_controller');
+const { startWorker } = require('./services/stream_worker');
 
 // 1. CONFIGURACIÓN DE MIDDLEWARES
 const allowedOrigins = [
@@ -40,6 +42,8 @@ app.use('/api/movies', movieRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/watchlist', watchlistRoutes);
+app.get('/api/stream/link', getStreamLink);
+app.get('/api/stream/status', getStatus);
 
 // IMPORTANTE: prefijo correcto para scraper
 app.use('/api', scraperRoutes);
@@ -65,6 +69,13 @@ const PORT = process.env.PORT || 8080;
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor activo en puerto ${PORT}`);
   console.log('✅ Ruta de scraping cargada correctamente en /api/extract');
+  startWorker();
 });
 
 server.timeout = 120000;
+
+process.on('SIGTERM', () => {
+  const { stopWorker } = require('./services/stream_worker');
+  stopWorker();
+  process.exit(0);
+});

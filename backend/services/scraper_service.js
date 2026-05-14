@@ -55,23 +55,26 @@ const isNumericId = (s) => /^\d+$/.test(String(s || ''));
 
 const isDirectStreamUrl = (url) => {
   const lower = String(url || '').toLowerCase();
-  return lower.includes('.m3u8') ||
+  return (
+    lower.includes('.m3u8') ||
     lower.includes('.mp4') ||
-    lower.includes('googlevideo.com/videoplayback');
+    lower.includes('googlevideo.com/videoplayback')
+  );
 };
 
 const unique = (items) => [...new Set(items.filter(Boolean))];
 
 function buildHeaders(targetUrl, refererUrl) {
-  const origin = refererUrl && isValidUrl(refererUrl)
-    ? new URL(refererUrl).origin
-    : new URL(targetUrl).origin;
+  const origin =
+    refererUrl && isValidUrl(refererUrl)
+      ? new URL(refererUrl).origin
+      : new URL(targetUrl).origin;
 
   return {
     'User-Agent': MOBILE_USER_AGENT,
-    'Referer': `${origin}/`,
-    'Origin': origin,
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    Referer: `${origin}/`,
+    Origin: origin,
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7'
   };
 }
@@ -91,8 +94,10 @@ function decodeEscapedText(value) {
 function extractDirectUrlsFromText(text, baseUrl) {
   const decoded = decodeEscapedText(text);
   const urls = [];
-  const absoluteUrlPattern = /https?:\/\/[^\s"'<>\\]+?(?:\.m3u8|\.mp4|videoplayback)[^\s"'<>\\]*/gi;
-  const relativeUrlPattern = /(?:src|file|url|source)\s*[:=]\s*["']([^"']+?(?:\.m3u8|\.mp4)[^"']*)["']/gi;
+  const absoluteUrlPattern =
+    /https?:\/\/[^\s"'<>\\]+?(?:\.m3u8|\.mp4|videoplayback)[^\s"'<>\\]*/gi;
+  const relativeUrlPattern =
+    /(?:src|file|url|source)\s*[:=]\s*["']([^"']+?(?:\.m3u8|\.mp4)[^"']*)["']/gi;
 
   for (const match of decoded.matchAll(absoluteUrlPattern)) {
     urls.push(match[0]);
@@ -114,129 +119,134 @@ function isAdOrNoiseUrl(url) {
   return AD_HOST_HINTS.some((hint) => lower.includes(hint));
 }
 
-async function fetchHtml(url) {
-  const response = await axios.get(url, {
-    headers: buildHeaders(url),
-    timeout: 12000,
-    maxRedirects: 5,
-    responseType: 'text',
-    validateStatus: (status) => status >= 200 && status < 500
-  });
-
-  if (response.status >= 400) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-
-  return String(response.data || '');
-}
-
-let browserStackPromise = null;
-
-async function getBrowserStack() {
-  if (browserStackPromise) return browserStackPromise;
-
-  browserStackPromise = (async () => {
-    const puppeteerExtra = require('puppeteer-extra');
-    const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-    const puppeteer = require('puppeteer');
-
-    puppeteerExtra.use(StealthPlugin());
-
-    return { puppeteer: puppeteerExtra, executablePath: puppeteer.executablePath() };
-  })();
-
-  return browserStackPromise;
-}
+// ---------------- BROWSER (PLAYWRIGHT) ----------------
+// Se elimina getBrowserStack() y todo rastro de Puppeteer.
+// Playwright es el que está instalado en la imagen Docker y el que debe usarse.
 
 async function extractWithBrowser(embedUrl) {
   const found = [];
   let browser;
 
   try {
-    const { puppeteer, executablePath } = await getBrowserStack();
-    browser = await puppeteer.launch({
-      headless: 'new',
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || executablePath,
+    // Playwright está disponible en la imagen mcr.microsoft.com/playwright
+    const { chromium } = require('playwright');
+
+    browser = await chromium.launch({
+      headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
+        '--disable-web-security',         // necesario para iframes cross-origin
         '--autoplay-policy=no-user-gesture-required',
         '--disable-features=IsolateOrigins,site-per-process'
       ]
     });
 
-    const page = await browser.newPage();
-    await page.setUserAgent(MOBILE_USER_AGENT);
-    await page.setViewport({ width: 412, height: 915, isMobile: true, hasTouch: true });
-    await page.setExtraHTTPHeaders(buildHeaders(embedUrl));
-    await page.setRequestInterception(true);
+    const context = await browser.newContext({
+      userAgent: MOBILE_USER_AGENT,
+      viewport: { width: 412, height: 915 },
+      isMobile: true,
+      hasTouch: true,
+      extraHTTPHeaders: buildHeaders(embedUrl)
+    });
 
-    page.on('request', (request) => {
-      const url = request.url();
-      const type = request.resourceType();
+    const page = await context.newPage();
 
-      if (isDirectStreamUrl(url)) {
+    // Intercepta TODAS las requests (incluyendo iframes anidados)
+    // Playwright intercepta iframes automáticamente, a diferencia de Puppeteer
+    await page.route('**/*', async (route) => {
+      const url = route.request().url();
+      const resourceType = route.request().resourceType();
+
+      if (isDirectStreamUrl(url) && !isAdOrNoiseUrl(url)) {
         found.push(url);
       }
 
-      if (['image', 'font'].includes(type) || isAdOrNoiseUrl(url)) {
-        request.abort().catch(() => {});
+      // Bloquea solo lo que definitivamente no aporta nada
+      if (resourceType === 'font' || isAdOrNoiseUrl(url)) {
+        await route.abort();
         return;
       }
 
-      request.continue().catch(() => {});
+      // Deja pasar todo lo demás (especialmente 'xhr', 'fetch', 'media', 'document')
+      await route.continue();
     });
 
-    page.on('response', async (response) => {
-      const url = response.url();
-      const headers = response.headers();
-      const contentType = String(headers['content-type'] || '').toLowerCase();
-
-      if (isDirectStreamUrl(url) || contentType.includes('mpegurl') || contentType.includes('video')) {
+    // Listener adicional en requests para capturar lo que route() puede perder
+    page.on('request', (request) => {
+      const url = request.url();
+      if (isDirectStreamUrl(url) && !isAdOrNoiseUrl(url)) {
         found.push(url);
       }
-
-      if (contentType.includes('javascript') || contentType.includes('json') || contentType.includes('text')) {
-        try {
-          const body = await response.text();
-          found.push(...extractDirectUrlsFromText(body, url));
-        } catch (_) {
-          // Some responses are not readable after interception; safe to skip.
-        }
-      }
     });
 
-    page.on('popup', async (popup) => {
-      try {
-        await popup.close();
-      } catch (_) {
-        // ignore popup close races
+    // networkidle: espera hasta que no haya peticiones de red activas por 500ms
+    // Esto garantiza que los iframes de segundo y tercer nivel también hayan cargado
+    // Es más lento que domcontentloaded pero es la única forma correcta para vidsrc
+    try {
+      await page.goto(embedUrl, { waitUntil: 'networkidle', timeout: 28000 });
+    } catch (navError) {
+      // timeout de networkidle NO es fatal — el player puede haber cargado igual
+      // Solo relanzamos si es un error real de navegación
+      if (!navError.message.toLowerCase().includes('timeout')) {
+        throw navError;
       }
-    });
-
-    await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 18000 });
-
-    for (let i = 0; i < 4; i += 1) {
-      await page.evaluate(() => {
-        const selectors = ['video', 'button', '[role="button"]', '.play', '#play'];
-        for (const selector of selectors) {
-          const element = document.querySelector(selector);
-          if (element) {
-            element.click();
-            break;
-          }
-        }
-      }).catch(() => {});
-      await new Promise((resolve) => setTimeout(resolve, 1800));
-      if (found.some(isDirectStreamUrl)) break;
     }
+
+    // Intenta hacer click en el player para activar la carga del stream
+    await page.evaluate(() => {
+      const selectors = [
+        'video',
+        '[class*="play-btn"]',
+        '[class*="jw-icon-display"]',
+        '[class*="plyr__control"]',
+        'button[class*="play"]',
+        '[role="button"]',
+        '.play',
+        '#play',
+        'button'
+      ];
+      for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el) {
+          el.click();
+          return;
+        }
+      }
+    }).catch(() => {});
+
+    // Espera real post-click para que el XHR del player resuelva el .m3u8
+    // 6 segundos es el tiempo mínimo probado para vidsrc.me con iframes anidados
+    await page.waitForTimeout(6000);
+
+    // Último recurso si todavía no encontramos nada:
+    // busca en el HTML renderizado (cubre variantes con URL en variable JS)
+    if (!found.some(isDirectStreamUrl)) {
+      const content = await page.content().catch(() => '');
+      const htmlUrls = extractDirectUrlsFromText(content, embedUrl);
+      found.push(...htmlUrls);
+
+      // Log de iframes para debug — útil para entender la cadena de redirección
+      const iframeSrcs = await page
+        .evaluate(() =>
+          [...document.querySelectorAll('iframe')]
+            .map((f) => f.src)
+            .filter((s) => s && s.startsWith('http'))
+        )
+        .catch(() => []);
+
+      if (iframeSrcs.length > 0) {
+        console.log(`[browser] Iframes en ${embedUrl}:`, iframeSrcs);
+      }
+    }
+
+    await context.close();
   } catch (error) {
+    console.error(`[browser] Error en ${embedUrl}: ${error.message}`);
     return { urls: unique(found).filter(isDirectStreamUrl), error: error.message };
   } finally {
-    if (browser) {
-      await browser.close().catch(() => {});
-    }
+    if (browser) await browser.close().catch(() => {});
   }
 
   return { urls: unique(found).filter(isDirectStreamUrl), error: null };
@@ -285,19 +295,15 @@ class VideoScraper {
 
   static async extractFromEmbed(embedUrl, options = {}) {
     const useBrowser = options.useBrowser !== false;
-    const debug = { embedUrl, staticCount: 0, browserCount: 0, errors: [] };
+    const debug = { embedUrl, browserCount: 0, errors: [] };
     const urls = [];
 
-    try {
-      const html = await fetchHtml(embedUrl);
-      const staticUrls = extractDirectUrlsFromText(html, embedUrl);
-      debug.staticCount = staticUrls.length;
-      urls.push(...staticUrls);
-    } catch (error) {
-      debug.errors.push(`static:${error.message}`);
-    }
+    // ELIMINADO: el fetch estático previo era trabajo inútil.
+    // Ninguno de los providers (vidsrc, 2embed) tiene el .m3u8 en el HTML estático.
+    // Todos lo generan mediante JavaScript dentro de iframes anidados.
+    // Hacer un fetch estático primero solo agrega latencia sin resultado.
 
-    if (urls.length === 0 && useBrowser) {
+    if (useBrowser) {
       const browserResult = await extractWithBrowser(embedUrl);
       debug.browserCount = browserResult.urls.length;
       if (browserResult.error) debug.errors.push(`browser:${browserResult.error}`);
@@ -314,9 +320,11 @@ class VideoScraper {
       return { success: false, candidates: [], debug_info: { reason: 'invalid_params' } };
     }
 
-    const cacheKey = n.scenario === 'url'
-      ? `stream-url-${n.url}`
-      : `stream-${n.type}-${n.tmdbId}-${n.season}-${n.episode}`;
+    const cacheKey =
+      n.scenario === 'url'
+        ? `stream-url-${n.url}`
+        : `stream-${n.type}-${n.tmdbId}-${n.season}-${n.episode}`;
+
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
@@ -337,6 +345,9 @@ class VideoScraper {
     const embeds = this.buildCandidates(n);
     const candidates = [];
     const debug = [];
+
+    // SCRAPER_BROWSER_LIMIT controla cuántos providers intentamos con browser
+    // Default 3: suficiente para tener redundancia sin consumir demasiada RAM
     const browserLimit = Number(process.env.SCRAPER_BROWSER_LIMIT) || 3;
 
     for (const [index, embedUrl] of embeds.entries()) {
@@ -345,7 +356,9 @@ class VideoScraper {
       });
       debug.push(result.debug);
       candidates.push(...result.urls);
-      if (candidates.length >= 3) break;
+
+      // Con 2 streams encontrados es suficiente para dar opciones al usuario
+      if (candidates.length >= 2) break;
     }
 
     const streamCandidates = unique(candidates).filter(isDirectStreamUrl);
@@ -363,7 +376,8 @@ class VideoScraper {
       }
     };
 
-    cacheSet(cacheKey, payload);
+    // Solo cachear si encontramos algo — no tiene sentido cachear fallos
+    if (payload.success) cacheSet(cacheKey, payload);
     return payload;
   }
 
