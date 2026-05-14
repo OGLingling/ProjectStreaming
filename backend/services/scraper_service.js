@@ -58,8 +58,7 @@ const isDirectStreamUrl = (url) => {
   return (
     lower.includes('.m3u8') ||
     lower.includes('.mp4') ||
-    lower.includes('googlevideo.com/videoplayback') ||
-    lower.includes('cloudnestra.com/rcp/')
+    lower.includes('googlevideo.com/videoplayback')
   );
 };
 
@@ -209,15 +208,23 @@ async function extractWithBrowser(embedUrl) {
     if (!found.some(isDirectStreamUrl) && iframes.length > 0) {
       console.log(`[browser] Siguiendo cadena de iframes...`);
 
-      for (const iframeUrl of iframes.slice(0, 3)) { // máximo 3 iframes
-        if (found.some(isDirectStreamUrl)) break;
+      const usefulIframes = iframes.filter(url =>
+        !url.includes('sharethis') &&
+        !url.includes('dtscout') &&
+        !url.includes('crwdcntrl') &&
+        !url.includes('lijit') &&
+        url.startsWith('http')
+      );
 
+      for (const iframeUrl of usefulIframes.slice(0, 3)) {
+        if (found.some(isDirectStreamUrl)) break;
         try {
+          console.log(`[browser] Navegando iframe: ${iframeUrl}`);
           const page2 = await context.newPage();
           await scrapePage(page2, iframeUrl);
           await page2.close();
         } catch (e) {
-          console.log(`[browser] Iframe fallido (${iframeUrl}): ${e.message}`);
+          console.log(`[browser] Iframe fallido: ${e.message}`);
         }
       }
     }
