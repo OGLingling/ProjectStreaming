@@ -1,133 +1,256 @@
-const axios = require('axios');
+// services/scraper_service.js
+// Scraper de streams con playwright-extra + stealth plugin.
+// Detecta .m3u8 / .mp4 interceptando requests, responses y evaluando el DOM.
 
-// ---------------- CACHE LRU ----------------
+// ─── STEALTH SETUP ────────────────────────────────────────────────────────────
+// playwright-extra + puppeteer-extra-plugin-stealth esquiva la detección de bots
+let chromium;
+try {
+  const playwrightExtra = require('playwright-extra');
+  const StealthPlugin   = require('puppeteer-extra-plugin-stealth');
+  chromium = playwrightExtra.chromium;
+  chromium.use(StealthPlugin());
+  console.log('[scraper] ✅ Stealth plugin cargado correctamente');
+} catch (e) {
+  console.warn('[scraper] ⚠ playwright-extra no disponible, usando playwright nativo:', e.message);
+  chromium = require('playwright').chromium;
+}
+
+// ─── CACHE LRU ───────────────────────────────────────────────────────────────
 const CACHE_MAX_SIZE = 200;
-const CACHE_TTL_MS = 12 * 60 * 1000;
-const cache = new Map();
+const CACHE_TTL_MS   = 12 * 60 * 1000; // 12 minutos en memoria
+const cache          = new Map();
 
 function cacheSet(key, value) {
   if (cache.has(key)) cache.delete(key);
   cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
-  if (cache.size > CACHE_MAX_SIZE) {
-    const oldestKey = cache.keys().next().value;
-    cache.delete(oldestKey);
-  }
+  if (cache.size > CACHE_MAX_SIZE) cache.delete(cache.keys().next().value);
 }
 
 function cacheGet(key) {
   if (!cache.has(key)) return null;
   const entry = cache.get(key);
-  if (!entry || entry.expiresAt <= Date.now()) {
-    cache.delete(key);
-    return null;
-  }
-  cache.delete(key);
-  cache.set(key, entry);
+  if (!entry || entry.expiresAt <= Date.now()) { cache.delete(key); return null; }
+  cache.delete(key); cache.set(key, entry);
   return entry.value;
 }
 
-// ---------------- UTILS ----------------
+// ─── CONSTANTES ──────────────────────────────────────────────────────────────
 const INVALID_STRINGS = new Set(['null', 'undefined', 'none', 'nan', '']);
-const MOBILE_USER_AGENT =
-  'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
+
+// User-Agent de Chrome desktop real (más compatible que mobile para players)
+const DESKTOP_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+const MOBILE_UA =
+  'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
 
 const AD_HOST_HINTS = [
-  'doubleclick', 'googlesyndication', 'google-analytics',
-  'adservice', 'adsterra', 'popads', 'propeller',
-  'taboola', 'onclick', 'tracking', 'sharethis',
-  'dtscout', 'crwdcntrl', 'lijit', 'pxdrop'
+  'doubleclick', 'googlesyndication', 'google-analytics', 'adservice',
+  'adsterra', 'popads', 'propeller', 'taboola', 'sharethis',
+  'dtscout', 'crwdcntrl', 'lijit', 'pxdrop', 'mgid', 'exoclick',
+  'trafficjunky', 'hilltopads', 'zeropark', 'trafficstars'
 ];
 
+const IFRAME_NOISE = [
+  'google', 'ads', 'sharethis', 'dtscout', 'crwdcntrl',
+  'lijit', 'pxdrop', 'facebook', 'twitter', 'analytics', 'recaptcha'
+];
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
 const sanitize = (v) => {
   if (v === undefined || v === null) return undefined;
   const s = String(v).trim();
   return INVALID_STRINGS.has(s.toLowerCase()) ? undefined : s;
 };
 
-const isValidUrl = (s) => /^https?:\/\//i.test(String(s || ''));
-const isNumericId = (s) => /^\d+$/.test(String(s || ''));
+const isValidUrl    = (s) => /^https?:\/\//i.test(String(s || ''));
+const isNumericId   = (s) => /^\d+$/.test(String(s || ''));
+const unique        = (arr) => [...new Set(arr.filter(Boolean))];
 
 const isDirectStreamUrl = (url) => {
-  const lower = String(url || '').toLowerCase();
-  return (
-    lower.includes('.m3u8') ||
-    lower.includes('.mp4') ||
-    lower.includes('googlevideo.com/videoplayback')
-  );
+  const s = String(url || '').toLowerCase();
+  return s.includes('.m3u8') || s.includes('.mp4') || s.includes('googlevideo.com/videoplayback');
 };
 
-const unique = (items) => [...new Set(items.filter(Boolean))];
+const isAdOrNoiseUrl = (url) => {
+  const s = String(url || '').toLowerCase();
+  return AD_HOST_HINTS.some(h => s.includes(h));
+};
 
-function buildHeaders(targetUrl, refererUrl) {
-  const origin =
-    refererUrl && isValidUrl(refererUrl)
-      ? new URL(refererUrl).origin
-      : new URL(targetUrl).origin;
-
-  return {
-    'User-Agent': MOBILE_USER_AGENT,
-    Referer: refererUrl && isValidUrl(refererUrl) ? refererUrl : `${origin}/`,
-    Origin: origin,
-    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7'
-  };
-}
-
-function decodeEscapedText(value) {
-  return String(value || '')
+function decodeEscapedText(text) {
+  return String(text || '')
     .replace(/\\u002F/g, '/')
-    .replace(/\\\//g, '/')
-    .replace(/&amp;/g, '&')
-    .replace(/%3A/gi, ':')
-    .replace(/%2F/gi, '/')
-    .replace(/%3F/gi, '?')
-    .replace(/%3D/gi, '=')
-    .replace(/%26/gi, '&');
+    .replace(/\\\//g,    '/')
+    .replace(/&amp;/g,   '&')
+    .replace(/%3A/gi,    ':')
+    .replace(/%2F/gi,    '/')
+    .replace(/%3F/gi,    '?')
+    .replace(/%3D/gi,    '=')
+    .replace(/%26/gi,    '&')
+    .replace(/\\n/g,     '')
+    .replace(/\\/g,      '');
 }
 
-function extractDirectUrlsFromText(text, baseUrl) {
+/**
+ * Extrae URLs de stream de cualquier texto (HTML, JSON, JS).
+ * Maneja URLs absolutas y relativas, encoded y escapadas.
+ */
+function extractStreamUrlsFromText(text, baseUrl) {
   const decoded = decodeEscapedText(text);
-  const urls = [];
-  const absoluteUrlPattern =
-    /https?:\/\/[^\s"'<>\\]+?(?:\.m3u8|\.mp4|videoplayback)[^\s"'<>\\]*/gi;
-  const relativeUrlPattern =
-    /(?:src|file|url|source)\s*[:=]\s*["']([^"']+?(?:\.m3u8|\.mp4)[^"']*)["']/gi;
+  const found   = [];
 
-  for (const match of decoded.matchAll(absoluteUrlPattern)) {
-    urls.push(match[0]);
+  // Patrón 1: URL absoluta que contiene .m3u8 o .mp4 o videoplayback
+  const absPattern = /https?:\/\/[^\s"'<>\\]+?(?:\.m3u8|\.mp4|videoplayback)[^\s"'<>\\]*/gi;
+  for (const m of decoded.matchAll(absPattern)) found.push(m[0]);
+
+  // Patrón 2: atributo src/file/url/source con valor relativo
+  const relPattern = /(?:src|file|url|source|stream|hls|dash)\s*[:=]\s*["']([^"']+?(?:\.m3u8|\.mp4)[^"']*)/gi;
+  for (const m of decoded.matchAll(relPattern)) {
+    try { found.push(new URL(m[1], baseUrl).toString()); } catch (_) {}
   }
-  for (const match of decoded.matchAll(relativeUrlPattern)) {
-    try { urls.push(new URL(match[1], baseUrl).toString()); } catch (_) { }
+
+  // Patrón 3: propiedad JSON como {"url":"...m3u8..."}
+  const jsonPattern = /"(?:url|file|src|hls|stream|source)"\s*:\s*"([^"]+(?:\.m3u8|\.mp4)[^"]*)"/gi;
+  for (const m of decoded.matchAll(jsonPattern)) {
+    try { found.push(isValidUrl(m[1]) ? m[1] : new URL(m[1], baseUrl).toString()); } catch (_) {}
   }
 
-  return unique(urls.map((url) => url.replace(/[),;]+$/g, ''))).filter(isDirectStreamUrl);
-}
-
-function isAdOrNoiseUrl(url) {
-  const lower = String(url || '').toLowerCase();
-  return AD_HOST_HINTS.some((hint) => lower.includes(hint));
+  return unique(found.map(u => u.replace(/[),;'"\\]+$/, ''))).filter(isDirectStreamUrl);
 }
 
 // ─── WAIT HELPER ─────────────────────────────────────────────────────────────
-// Espera hasta encontrar una stream URL o hasta que se acabe el tiempo.
-// Más confiable que un waitForTimeout fijo.
-async function waitForStreamOrTimeout(found, maxMs = 15000, checkIntervalMs = 500) {
+async function waitForStreamOrTimeout(found, maxMs = 20000, intervalMs = 300) {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
     if (found.some(isDirectStreamUrl)) return true;
-    await new Promise(r => setTimeout(r, checkIntervalMs));
+    await new Promise(r => setTimeout(r, intervalMs));
   }
   return found.some(isDirectStreamUrl);
 }
 
-// ---------------- BROWSER (PLAYWRIGHT) ----------------
+// ─── INTERACCIÓN CON PLAYER ──────────────────────────────────────────────────
+async function interactWithPlayer(page) {
+  // 1. Click en el centro de la pantalla (donde suele estar el play overlay)
+  try {
+    const { width, height } = page.viewportSize() || { width: 1280, height: 720 };
+    await page.mouse.click(width / 2, height / 2);
+  } catch (_) {}
+
+  // 2. Click en selectores conocidos de players
+  await page.evaluate(() => {
+    const selectors = [
+      'video',
+      '.jw-display-icon-container',
+      '.jw-icon-display',
+      '.plyr__control--overlaid',
+      '.vjs-big-play-button',
+      '.play-button',
+      '[class*="play"]',
+      '[id*="play"]',
+      '[role="button"]',
+      'button',
+      '.overlay',
+      '#overlay'
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el) { el.click(); return el.tagName; }
+    }
+  }).catch(() => {});
+
+  // 3. Tecla Space (inicia reproducción en muchos players)
+  await page.keyboard.press('Space').catch(() => {});
+
+  // 4. Intentar forzar play en el elemento <video>
+  await page.evaluate(() => {
+    const video = document.querySelector('video');
+    if (video) {
+      video.muted = true;
+      video.play().catch(() => {});
+      return video.src || video.currentSrc || '';
+    }
+    return null;
+  }).catch(() => {});
+}
+
+// ─── EXTRACCIÓN DOM ──────────────────────────────────────────────────────────
+/**
+ * Extrae stream URLs directamente del DOM:
+ * - video.src / video.currentSrc
+ * - source[src]
+ * - atributos data-* con URLs
+ * - texto del HTML completo
+ */
+async function extractFromDOM(page, baseUrl) {
+  const found = [];
+
+  // a) video element sources
+  const videoSrcs = await page.evaluate(() => {
+    const sources = [];
+    document.querySelectorAll('video').forEach(v => {
+      if (v.src) sources.push(v.src);
+      if (v.currentSrc) sources.push(v.currentSrc);
+      v.querySelectorAll('source').forEach(s => { if (s.src) sources.push(s.src); });
+    });
+    // También buscar en atributos data-src, data-file, data-url
+    document.querySelectorAll('[data-src],[data-file],[data-url],[data-stream]').forEach(el => {
+      ['data-src', 'data-file', 'data-url', 'data-stream'].forEach(attr => {
+        const v = el.getAttribute(attr);
+        if (v) sources.push(v);
+      });
+    });
+    return sources;
+  }).catch(() => []);
+
+  for (const src of videoSrcs) {
+    try { found.push(isValidUrl(src) ? src : new URL(src, baseUrl).toString()); } catch (_) {}
+  }
+
+  // b) Buscar en el HTML completo del DOM renderizado
+  const html = await page.content().catch(() => '');
+  found.push(...extractStreamUrlsFromText(html, baseUrl));
+
+  // c) Evaluar variables JS globales comunes de players
+  const jsVars = await page.evaluate(() => {
+    const candidates = [];
+    const toCheck = ['jwplayer', 'videojs', 'playerConfig', 'streamConfig',
+                     'playerSetup', 'hlsUrl', 'streamUrl', 'videoUrl', 'fileUrl'];
+    for (const key of toCheck) {
+      try {
+        const val = window[key];
+        if (!val) continue;
+        const str = typeof val === 'string' ? val : JSON.stringify(val);
+        candidates.push(str);
+      } catch (_) {}
+    }
+    // También revisar setup de jwplayer
+    try {
+      if (window.jwplayer) {
+        const p = window.jwplayer();
+        if (p && p.getPlaylistItem) {
+          const item = p.getPlaylistItem();
+          if (item?.file) candidates.push(item.file);
+          if (item?.sources) item.sources.forEach(s => candidates.push(s.file || s.src || ''));
+        }
+      }
+    } catch (_) {}
+    return candidates;
+  }).catch(() => []);
+
+  for (const text of jsVars) {
+    found.push(...extractStreamUrlsFromText(text, baseUrl));
+  }
+
+  return unique(found).filter(isDirectStreamUrl);
+}
+
+// ─── BROWSER SCRAPER PRINCIPAL ───────────────────────────────────────────────
 async function extractWithBrowser(embedUrl) {
   const found = [];
   let browser;
 
   try {
-    const { chromium } = require('playwright');
-
     browser = await chromium.launch({
       headless: true,
       args: [
@@ -135,185 +258,197 @@ async function extractWithBrowser(embedUrl) {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--allow-running-insecure-content',
         '--autoplay-policy=no-user-gesture-required',
-        '--disable-features=IsolateOrigins,site-per-process'
+        '--disable-blink-features=AutomationControlled', // extra anti-detección
+        '--window-size=1280,720'
       ]
     });
 
     const context = await browser.newContext({
-      userAgent: MOBILE_USER_AGENT,
-      viewport: { width: 412, height: 915 },
-      isMobile: true,
-      hasTouch: true
+      userAgent: DESKTOP_UA,
+      viewport:  { width: 1280, height: 720 },
+      hasTouch:  false,
+      isMobile:  false,
+      javaScriptEnabled:  true,
+      ignoreHTTPSErrors:  true
+      // Nota: autoplay se gestiona con --autoplay-policy en los args de launch
     });
 
-    // ── Función reutilizable para scrapear una página ─────────────────────
-    // FIX #1: referer se propaga correctamente como header HTTP, no solo como
-    // extraHTTPHeaders del contexto (que a veces no se aplica en navegaciones).
+    // Ocultar señales de automatización que no cubre stealth
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      Object.defineProperty(navigator, 'plugins',   { get: () => [1, 2, 3, 4, 5] });
+      Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en-US', 'en'] });
+      window.chrome = { runtime: {} };
+    });
+
+    // ── Función interna para scrapear una página ─────────────────────────────
     async function scrapePage(url, refererUrl = null) {
       const page = await context.newPage();
 
-      // FIX #2: el referer exacto es crítico para player.vidsrc.co y vsembed.ru.
-      // Si viene de vsembed.ru, el Origin debe ser vsembed.ru, no vidsrc.to.
-      const effectiveReferer = refererUrl || `${new URL(url).origin}/`;
-      const effectiveOrigin = isValidUrl(refererUrl)
+      const effectiveReferer = refererUrl && isValidUrl(refererUrl)
+        ? refererUrl
+        : `${new URL(url).origin}/`;
+      const effectiveOrigin  = refererUrl && isValidUrl(refererUrl)
         ? new URL(refererUrl).origin
         : new URL(url).origin;
 
       await page.setExtraHTTPHeaders({
-        'User-Agent': MOBILE_USER_AGENT,
-        'Referer': effectiveReferer,
-        'Origin': effectiveOrigin,
-        'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8'
+        'Referer':          effectiveReferer,
+        'Origin':           effectiveOrigin,
+        'Accept-Language':  'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept':           'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Sec-Fetch-Site':   'cross-site',
+        'Sec-Fetch-Mode':   'navigate',
+        'Sec-Fetch-Dest':   'iframe'
       });
 
-      // FIX #3: interceptar ANTES de navegar, incluir XHR y Fetch, no solo "document".
+      // ── INTERCEPTAR REQUESTS ────────────────────────────────────────────
       await page.route('**/*', async (route) => {
-        const reqUrl = route.request().url();
+        const reqUrl  = route.request().url();
         const resType = route.request().resourceType();
 
         if (isDirectStreamUrl(reqUrl) && !isAdOrNoiseUrl(reqUrl)) {
           found.push(reqUrl);
-          console.log(`[browser] ✅ Stream capturado (route): ${reqUrl.substring(0, 80)}`);
+          console.log(`[browser] ✅ Stream (route/req): ${reqUrl.substring(0, 90)}`);
         }
 
-        // Bloquear ruido que solo consume ancho de banda
-        if (resType === 'font' || resType === 'image' || isAdOrNoiseUrl(reqUrl)) {
+        // Bloquear recursos pesados que no aportan
+        if (['font', 'image', 'stylesheet'].includes(resType) || isAdOrNoiseUrl(reqUrl)) {
           return route.abort();
         }
         return route.continue();
       });
 
-      page.on('request', (request) => {
-        const reqUrl = request.url();
+      // ── INTERCEPTAR RESPONSES (crítico: aquí vienen las URLs en JSON) ───
+      page.on('response', async (response) => {
+        try {
+          const resUrl = response.url();
+          const ct     = String(response.headers()['content-type'] || '').toLowerCase();
+
+          // Si la response misma ES el stream
+          if (isDirectStreamUrl(resUrl) && !isAdOrNoiseUrl(resUrl)) {
+            found.push(resUrl);
+            console.log(`[browser] ✅ Stream (response URL): ${resUrl.substring(0, 90)}`);
+          }
+
+          // Buscar en cuerpos JSON/JS (aquí suelen venir las URLs en API calls)
+          if (
+            (ct.includes('json') || ct.includes('javascript') || ct.includes('text')) &&
+            !isAdOrNoiseUrl(resUrl)
+          ) {
+            const body = await response.text().catch(() => '');
+            if (body.includes('.m3u8') || body.includes('.mp4')) {
+              const extracted = extractStreamUrlsFromText(body, resUrl);
+              if (extracted.length > 0) {
+                found.push(...extracted);
+                console.log(`[browser] ✅ Stream(s) en body de ${resUrl.substring(0, 70)}: ${extracted.length}`);
+              }
+            }
+          }
+        } catch (_) {}
+      });
+
+      // ── TAMBIÉN capturar desde el event de request (redundante pero seguro)
+      page.on('request', (req) => {
+        const reqUrl = req.url();
         if (isDirectStreamUrl(reqUrl) && !isAdOrNoiseUrl(reqUrl)) {
           found.push(reqUrl);
-          console.log(`[browser] ✅ Stream capturado (event): ${reqUrl.substring(0, 80)}`);
         }
       });
 
-      // FIX #4: usar 'domcontentloaded' en lugar de 'networkidle'.
-      // Los players de vidsrc tienen polling continuo → networkidle NUNCA llega,
-      // el timeout corta la ejecución antes de que el m3u8 se solicite.
+      // ── NAVEGAR ─────────────────────────────────────────────────────────
+      console.log(`[browser] → Navegando: ${url}`);
       try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
       } catch (e) {
         if (!e.message.toLowerCase().includes('timeout')) {
-          await page.close().catch(() => { });
+          await page.close().catch(() => {});
           throw e;
         }
-        console.log(`[browser] goto timeout (ignorado): ${url}`);
+        console.log(`[browser] goto timeout ignorado: ${url}`);
       }
 
-      // FIX #5: esperar que el player exista en el DOM antes de clickear.
-      // El click ciego en querySelector falla si el player aún no renderizó.
-      try {
-        await page.waitForSelector('video, [class*="play"], .jw-display, .plyr__control', {
-          timeout: 5000
-        });
-      } catch (_) {
-        // El selector no apareció — intentar click genérico igual
-      }
+      // ── ESPERAR SELECTOR DEL PLAYER ─────────────────────────────────────
+      await page.waitForSelector(
+        'video, iframe, .jw-video, .jw-display, .plyr, .vjs-tech, [class*="player"], [id*="player"]',
+        { timeout: 8000 }
+      ).catch(() => {});
 
-      await page.evaluate(() => {
-        const selectors = [
-          'video',
-          '.jw-display-icon-container',
-          '.plyr__control--overlaid',
-          '[class*="play"]',
-          '[role="button"]',
-          'button',
-          '.play',
-          '#play'
-        ];
-        for (const sel of selectors) {
-          const el = document.querySelector(sel);
-          if (el) { el.click(); return; }
-        }
-      }).catch(() => { });
+      // Pequeña pausa para que los scripts iniciales terminen
+      await page.waitForTimeout(1500);
 
-      // FIX #6: espera adaptativa — no esperar tiempo fijo, sino hasta detectar
-      // el stream o hasta que pasen 15s. Si ya hay stream, termina antes.
-      await waitForStreamOrTimeout(found, 15000);
+      // ── INTERACTUAR CON EL PLAYER ────────────────────────────────────────
+      await interactWithPlayer(page);
 
-      // Si aún no hay stream, un segundo click puede ser necesario
-      // (algunos players requieren dos interacciones para iniciar)
+      // ── ESPERA ADAPTATIVA (hasta stream o 20s) ───────────────────────────
+      await waitForStreamOrTimeout(found, 20000);
+
+      // ── SI AÚN NO HAY STREAM: extraer del DOM ────────────────────────────
       if (!found.some(isDirectStreamUrl)) {
-        await page.evaluate(() => {
-          const el = document.querySelector('video, [class*="play"], button');
-          if (el) el.click();
-        }).catch(() => { });
-        await waitForStreamOrTimeout(found, 8000);
+        console.log(`[browser] DOM extraction en: ${url}`);
+        const domUrls = await extractFromDOM(page, url);
+        if (domUrls.length > 0) {
+          found.push(...domUrls);
+          console.log(`[browser] ✅ DOM encontró: ${domUrls.length} URL(s)`);
+        }
       }
 
-      // Extraer iframes para la siguiente capa
+      // ── SI AÚN NO: segundo click e intento ──────────────────────────────
+      if (!found.some(isDirectStreamUrl)) {
+        await interactWithPlayer(page);
+        await waitForStreamOrTimeout(found, 10000);
+      }
+
+      // ── EXTRAER IFRAMES para el siguiente nivel ──────────────────────────
       const iframes = await page.evaluate(() =>
-        [...document.querySelectorAll('iframe')]
+        [...document.querySelectorAll('iframe[src]')]
           .map(f => f.src)
           .filter(s => s && s.startsWith('http'))
       ).catch(() => []);
 
-      await page.close();
+      await page.close().catch(() => {});
 
-      // FIX #7: ampliar la lista de noise a filtrar al extraer iframes.
-      const IFRAME_NOISE = [
-        'google', 'ads', 'sharethis', 'dtscout',
-        'crwdcntrl', 'lijit', 'pxdrop', 'facebook',
-        'twitter', 'analytics'
-      ];
-      return iframes.filter(u => !IFRAME_NOISE.some(n => u.includes(n)));
+      return iframes.filter(u => !IFRAME_NOISE.some(n => u.toLowerCase().includes(n)));
     }
 
-    // ── Paso 1: scrape de la URL de entrada ──────────────────────────────
-    console.log(`[browser] Iniciando: ${embedUrl}`);
-    const level1Iframes = await scrapePage(embedUrl, null);
-    console.log(`[browser] Iframes L1:`, level1Iframes);
+    // ── NIVEL 1 ────────────────────────────────────────────────────────────
+    console.log(`[browser] L1: ${embedUrl}`);
+    const l1Iframes = await scrapePage(embedUrl, null);
+    console.log(`[browser] L1 iframes:`, l1Iframes);
 
-    // ── Paso 2: seguir iframes si no hay stream aún ──────────────────────
-    if (!found.some(isDirectStreamUrl) && level1Iframes.length > 0) {
-      // Priorizar los proveedores conocidos
-      const PRIORITY_HOSTS = ['vsembed', 'cloudnestra', 'vidsrc', 'embedrise'];
-      const sorted = [...level1Iframes].sort((a, b) => {
-        const aScore = PRIORITY_HOSTS.findIndex(h => a.includes(h));
-        const bScore = PRIORITY_HOSTS.findIndex(h => b.includes(h));
-        return (aScore === -1 ? 99 : aScore) - (bScore === -1 ? 99 : bScore);
+    // ── NIVEL 2 ────────────────────────────────────────────────────────────
+    if (!found.some(isDirectStreamUrl) && l1Iframes.length > 0) {
+      const PRIORITY = ['vsembed', 'cloudnestra', 'vidsrc', 'embedrise', 'filemoon', 'doodstream'];
+      const sorted = [...l1Iframes].sort((a, b) => {
+        const ai = PRIORITY.findIndex(h => a.includes(h));
+        const bi = PRIORITY.findIndex(h => b.includes(h));
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
       });
 
-      for (const iframeUrl of sorted.slice(0, 3)) {
+      for (const iframeUrl of sorted.slice(0, 4)) {
         if (found.some(isDirectStreamUrl)) break;
-        console.log(`[browser] → L2 iframe: ${iframeUrl}`);
+        console.log(`[browser] L2: ${iframeUrl}`);
         try {
-          const level2Iframes = await scrapePage(iframeUrl, embedUrl);
-          console.log(`[browser] Iframes L2 desde ${iframeUrl}:`, level2Iframes);
+          const l2Iframes = await scrapePage(iframeUrl, embedUrl);
+          console.log(`[browser] L2 iframes:`, l2Iframes);
 
-          // ── Paso 3: tercer nivel si hace falta ──────────────────────
-          // FIX #8: el problema original es exactamente aquí.
-          // vidsrc.me → vsembed.ru → player.vidsrc.co (era nivel 3, no explorado)
-          if (!found.some(isDirectStreamUrl) && level2Iframes.length > 0) {
-            for (const deepUrl of level2Iframes.slice(0, 2)) {
+          // ── NIVEL 3 ────────────────────────────────────────────────────
+          if (!found.some(isDirectStreamUrl) && l2Iframes.length > 0) {
+            for (const deepUrl of l2Iframes.slice(0, 3)) {
               if (found.some(isDirectStreamUrl)) break;
-              console.log(`[browser] → L3 iframe: ${deepUrl}`);
-              try {
-                await scrapePage(deepUrl, iframeUrl);
-              } catch (e) {
-                console.log(`[browser] L3 falló: ${e.message}`);
+              console.log(`[browser] L3: ${deepUrl}`);
+              try { await scrapePage(deepUrl, iframeUrl); } catch (e) {
+                console.log(`[browser] L3 error: ${e.message}`);
               }
             }
           }
         } catch (e) {
-          console.log(`[browser] L2 falló: ${e.message}`);
+          console.log(`[browser] L2 error: ${e.message}`);
         }
       }
-    }
-
-    // ── Fallback: extracción del HTML renderizado ────────────────────────
-    if (!found.some(isDirectStreamUrl)) {
-      console.log(`[browser] Fallback: extrayendo del HTML estático`);
-      const page = await context.newPage();
-      await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => { });
-      const content = await page.content().catch(() => '');
-      found.push(...extractDirectUrlsFromText(content, embedUrl));
-      await page.close();
     }
 
     await context.close();
@@ -322,15 +457,15 @@ async function extractWithBrowser(embedUrl) {
     console.error(`[browser] Error crítico en ${embedUrl}: ${error.message}`);
     return { urls: unique(found).filter(isDirectStreamUrl), error: error.message };
   } finally {
-    if (browser) await browser.close().catch(() => { });
+    if (browser) await browser.close().catch(() => {});
   }
 
   const result = unique(found).filter(isDirectStreamUrl);
-  console.log(`[browser] Total streams encontrados: ${result.length}`);
+  console.log(`[browser] Total streams encontrados: ${result.length}${result.length > 0 ? ' → ' + result[0].substring(0, 60) : ''}`);
   return { urls: result, error: null };
 }
 
-// ---------------- CLASS ----------------
+// ─── CLASE PRINCIPAL ──────────────────────────────────────────────────────────
 class VideoScraper {
   static normalizeMediaType(value) {
     const raw = String(value || '').toLowerCase();
@@ -338,55 +473,72 @@ class VideoScraper {
   }
 
   static normalizeRequest(source) {
-    const raw = source || {};
-    const url = sanitize(raw.url);
-    const tmdbId = sanitize(raw.tmdbId) ?? sanitize(raw.id);
-    const type = this.normalizeMediaType(raw.type);
-    const isTV = type === 'tv';
-    const season = Number(raw.season) || 1;
+    const raw     = source || {};
+    const url     = sanitize(raw.url);
+    const tmdbId  = sanitize(raw.tmdbId) ?? sanitize(raw.id);
+    const type    = this.normalizeMediaType(raw.type);
+    const isTV    = type === 'tv';
+    const season  = Number(raw.season)  || 1;
     const episode = Number(raw.episode) || 1;
 
     if (url && isValidUrl(url)) {
-      return { scenario: 'url', searchMode: false, url, tmdbId, type, isTV, season, episode };
+      return { scenario: 'url', url, tmdbId, type, isTV, season, episode };
     }
     if (tmdbId && isNumericId(tmdbId)) {
-      return { scenario: 'tmdb', searchMode: true, url: null, tmdbId, type, isTV, season, episode };
+      return { scenario: 'tmdb', url: null, tmdbId, type, isTV, season, episode };
     }
     return { scenario: 'invalid' };
   }
 
+  /**
+   * Construye candidatos de embed ordenados del más al menos confiable.
+   * Se intenta primero los que históricamente funcionan mejor.
+   */
   static buildCandidates(n) {
     const { tmdbId, isTV, season, episode } = n;
-    const path = isTV ? `tv/${tmdbId}/${season}/${episode}` : `movie/${tmdbId}`;
+    const tvPath    = `tv/${tmdbId}/${season}/${episode}`;
+    const moviePath = `movie/${tmdbId}`;
+    const path      = isTV ? tvPath : moviePath;
 
-    // FIX #9: agregar vsembed.ru como candidato directo ya que es el player real.
-    // Saltarse la capa intermedia de vidsrc.me reduce un nivel de indirección.
-    const candidates = [
-      `https://vidsrc.to/embed/${path}`,
-      `https://vidsrc.me/embed/${path}`,
-      `https://vsembed.ru/embed/${path}/`,
-      isTV
-        ? `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`
-        : `https://www.2embed.cc/embed/${tmdbId}`,
-      `https://player.vidsrc.co/embed/${path}`
-    ];
+    const candidates = [];
+
+    if (isTV) {
+      candidates.push(
+        // Tier 1: players directos (menos intermediarios)
+        `https://vidsrc.to/embed/${tvPath}`,
+        `https://vidsrc.me/embed/${tvPath}`,
+        `https://vsembed.ru/embed/${tvPath}/`,
+        `https://player.vidsrc.co/embed/${tvPath}`,
+        // Tier 2: otros embeds
+        `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`,
+        `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${season}&e=${episode}`,
+        `https://vidsrc.xyz/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
+        `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}&season=${season}&episode=${episode}`
+      );
+    } else {
+      candidates.push(
+        // Tier 1
+        `https://vidsrc.to/embed/${moviePath}`,
+        `https://vidsrc.me/embed/${moviePath}`,
+        `https://vsembed.ru/embed/${moviePath}/`,
+        `https://player.vidsrc.co/embed/${moviePath}`,
+        // Tier 2
+        `https://www.2embed.cc/embed/${tmdbId}`,
+        `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`,
+        `https://vidsrc.xyz/embed/movie?tmdb=${tmdbId}`,
+        `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}`
+      );
+    }
 
     return candidates;
   }
 
-  static async extractFromEmbed(embedUrl, options = {}) {
-    const useBrowser = options.useBrowser !== false;
-    const debug = { embedUrl, browserCount: 0, errors: [] };
-    const urls = [];
-
-    if (useBrowser) {
-      const browserResult = await extractWithBrowser(embedUrl);
-      debug.browserCount = browserResult.urls.length;
-      if (browserResult.error) debug.errors.push(`browser:${browserResult.error}`);
-      urls.push(...browserResult.urls);
-    }
-
-    return { urls: unique(urls).filter(isDirectStreamUrl), debug };
+  static async extractFromEmbed(embedUrl) {
+    const debug = { embedUrl, streamsFound: 0, errors: [] };
+    const browserResult = await extractWithBrowser(embedUrl);
+    debug.streamsFound = browserResult.urls.length;
+    if (browserResult.error) debug.errors.push(browserResult.error);
+    return { urls: unique(browserResult.urls).filter(isDirectStreamUrl), debug };
   }
 
   static async createPayload(source) {
@@ -396,55 +548,60 @@ class VideoScraper {
       return { success: false, candidates: [], debug_info: { reason: 'invalid_params' } };
     }
 
-    const cacheKey =
-      n.scenario === 'url'
-        ? `stream-url-${n.url}`
-        : `stream-${n.type}-${n.tmdbId}-${n.season}-${n.episode}`;
+    const cacheKey = n.scenario === 'url'
+      ? `stream-url-${n.url}`
+      : `stream-${n.type}-${n.tmdbId}-${n.season}-${n.episode}`;
 
     const cached = cacheGet(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      console.log(`[scraper] Cache hit: ${cacheKey}`);
+      return cached;
+    }
 
+    // Caso URL directa
     if (n.scenario === 'url') {
       const payload = {
-        success: isDirectStreamUrl(n.url),
-        candidates: isDirectStreamUrl(n.url) ? [n.url] : [],
-        tmdbId: n.tmdbId,
-        type: n.type,
-        searchMode: false,
-        clientSideCheck: false,
-        debug_info: { source: 'direct_url' }
+        success:     isDirectStreamUrl(n.url),
+        candidates:  isDirectStreamUrl(n.url) ? [n.url] : [],
+        tmdbId:      n.tmdbId,
+        type:        n.type,
+        debug_info:  { source: 'direct_url' }
       };
       if (payload.success) cacheSet(cacheKey, payload);
       return payload;
     }
 
-    const embeds = this.buildCandidates(n);
-    const candidates = [];
-    const debug = [];
+    // Caso TMDB → iterar candidatos
+    const embeds      = this.buildCandidates(n);
+    const candidates  = [];
+    const debugList   = [];
 
+    // Límite de providers a intentar (env o default 3)
     const browserLimit = Number(process.env.SCRAPER_BROWSER_LIMIT) || 3;
 
-    for (const [index, embedUrl] of embeds.entries()) {
-      if (candidates.length >= 2) break;
-      const result = await this.extractFromEmbed(embedUrl, {
-        useBrowser: index < browserLimit
-      });
-      debug.push(result.debug);
+    for (const [i, embedUrl] of embeds.entries()) {
+      // Parar si ya tenemos al menos 1 stream válido
+      if (candidates.length >= 1) break;
+      // Parar si superamos el límite de providers
+      if (i >= browserLimit) break;
+
+      console.log(`[scraper] Probando provider ${i + 1}/${Math.min(embeds.length, browserLimit)}: ${embedUrl}`);
+      const result = await this.extractFromEmbed(embedUrl);
+      debugList.push(result.debug);
       candidates.push(...result.urls);
     }
 
     const streamCandidates = unique(candidates).filter(isDirectStreamUrl);
     const payload = {
-      success: streamCandidates.length > 0,
-      candidates: streamCandidates,
-      tmdbId: n.tmdbId,
-      type: n.type,
-      searchMode: true,
-      clientSideCheck: false,
-      debug_info: {
-        embedsChecked: debug.length,
-        streamsFound: streamCandidates.length,
-        providers: debug
+      success:     streamCandidates.length > 0,
+      candidates:  streamCandidates,
+      tmdbId:      n.tmdbId,
+      type:        n.type,
+      searchMode:  true,
+      debug_info:  {
+        embedsChecked:  debugList.length,
+        streamsFound:   streamCandidates.length,
+        providers:      debugList
       }
     };
 
