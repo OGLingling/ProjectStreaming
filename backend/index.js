@@ -12,7 +12,7 @@ const authController = require('./controllers/auth_controller');
 const watchlistRoutes = require('./routes/watchlist_routes');
 const scraperRoutes = require('./routes/scraper_routes');
 const streamRoutes = require('./routes/stream_routes');
-const { getStreamLink, getStatus } = require('./controllers/stream_controller');
+const { getStreamLink, getStatus, forceRefresh, runWorkerCycle } = require('./controllers/stream_controller');
 const { startWorker } = require('./services/stream_worker');
 
 // 1. CONFIGURACIÓN DE MIDDLEWARES
@@ -44,6 +44,9 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/watchlist', watchlistRoutes);
 app.get('/api/stream/link', getStreamLink);
 app.get('/api/stream/status', getStatus);
+app.post('/api/stream/force-refresh', forceRefresh);
+app.get('/api/stream/force-refresh', forceRefresh);
+app.post('/api/stream/worker/run', runWorkerCycle);
 
 // IMPORTANTE: prefijo correcto para scraper
 app.use('/api', scraperRoutes);

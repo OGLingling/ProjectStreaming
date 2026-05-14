@@ -1,9 +1,10 @@
-// controllers/stream_controller.js — REEMPLAZA el tuyo completo
+// controllers/stream_controller.js
 
 const axios = require('axios');
 const { PrismaClient } = require('@prisma/client');
 const { createStreamSession, getStreamSession } = require('../services/stream_session_store');
 const { enqueue, getQueueStats } = require('../services/scrape_queue');
+const { triggerManualCycle, getWorkerStatus } = require('../services/stream_worker');
 
 const prisma = new PrismaClient();
 
@@ -86,52 +87,60 @@ async function getStreamLink(req, res) {
     return res.status(400).json({ success: false, error: 'tmdbId requerido' });
   }
 
-  // ── Paso 1: busca en BD usando tus modelos existentes ────────────────────
-  let cachedUrl = null;
-  const now = new Date();
+  // ── Paso 1: busca en BD ──────────────────────────────────────────────────
+  let cachedUrl   = null;
+  let isExpired   = false;
+  const now       = new Date();
 
   if (type === 'tv') {
-    // Navega Content → Season → Episode
     const ep = await prisma.episode.findFirst({
       where: {
         episodeNumber: episode,
-        season: {
-          seasonNumber: season,
-          content: { tmdbId }
-        }
+        season: { seasonNumber: season, content: { tmdbId } }
       },
       select: { videoUrl: true, streamExpiresAt: true }
     }).catch(() => null);
 
-    if (ep?.videoUrl && ep.streamExpiresAt && ep.streamExpiresAt > now) {
+    if (ep?.videoUrl) {
       cachedUrl = ep.videoUrl;
+      isExpired = !ep.streamExpiresAt || ep.streamExpiresAt <= now;
     }
   } else {
-    // Busca directo en Content por tmdbId
     const content = await prisma.content.findUnique({
       where: { tmdbId },
       select: { videoUrl: true, streamExpiresAt: true }
     }).catch(() => null);
 
-    if (content?.videoUrl && content.streamExpiresAt && content.streamExpiresAt > now) {
+    if (content?.videoUrl) {
       cachedUrl = content.videoUrl;
+      isExpired = !content.streamExpiresAt || content.streamExpiresAt <= now;
     }
   }
 
-  // ── Paso 2: si está en BD y vigente, responde directo ────────────────────
-  if (cachedUrl) {
-    console.log(`[stream] BD hit: ${type}/${tmdbId}`);
+  // ── Paso 2: URL vigente en BD → responder inmediatamente ─────────────────
+  if (cachedUrl && !isExpired) {
+    console.log(`[stream] ✅ BD hit (vigente): ${type}/${tmdbId}`);
     return registerAndRespond(req, res, cachedUrl);
   }
 
-  // ── Paso 3: no está o venció — scrapea en el momento ─────────────────────
-  console.log(`[stream] BD miss: ${type}/${tmdbId} — scrapeando`);
+  // ── Paso 3: URL expirada → servir la vieja mientras se renueva en background
+  if (cachedUrl && isExpired) {
+    console.log(`[stream] ⏰ BD hit (expirada): ${type}/${tmdbId} — renovando en background`);
+    // Renovación NO bloqueante: el cliente recibe la URL vieja de inmediato
+    enqueue(tmdbId, type, season, episode, true).catch(err =>
+      console.warn(`[stream] Renovación background fallida para ${tmdbId}:`, err.message)
+    );
+    return registerAndRespond(req, res, cachedUrl);
+  }
+
+  // ── Paso 4: no existe en BD → scrapear ahora (bloqueante) ────────────────
+  console.log(`[stream] 🔍 BD miss: ${type}/${tmdbId} — scrapeando ahora`);
 
   try {
     const scraped = await enqueue(tmdbId, type, season, episode);
     return registerAndRespond(req, res, scraped.url);
   } catch (error) {
-    console.error(`[stream] Scrape fallido para ${tmdbId}:`, error.message);
+    console.error(`[stream] ❌ Scrape fallido para ${tmdbId}:`, error.message);
     return res.status(503).json({
       success: false,
       error: 'No se pudo obtener el stream. Intenta de nuevo en 15 segundos.',
@@ -224,22 +233,78 @@ async function serveResource(req, res, targetUrl, session) {
   }
 }
 
-// ─── STATUS: GET /api/stream/status ──────────────────────────────────────────
+// ─── STATUS: GET /api/stream/status ─────────────────────────────────────────
 async function getStatus(req, res) {
-  const queue = getQueueStats();
-  const [totalMovies, moviesWithStream, totalEpisodes, episodesWithStream] = await Promise.all([
+  const queue  = getQueueStats();
+  const worker = getWorkerStatus();
+  const now    = new Date();
+
+  const [
+    totalMovies, moviesWithStream, moviesExpired, moviesNoStream,
+    totalEpisodes, episodesWithStream, episodesExpired, episodesNoStream
+  ] = await Promise.all([
     prisma.content.count({ where: { type: 'movie' } }),
-    prisma.content.count({ where: { type: 'movie', videoUrl: { not: null }, streamExpiresAt: { gt: new Date() } } }),
+    prisma.content.count({ where: { type: 'movie', videoUrl: { not: null }, streamExpiresAt: { gt: now } } }),
+    prisma.content.count({ where: { type: 'movie', videoUrl: { not: null }, streamExpiresAt: { lt: now } } }),
+    prisma.content.count({ where: { type: 'movie', videoUrl: null } }),
     prisma.episode.count(),
-    prisma.episode.count({ where: { videoUrl: { not: null }, streamExpiresAt: { gt: new Date() } } })
-  ]).catch(() => [-1, -1, -1, -1]);
+    prisma.episode.count({ where: { videoUrl: { not: null }, streamExpiresAt: { gt: now } } }),
+    prisma.episode.count({ where: { videoUrl: { not: null }, streamExpiresAt: { lt: now } } }),
+    prisma.episode.count({ where: { videoUrl: null } })
+  ]).catch(() => Array(8).fill(-1));
 
   return res.json({
     ok: true,
     queue,
-    movies:   { total: totalMovies,   withStream: moviesWithStream },
-    episodes: { total: totalEpisodes, withStream: episodesWithStream }
+    worker,
+    movies: {
+      total: totalMovies,
+      withStream: moviesWithStream,
+      expired: moviesExpired,
+      noStream: moviesNoStream
+    },
+    episodes: {
+      total: totalEpisodes,
+      withStream: episodesWithStream,
+      expired: episodesExpired,
+      noStream: episodesNoStream
+    }
   });
+}
+
+// ─── FORCE REFRESH: POST /api/stream/force-refresh ───────────────────────────
+// Fuerza el re-scraping de un contenido específico (uso admin/debug)
+async function forceRefresh(req, res) {
+  const tmdbId  = String(req.body?.tmdbId || req.query?.tmdbId || '');
+  const type    = String(req.body?.type   || req.query?.type   || 'movie').toLowerCase();
+  const season  = Number(req.body?.season  || req.query?.season  || 1);
+  const episode = Number(req.body?.episode || req.query?.episode || 1);
+
+  if (!tmdbId) {
+    return res.status(400).json({ success: false, error: 'tmdbId requerido' });
+  }
+
+  console.log(`[stream] 🔧 Force-refresh solicitado: ${type}/${tmdbId}${type === 'tv' ? ` S${season}E${episode}` : ''}`);
+
+  try {
+    const scraped = await enqueue(tmdbId, type, season, episode, true); // force=true
+    return res.json({
+      success: true,
+      url: scraped.url,
+      source: scraped.source,
+      streamType: scraped.streamType,
+      allCandidates: scraped.allCandidates,
+      duration: scraped.duration
+    });
+  } catch (error) {
+    return res.status(503).json({ success: false, error: error.message });
+  }
+}
+
+// ─── TRIGGER WORKER CYCLE: POST /api/stream/worker/run ───────────────────────
+async function runWorkerCycle(req, res) {
+  const result = await triggerManualCycle();
+  return res.json({ success: true, ...result });
 }
 
 module.exports = {
@@ -248,5 +313,7 @@ module.exports = {
   getMasterPlaylist,
   getSource,
   getResource,
-  getStatus
+  getStatus,
+  forceRefresh,
+  runWorkerCycle
 };

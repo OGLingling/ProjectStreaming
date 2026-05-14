@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
+const { triggerManualCycle, getWorkerStatus } = require('../services/stream_worker');
+const { enqueue, getQueueStats } = require('../services/scrape_queue');
 const prisma = new PrismaClient();
+
 
 // Middleware de autenticación básica para admin
 const adminAuth = (req, res, next) => {
@@ -153,23 +156,23 @@ router.get('/contents', async (req, res) => {
 
 router.post('/contents', async (req, res) => {
   try {
-    const { tmdbId, title, description, type, imageUrl, backdropUrl, vsembedUrl, vidsrcUrl } = req.body;
-    
+    const { tmdbId, title, description, type, imageUrl, backdropUrl } = req.body;
+
+    if (!tmdbId) return res.status(400).json({ error: 'tmdbId requerido' });
+
     const content = await prisma.content.upsert({
       where: { tmdbId },
-      update: { vsembedUrl, vidsrcUrl },
+      update: { title, description, imageUrl, backdropUrl },
       create: {
         tmdbId,
-        title,
+        title: title || 'Sin título',
         description,
         type: type || 'movie',
         imageUrl,
-        backdropUrl,
-        vsembedUrl,
-        vidsrcUrl
+        backdropUrl
       }
     });
-    
+
     res.json(content);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -179,13 +182,23 @@ router.post('/contents', async (req, res) => {
 router.put('/contents/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { vsembedUrl, vidsrcUrl } = req.body;
-    
+    // Permite actualizar solo los campos de stream y metadatos básicos
+    const { title, description, imageUrl, backdropUrl, videoUrl, streamSource, streamExpiresAt } = req.body;
+
+    const data = {};
+    if (title        !== undefined) data.title        = title;
+    if (description  !== undefined) data.description  = description;
+    if (imageUrl     !== undefined) data.imageUrl     = imageUrl;
+    if (backdropUrl  !== undefined) data.backdropUrl  = backdropUrl;
+    if (videoUrl     !== undefined) data.videoUrl     = videoUrl;
+    if (streamSource !== undefined) data.streamSource = streamSource;
+    if (streamExpiresAt !== undefined) data.streamExpiresAt = new Date(streamExpiresAt);
+
     const content = await prisma.content.update({
       where: { id: parseInt(id) },
-      data: { vsembedUrl, vidsrcUrl }
+      data
     });
-    
+
     res.json(content);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -250,6 +263,63 @@ router.get('/broken-links', async (req, res) => {
     res.json(brokenLinks);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// --- ESTADO DEL WORKER DE SCRAPING ---
+router.get('/scrape-status', async (req, res) => {
+  try {
+    const worker = getWorkerStatus();
+    const queue  = getQueueStats();
+    const now    = new Date();
+
+    const [moviesTotal, moviesOk, moviesExpired, moviesNone,
+           epsTotal,    epsOk,    epsExpired,    epsNone,
+           jobsPending, jobsFailed] = await Promise.all([
+      prisma.content.count({ where: { type: 'movie' } }),
+      prisma.content.count({ where: { type: 'movie', videoUrl: { not: null }, streamExpiresAt: { gt: now } } }),
+      prisma.content.count({ where: { type: 'movie', videoUrl: { not: null }, streamExpiresAt: { lt: now } } }),
+      prisma.content.count({ where: { type: 'movie', videoUrl: null } }),
+      prisma.episode.count(),
+      prisma.episode.count({ where: { videoUrl: { not: null }, streamExpiresAt: { gt: now } } }),
+      prisma.episode.count({ where: { videoUrl: { not: null }, streamExpiresAt: { lt: now } } }),
+      prisma.episode.count({ where: { videoUrl: null } }),
+      prisma.scrapeJob.count({ where: { status: 'pending' } }),
+      prisma.scrapeJob.count({ where: { status: 'failed' } })
+    ]);
+
+    res.json({
+      worker,
+      queue,
+      movies:   { total: moviesTotal, withStream: moviesOk, expired: moviesExpired, noStream: moviesNone },
+      episodes: { total: epsTotal,    withStream: epsOk,    expired: epsExpired,    noStream: epsNone },
+      jobs:     { pending: jobsPending, failed: jobsFailed }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- DISPARA CICLO DEL WORKER MANUALMENTE ---
+router.post('/scrape-run', async (req, res) => {
+  try {
+    const result = await triggerManualCycle();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- FORCE REFRESH DE UN CONTENIDO ESPECÍFICO ---
+router.post('/scrape-force', async (req, res) => {
+  try {
+    const { tmdbId, type = 'movie', season = 1, episode = 1 } = req.body;
+    if (!tmdbId) return res.status(400).json({ error: 'tmdbId requerido' });
+
+    const result = await enqueue(tmdbId, type, Number(season), Number(episode), true);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(503).json({ success: false, error: error.message });
   }
 });
 
