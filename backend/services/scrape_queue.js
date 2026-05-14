@@ -1,119 +1,64 @@
 // services/scrape_queue.js
-// MEJORA: Cola con prioridades + límite de memoria + reintentos inteligentes
+// Cola en memoria — sin Redis, sin costo extra.
+// Usa los modelos Content y Episode que ya existen en tu schema.
 
 const { PrismaClient } = require('@prisma/client');
 const VideoScraper = require('./scraper_service');
 
 const prisma = new PrismaClient();
 
-const MAX_CONCURRENT = Number(process.env.SCRAPER_CONCURRENT) || 2;
-const URL_TTL_MS = 10 * 60 * 60 * 1000; // 10 horas
-const MAX_RETRIES = 3;
-const MAX_QUEUE_SIZE = 100; // Evitar memory leaks
+// En Render gratis: 1. En Railway 1GB+: 2.
+const MAX_CONCURRENT = Number(process.env.SCRAPER_CONCURRENT) || 1;
 
-// Colas por prioridad
-const queues = {
-  high: [],    // Expira en < 1 hora o error previo
-  medium: [],  // Expira en < 6 horas
-  low: []      // Nuevo contenido o refresh preventivo
-};
+// 10 horas — conservador para evitar URLs muertas antes de refrescar
+const URL_TTL_MS = 10 * 60 * 60 * 1000;
 
 let running = 0;
-let totalProcessed = 0;
-let totalFailed = 0;
+const pending = [];
 
-// ─── ENQUEUE CON PRIORIDAD ──────────────────────────────────────────────────
-function enqueue(tmdbId, type, season = 1, episode = 1, priority = 'medium') {
-  // Validar tamaño de cola
-  const totalPending = Object.values(queues).reduce((sum, q) => sum + q.length, 0);
-  if (totalPending >= MAX_QUEUE_SIZE) {
-    console.warn(`[queue] Cola llena (${totalPending}), rechazando: ${type}/${tmdbId}`);
-    return Promise.reject(new Error('Cola saturada, intenta más tarde'));
-  }
-
+// ─── ENQUEUE ─────────────────────────────────────────────────────────────────
+function enqueue(tmdbId, type, season = 1, episode = 1) {
   return new Promise((resolve, reject) => {
-    const job = {
+    pending.push({
       tmdbId: String(tmdbId),
       type: String(type),
       season: Number(season),
       episode: Number(episode),
-      priority,
-      retries: 0,
       resolve,
-      reject,
-      createdAt: Date.now()
-    };
-
-    queues[priority].push(job);
-    console.log(`[queue] Encolado [${priority}]: ${type}/${tmdbId} (total: ${totalPending + 1})`);
-
-    // Procesar inmediatamente si hay capacidad
+      reject
+    });
     tick();
   });
 }
 
-// ─── TICK: Procesa siguiente job ────────────────────────────────────────────
 function tick() {
-  if (running >= MAX_CONCURRENT) return;
-
-  // Buscar en orden de prioridad
-  const job = queues.high.shift() || queues.medium.shift() || queues.low.shift();
-
-  if (!job) return;
-
+  if (running >= MAX_CONCURRENT || pending.length === 0) return;
+  const job = pending.shift();
   running++;
-
   processJob(job)
-    .then(result => {
-      totalProcessed++;
-      job.resolve(result);
-    })
-    .catch(error => {
-      totalFailed++;
-
-      // Reintentar con backoff exponencial
-      if (job.retries < MAX_RETRIES) {
-        job.retries++;
-        const delay = Math.pow(2, job.retries) * 1000; // 1s, 2s, 4s
-        console.log(`[queue] Reintento ${job.retries}/${MAX_RETRIES} en ${delay}ms: ${job.type}/${job.tmdbId}`);
-
-        setTimeout(() => {
-          queues.high.unshift(job); // Prioridad alta para reintentos
-          tick();
-        }, delay);
-      } else {
-        job.reject(error);
-      }
-    })
-    .finally(() => {
-      running--;
-      tick(); // Procesar siguiente
-    });
+    .then(job.resolve)
+    .catch(job.reject)
+    .finally(() => { running--; tick(); });
 }
 
-// ─── PROCESS JOB ────────────────────────────────────────────────────────────
+// ─── PROCESS ─────────────────────────────────────────────────────────────────
 async function processJob(job) {
   const { tmdbId, type, season, episode } = job;
   const isTV = type === 'tv';
-  const label = `[${job.priority}] ${type}/${tmdbId}${isTV ? ` S${season}E${episode}` : ''}`;
+  const label = `[queue] ${type}/${tmdbId}${isTV ? ` S${season}E${episode}` : ''}`;
   const startAt = Date.now();
 
-  console.log(`${label} → Iniciando scrape (intento ${job.retries + 1})`);
+  console.log(`${label} → iniciando scrape`);
 
-  // Verificar si ya existe en BD y está vigente
-  const existing = await checkExistingStream(tmdbId, type, season, episode);
-  if (existing && new Date(existing.expiresAt) > new Date(Date.now() + 3600000)) {
-    console.log(`${label} → Ya vigente en BD, omitiendo`);
-    return { url: existing.url, source: 'cache' };
-  }
+  // Registra el job como "en proceso"
+  await prisma.scrapeJob.upsert({
+    where: { tmdbId_type_season_episode: { tmdbId, type, season, episode } },
+    create: { tmdbId, type, season, episode, status: 'processing', attempts: 1 },
+    update: { status: 'processing', attempts: { increment: 1 }, error: null }
+  }).catch(() => {});
 
   try {
-    const result = await VideoScraper.extractStreamUrl({
-      tmdbId,
-      type,
-      season,
-      episode
-    });
+    const result = await VideoScraper.extractStreamUrl({ tmdbId, type, season, episode });
 
     if (!result.success || !result.candidates?.[0]) {
       throw new Error('No se encontró ninguna URL válida');
@@ -124,96 +69,39 @@ async function processJob(job) {
     const expiresAt = new Date(Date.now() + URL_TTL_MS);
     const duration = Date.now() - startAt;
 
-    // Guardar en BD según tipo
-    await saveStreamToDB(tmdbId, type, season, episode, url, source, expiresAt);
+    if (isTV) {
+      // ── Serie: guarda en Episode.videoUrl ──────────────────────────────
+      // Navega Content → Season → Episode usando las relaciones existentes
+      const episodeRecord = await prisma.episode.findFirst({
+        where: {
+          episodeNumber: episode,
+          season: {
+            seasonNumber: season,
+            content: { tmdbId }  // tmdbId es String en tu schema
+          }
+        },
+        select: { id: true }
+      });
 
-    // Registrar éxito
-    await prisma.scrapeLog.create({
-      data: {
-        targetUrl: `${type}/${tmdbId}`,
-        success: true,
-        streamUrl: url,
-        duration,
-        provider: source
+      if (episodeRecord) {
+        await prisma.episode.update({
+          where: { id: episodeRecord.id },
+          data: {
+            videoUrl: url,
+            streamSource: source,
+            streamExpiresAt: expiresAt
+          }
+        });
+      } else {
+        // El episodio no está en BD aún — contenido no sincronizado con TMDB
+        console.warn(`${label} → episodio no encontrado en BD`);
       }
-    }).catch(() => { });
 
-    console.log(`${label} → ✅ OK en ${duration}ms (${source})`);
-    return { url, source, expiresAt };
-
-  } catch (error) {
-    const duration = Date.now() - startAt;
-    console.error(`${label} → ❌ FALLÓ: ${error.message}`);
-
-    // Registrar error
-    await prisma.scrapeLog.create({
-      data: {
-        targetUrl: `${type}/${tmdbId}`,
-        success: false,
-        error: error.message,
-        duration
-      }
-    }).catch(() => { });
-
-    await prisma.brokenLink.create({
-      data: {
-        url: `${type}/${tmdbId}`,
-        error: error.message,
-        provider: 'vidsrc'
-      }
-    }).catch(() => { });
-
-    throw error;
-  }
-}
-
-// ─── HELPERS ────────────────────────────────────────────────────────────────
-async function checkExistingStream(tmdbId, type, season, episode) {
-  if (type === 'tv') {
-    const ep = await prisma.episode.findFirst({
-      where: {
-        episodeNumber: episode,
-        season: {
-          seasonNumber: season,
-          content: { tmdbId }
-        }
-      },
-      select: { videoUrl: true, streamExpiresAt: true }
-    }).catch(() => null);
-
-    if (ep?.videoUrl && ep.streamExpiresAt) {
-      return { url: ep.videoUrl, expiresAt: ep.streamExpiresAt };
-    }
-  } else {
-    const content = await prisma.content.findUnique({
-      where: { tmdbId },
-      select: { videoUrl: true, streamExpiresAt: true }
-    }).catch(() => null);
-
-    if (content?.videoUrl && content.streamExpiresAt) {
-      return { url: content.videoUrl, expiresAt: content.streamExpiresAt };
-    }
-  }
-
-  return null;
-}
-
-async function saveStreamToDB(tmdbId, type, season, episode, url, source, expiresAt) {
-  if (type === 'tv') {
-    const episodeRecord = await prisma.episode.findFirst({
-      where: {
-        episodeNumber: episode,
-        season: {
-          seasonNumber: season,
-          content: { tmdbId }
-        }
-      },
-      select: { id: true }
-    });
-
-    if (episodeRecord) {
-      await prisma.episode.update({
-        where: { id: episodeRecord.id },
+    } else {
+      // ── Película: guarda en Content.videoUrl ───────────────────────────
+      // Content.tmdbId es String? @unique — busca directo
+      await prisma.content.update({
+        where: { tmdbId },
         data: {
           videoUrl: url,
           streamSource: source,
@@ -221,53 +109,63 @@ async function saveStreamToDB(tmdbId, type, season, episode, url, source, expire
         }
       });
     }
-  } else {
-    await prisma.content.update({
-      where: { tmdbId },
+
+    // Usa ScrapeLog que ya tenías en el schema
+    await prisma.scrapeLog.create({
       data: {
-        videoUrl: url,
-        streamSource: source,
-        streamExpiresAt: expiresAt
+        targetUrl: `${type}/${tmdbId}`,
+        success: true,
+        streamUrl: url,
+        duration
       }
-    });
+    }).catch(() => {});
+
+    await prisma.scrapeJob.update({
+      where: { tmdbId_type_season_episode: { tmdbId, type, season, episode } },
+      data: { status: 'done', error: null }
+    }).catch(() => {});
+
+    console.log(`${label} → OK en ${duration}ms (${source})`);
+    return { url, source };
+
+  } catch (error) {
+    const duration = Date.now() - startAt;
+    console.error(`${label} → FALLÓ: ${error.message}`);
+
+    // Usa ScrapeLog y BrokenLink que ya tenías
+    await prisma.scrapeLog.create({
+      data: {
+        targetUrl: `${type}/${tmdbId}`,
+        success: false,
+        error: error.message,
+        duration
+      }
+    }).catch(() => {});
+
+    await prisma.brokenLink.create({
+      data: {
+        url: `${type}/${tmdbId}`,
+        error: error.message,
+        provider: 'vidsrc'
+      }
+    }).catch(() => {});
+
+    await prisma.scrapeJob.update({
+      where: { tmdbId_type_season_episode: { tmdbId, type, season, episode } },
+      data: { status: 'failed', error: error.message }
+    }).catch(() => {});
+
+    throw error;
   }
 }
 
+// ─── UTILS ───────────────────────────────────────────────────────────────────
 function extractDomain(url) {
-  try { return new URL(url).hostname; }
-  catch (_) { return 'unknown'; }
+  try { return new URL(url).hostname; } catch (_) { return 'unknown'; }
 }
 
-// ─── STATS ──────────────────────────────────────────────────────────────────
 function getQueueStats() {
-  return {
-    running,
-    pending: {
-      high: queues.high.length,
-      medium: queues.medium.length,
-      low: queues.low.length,
-      total: queues.high.length + queues.medium.length + queues.low.length
-    },
-    processed: totalProcessed,
-    failed: totalFailed,
-    maxConcurrent: MAX_CONCURRENT
-  };
+  return { running, pending: pending.length };
 }
-
-// Limpiar jobs antiguos cada 5 minutos
-setInterval(() => {
-  const now = Date.now();
-  const MAX_AGE = 10 * 60 * 1000; // 10 minutos máximo en cola
-
-  Object.keys(queues).forEach(priority => {
-    queues[priority] = queues[priority].filter(job => {
-      if (now - job.createdAt > MAX_AGE) {
-        job.reject(new Error('Job expiró en cola'));
-        return false;
-      }
-      return true;
-    });
-  });
-}, 5 * 60 * 1000);
 
 module.exports = { enqueue, getQueueStats };

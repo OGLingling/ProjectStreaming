@@ -8,11 +8,12 @@ const app = express();
 const movieRoutes = require('./routes/movie_routes');
 const authRoutes = require('./routes/auth_routes');
 const adminRoutes = require('./routes/admin_routes');
+const authController = require('./controllers/auth_controller');
 const watchlistRoutes = require('./routes/watchlist_routes');
 const scraperRoutes = require('./routes/scraper_routes');
 const streamRoutes = require('./routes/stream_routes');
 const { getStreamLink, getStatus } = require('./controllers/stream_controller');
-const { startWorker, stopWorker } = require('./services/stream_worker');
+const { startWorker } = require('./services/stream_worker');
 
 // 1. CONFIGURACIÓN DE MIDDLEWARES
 const allowedOrigins = [
@@ -32,61 +33,49 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Accept', 'Authorization']
 }));
 
+// IMPORTANTE: express.json antes de rutas
 app.use(express.json());
 app.use(express.static('public'));
 
-// 2. RUTAS
+// 2. DEFINICIÓN DE PUNTOS DE ENTRADA (ENDPOINTS)
 app.use('/api/movies', movieRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/watchlist', watchlistRoutes);
-app.use('/api', scraperRoutes);
-app.use('/api', streamRoutes);
-
 app.get('/api/stream/link', getStreamLink);
 app.get('/api/stream/status', getStatus);
 
-// Health check rápido en raíz (útil para monitoreo externo)
-app.get('/health', async (req, res) => {
-  try {
-    const { getWorkerHealth } = require('./services/stream_worker');
-    const health = await getWorkerHealth();
-    res.json({ ok: true, ...health });
-  } catch (error) {
-    res.status(503).json({ ok: false, error: error.message });
-  }
-});
+// IMPORTANTE: prefijo correcto para scraper
+app.use('/api', scraperRoutes);
+app.use('/api', streamRoutes);
 
+app.get('/api/users', authController.getUserByEmail);
+
+// 3. RUTA DE SALUD
 app.get('/', (req, res) => {
   res.send('Servidor MOVIEWIND Activo 🚀');
 });
 
-// 3. ARRANQUE
+app.get('/health', (req, res) => res.status(200).send('OK'));
+
+// Middleware 404
+app.use((req, res) => {
+  console.log('❌ 404 Capturado en la ruta:', req.originalUrl);
+  res.status(404).send('Not Found - MovieWind API');
+});
+
+// 4. ARRANQUE DEL SERVIDOR
 const PORT = process.env.PORT || 8080;
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Servidor en puerto ${PORT}`);
-  console.log(`📊 Health: http://localhost:${PORT}/health`);
-  console.log(`📊 Health (detallado): http://localhost:${PORT}/api/stream/health`);
+  console.log(`Servidor activo en puerto ${PORT}`);
+  console.log('✅ Ruta de scraping cargada correctamente en /api/extract');
   startWorker();
 });
 
 server.timeout = 120000;
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('⚠️ Señal SIGTERM recibida, cerrando gracefully...');
+  const { stopWorker } = require('./services/stream_worker');
   stopWorker();
-  server.close(() => {
-    console.log('✅ Servidor cerrado');
-    process.exit(0);
-  });
-});
-
-process.on('unhandledRejection', (error) => {
-  console.error('❌ Unhandled Rejection:', error);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('❌ Uncaught Exception:', error);
-  // No cerramos el proceso, solo logueamos
+  process.exit(0);
 });
