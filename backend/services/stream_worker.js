@@ -1,57 +1,167 @@
 // services/stream_worker.js
-// Refresca automáticamente las URLs que están por vencer.
-// Usa Content.streamExpiresAt y Episode.streamExpiresAt de tu schema.
+// MEJORA: Worker que detecta prioridad según tiempo de expiración
 
 const { PrismaClient } = require('@prisma/client');
 const { enqueue, getQueueStats } = require('./scrape_queue');
 
 const prisma = new PrismaClient();
 
-// Refresca si le quedan menos de 2 horas de vida
-const REFRESH_THRESHOLD_MS = 2 * 60 * 60 * 1000;
+// Umbrales de prioridad
+const URGENT_THRESHOLD = 60 * 60 * 1000;      // 1 hora
+const WARNING_THRESHOLD = 6 * 60 * 60 * 1000;  // 6 horas
+const PREVENTIVE_THRESHOLD = 24 * 60 * 60 * 1000; // 24 horas
 
-// Corre cada 30 minutos
-const INTERVAL_MS = 30 * 60 * 1000;
+const INTERVAL_MS = 30 * 60 * 1000; // 30 minutos
 
 let timer = null;
 let isRunning = false;
+let cyclesCompleted = 0;
 
 async function refreshCycle() {
-  if (isRunning) return;
+  if (isRunning) {
+    console.log('[worker] Ciclo anterior aún ejecutándose, omitiendo');
+    return;
+  }
+
   isRunning = true;
+  cyclesCompleted++;
 
   const stats = getQueueStats();
-  console.log(`[worker] Ciclo iniciado | pendientes: ${stats.pending} | corriendo: ${stats.running}`);
+  console.log(`[worker] 🔄 Ciclo #${cyclesCompleted} | Cola: ${stats.pending.total} pendientes | ${stats.running} en proceso`);
 
   try {
-    const threshold = new Date(Date.now() + REFRESH_THRESHOLD_MS);
+    const now = new Date();
 
-    // ── Películas por vencer ────────────────────────────────────────────────
-    const movies = await prisma.content.findMany({
+    // ── Buscar contenido que necesita refresh ────────────────────────────
+    const [urgent, warning, preventive] = await Promise.all([
+      findExpiringContent(now, URGENT_THRESHOLD, 20),
+      findExpiringContent(now, WARNING_THRESHOLD, 15),
+      findExpiringContent(now, PREVENTIVE_THRESHOLD, 10)
+    ]);
+
+    const total = urgent.total + warning.total + preventive.total;
+
+    if (total === 0) {
+      console.log('[worker] ✅ Todo vigente, nada que renovar');
+      return;
+    }
+
+    console.log(`[worker] 📊 Encontrados: ${urgent.total} urgentes | ${warning.total} warning | ${preventive.total} preventivos`);
+
+    // Encolar con prioridades
+    const jobs = [];
+
+    // Urgentes primero
+    urgent.movies.forEach(m => {
+      jobs.push(enqueue(m.tmdbId, 'movie', 1, 1, 'high'));
+    });
+    urgent.episodes.forEach(ep => {
+      if (ep.season?.content?.tmdbId) {
+        jobs.push(enqueue(
+          ep.season.content.tmdbId, 'tv',
+          ep.season.seasonNumber, ep.episodeNumber,
+          'high'
+        ));
+      }
+    });
+
+    // Warning
+    warning.movies.forEach(m => {
+      jobs.push(enqueue(m.tmdbId, 'movie', 1, 1, 'medium'));
+    });
+    warning.episodes.forEach(ep => {
+      if (ep.season?.content?.tmdbId) {
+        jobs.push(enqueue(
+          ep.season.content.tmdbId, 'tv',
+          ep.season.seasonNumber, ep.episodeNumber,
+          'medium'
+        ));
+      }
+    });
+
+    // Preventivos
+    preventive.movies.forEach(m => {
+      jobs.push(enqueue(m.tmdbId, 'movie', 1, 1, 'low'));
+    });
+    preventive.episodes.forEach(ep => {
+      if (ep.season?.content?.tmdbId) {
+        jobs.push(enqueue(
+          ep.season.content.tmdbId, 'tv',
+          ep.season.seasonNumber, ep.episodeNumber,
+          'low'
+        ));
+      }
+    });
+
+    // Esperar a que todos los jobs se completen (con timeout)
+    const results = await Promise.allSettled(
+      jobs.map(job => Promise.race([
+        job,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout en cola')), 120000)
+        )
+      ]))
+    );
+
+    const ok = results.filter(r => r.status === 'fulfilled').length;
+    const fail = results.filter(r => r.status === 'rejected').length;
+
+    console.log(`[worker] ✅ Ciclo completado | OK: ${ok} | Fallidos: ${fail}`);
+
+  } catch (error) {
+    console.error('[worker] ❌ Error en ciclo:', error.message);
+  } finally {
+    isRunning = false;
+  }
+}
+
+// ─── FIND EXPIRING CONTENT ──────────────────────────────────────────────────
+async function findExpiringContent(now, thresholdMs, limit) {
+  const threshold = new Date(now.getTime() + thresholdMs);
+
+  const [movies, episodes] = await Promise.all([
+    // Películas
+    prisma.content.findMany({
       where: {
         type: 'movie',
         tmdbId: { not: null },
-        // Vence pronto O nunca se le hizo scraping pero tiene contenido
         OR: [
-          { streamExpiresAt: { lt: threshold } },
-          { streamExpiresAt: null, videoUrl: null }
+          {
+            streamExpiresAt: {
+              lt: threshold,
+              gt: now // Solo las que aún no expiraron
+            }
+          },
+          {
+            streamExpiresAt: null,
+            videoUrl: null
+          }
         ]
       },
-      select: { tmdbId: true },
-      take: 10,
+      select: { tmdbId: true, streamExpiresAt: true },
+      take: limit,
       orderBy: { streamExpiresAt: 'asc' }
-    });
+    }),
 
-    // ── Episodios por vencer ────────────────────────────────────────────────
-    const episodes = await prisma.episode.findMany({
+    // Episodios
+    prisma.episode.findMany({
       where: {
         OR: [
-          { streamExpiresAt: { lt: threshold } },
-          { streamExpiresAt: null, videoUrl: null }
+          {
+            streamExpiresAt: {
+              lt: threshold,
+              gt: now
+            }
+          },
+          {
+            streamExpiresAt: null,
+            videoUrl: null
+          }
         ]
       },
       select: {
         episodeNumber: true,
+        streamExpiresAt: true,
         season: {
           select: {
             seasonNumber: true,
@@ -59,55 +169,71 @@ async function refreshCycle() {
           }
         }
       },
-      take: 10,
+      take: limit,
       orderBy: { streamExpiresAt: 'asc' }
-    });
+    })
+  ]);
 
-    const total = movies.length + episodes.length;
-    if (total === 0) {
-      console.log('[worker] Todo vigente');
-      return;
-    }
-
-    console.log(`[worker] ${movies.length} películas + ${episodes.length} episodios para refrescar`);
-
-    // Encola todo — la cola controla la concurrencia
-    const jobs = [
-      ...movies.map(({ tmdbId }) => enqueue(tmdbId, 'movie')),
-      ...episodes
-        .filter(ep => ep.season?.content?.tmdbId)
-        .map(ep => enqueue(
-          ep.season.content.tmdbId,
-          'tv',
-          ep.season.seasonNumber,
-          ep.episodeNumber
-        ))
-    ];
-
-    const results = await Promise.allSettled(jobs);
-    const ok = results.filter(r => r.status === 'fulfilled').length;
-    const fail = results.filter(r => r.status === 'rejected').length;
-    console.log(`[worker] Ciclo terminado | OK: ${ok} | Fallidos: ${fail}`);
-
-  } catch (error) {
-    console.error('[worker] Error en ciclo:', error.message);
-  } finally {
-    isRunning = false;
-  }
+  return {
+    movies,
+    episodes,
+    total: movies.length + episodes.length
+  };
 }
 
+// ─── START / STOP ───────────────────────────────────────────────────────────
 function startWorker() {
-  if (timer) return;
-  console.log('[worker] Iniciado — intervalo: 30 minutos');
-  // Espera 90 segundos para que el servidor arranque limpio
+  if (timer) {
+    console.log('[worker] Ya está corriendo');
+    return;
+  }
+
+  console.log('[worker] 🚀 Iniciado — intervalo: 30 minutos');
+
+  // Primer ciclo después de 1 minuto (para que el servidor esté listo)
   setTimeout(() => {
     refreshCycle();
     timer = setInterval(refreshCycle, INTERVAL_MS);
-  }, 90 * 1000);
+  }, 60000);
 }
 
 function stopWorker() {
-  if (timer) { clearInterval(timer); timer = null; }
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+    console.log('[worker] ⏹️ Detenido');
+  }
 }
 
-module.exports = { startWorker, stopWorker };
+// Si quieres health check simple sin archivo extra:
+async function getWorkerHealth() {
+  try {
+    const [activeStreams, totalContent] = await Promise.all([
+      prisma.content.count({
+        where: {
+          videoUrl: { not: null },
+          streamExpiresAt: { gt: new Date() }
+        }
+      }),
+      prisma.content.count()
+    ]);
+
+    return {
+      status: 'active',
+      cyclesCompleted,
+      isRunning,
+      activeStreams,
+      totalContent,
+      coverage: totalContent > 0 ? ((activeStreams / totalContent) * 100).toFixed(1) + '%' : '0%',
+      queue: getQueueStats(),
+      uptime: process.uptime()
+    };
+  } catch (error) {
+    return {
+      status: 'error',
+      error: error.message
+    };
+  }
+}
+
+module.exports = { startWorker, stopWorker, getWorkerHealth };
