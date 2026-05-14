@@ -58,7 +58,8 @@ const isDirectStreamUrl = (url) => {
   return (
     lower.includes('.m3u8') ||
     lower.includes('.mp4') ||
-    lower.includes('googlevideo.com/videoplayback')
+    lower.includes('googlevideo.com/videoplayback') ||
+    lower.includes('cloudnestra.com/rcp/')
   );
 };
 
@@ -171,7 +172,7 @@ async function extractWithBrowser(embedUrl) {
       try {
         await page.goto(url, { waitUntil: 'networkidle', timeout: 25000 });
       } catch (e) {
-        if (!e.message.includes('timeout')) throw e;
+        if (!e.message.toLowerCase().includes('timeout')) throw e;
       }
 
       // Click en el player
@@ -185,12 +186,16 @@ async function extractWithBrowser(embedUrl) {
 
       await page.waitForTimeout(5000);
 
-      // Devuelve iframes encontrados
-      return page.evaluate(() =>
+      const iframeList = await page.evaluate(() =>
         [...document.querySelectorAll('iframe')]
           .map(f => f.src)
           .filter(s => s && s.startsWith('http') && !s.includes('google') && !s.includes('ads'))
       ).catch(() => []);
+
+      // Cloudnestra primero, luego el resto
+      return iframeList.sort((a, b) =>
+        b.includes('cloudnestra') - a.includes('cloudnestra')
+      );
     }
 
     // ── Paso 1: scrapea la página principal ──────────────────────────────
@@ -270,7 +275,6 @@ class VideoScraper {
     return [
       `https://vidsrc.me/embed/${path}`,
       `https://vidsrc.to/embed/${path}`,
-      `https://vidsrc.win/embed/${path}`,
       `https://player.vidsrc.co/embed/${path}`,
       isTV
         ? `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`
