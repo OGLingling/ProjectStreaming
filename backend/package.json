@@ -20,6 +20,8 @@
     "express": "^5.2.1",
     "nodemailer": "^8.0.2",
     "playwright": "^1.43.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "resend": "^6.9.4"
   },
   "devDependencies": {
