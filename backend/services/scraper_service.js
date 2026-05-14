@@ -128,7 +128,6 @@ async function extractWithBrowser(embedUrl) {
   let browser;
 
   try {
-    // Playwright está disponible en la imagen mcr.microsoft.com/playwright
     const { chromium } = require('playwright');
 
     browser = await chromium.launch({
@@ -137,7 +136,7 @@ async function extractWithBrowser(embedUrl) {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-web-security',         // necesario para iframes cross-origin
+        '--disable-web-security',
         '--autoplay-policy=no-user-gesture-required',
         '--disable-features=IsolateOrigins,site-per-process'
       ]
@@ -151,102 +150,89 @@ async function extractWithBrowser(embedUrl) {
       extraHTTPHeaders: buildHeaders(embedUrl)
     });
 
-    const page = await context.newPage();
+    // ── Función reutilizable para scrapear una página ─────────────────────
+    async function scrapePage(page, url) {
+      await page.route('**/*', async (route) => {
+        const reqUrl = route.request().url();
+        const resourceType = route.request().resourceType();
+        if (isDirectStreamUrl(reqUrl) && !isAdOrNoiseUrl(reqUrl)) found.push(reqUrl);
+        if (resourceType === 'font' || isAdOrNoiseUrl(reqUrl)) {
+          await route.abort();
+          return;
+        }
+        await route.continue();
+      });
 
-    // Intercepta TODAS las requests (incluyendo iframes anidados)
-    // Playwright intercepta iframes automáticamente, a diferencia de Puppeteer
-    await page.route('**/*', async (route) => {
-      const url = route.request().url();
-      const resourceType = route.request().resourceType();
+      page.on('request', (request) => {
+        const reqUrl = request.url();
+        if (isDirectStreamUrl(reqUrl) && !isAdOrNoiseUrl(reqUrl)) found.push(reqUrl);
+      });
 
-      if (isDirectStreamUrl(url) && !isAdOrNoiseUrl(url)) {
-        found.push(url);
+      try {
+        await page.goto(url, { waitUntil: 'networkidle', timeout: 25000 });
+      } catch (e) {
+        if (!e.message.includes('timeout')) throw e;
       }
 
-      // Bloquea solo lo que definitivamente no aporta nada
-      if (resourceType === 'font' || isAdOrNoiseUrl(url)) {
-        await route.abort();
-        return;
-      }
+      // Click en el player
+      await page.evaluate(() => {
+        const selectors = ['video', '[class*="play"]', '[role="button"]', 'button', '.play', '#play'];
+        for (const sel of selectors) {
+          const el = document.querySelector(sel);
+          if (el) { el.click(); return; }
+        }
+      }).catch(() => { });
 
-      // Deja pasar todo lo demás (especialmente 'xhr', 'fetch', 'media', 'document')
-      await route.continue();
-    });
+      await page.waitForTimeout(5000);
 
-    // Listener adicional en requests para capturar lo que route() puede perder
-    page.on('request', (request) => {
-      const url = request.url();
-      if (isDirectStreamUrl(url) && !isAdOrNoiseUrl(url)) {
-        found.push(url);
-      }
-    });
+      // Devuelve iframes encontrados
+      return page.evaluate(() =>
+        [...document.querySelectorAll('iframe')]
+          .map(f => f.src)
+          .filter(s => s && s.startsWith('http') && !s.includes('google') && !s.includes('ads'))
+      ).catch(() => []);
+    }
 
-    // networkidle: espera hasta que no haya peticiones de red activas por 500ms
-    // Esto garantiza que los iframes de segundo y tercer nivel también hayan cargado
-    // Es más lento que domcontentloaded pero es la única forma correcta para vidsrc
-    try {
-      await page.goto(embedUrl, { waitUntil: 'networkidle', timeout: 28000 });
-    } catch (navError) {
-      // timeout de networkidle NO es fatal — el player puede haber cargado igual
-      // Solo relanzamos si es un error real de navegación
-      if (!navError.message.toLowerCase().includes('timeout')) {
-        throw navError;
+    // ── Paso 1: scrapea la página principal ──────────────────────────────
+    const page1 = await context.newPage();
+    const iframes = await scrapePage(page1, embedUrl);
+    await page1.close();
+
+    console.log(`[browser] Iframes en ${embedUrl}:`, iframes);
+
+    // ── Paso 2: si no encontró .m3u8, sigue la cadena de iframes ─────────
+    if (!found.some(isDirectStreamUrl) && iframes.length > 0) {
+      console.log(`[browser] Siguiendo cadena de iframes...`);
+
+      for (const iframeUrl of iframes.slice(0, 3)) { // máximo 3 iframes
+        if (found.some(isDirectStreamUrl)) break;
+
+        try {
+          const page2 = await context.newPage();
+          await scrapePage(page2, iframeUrl);
+          await page2.close();
+        } catch (e) {
+          console.log(`[browser] Iframe fallido (${iframeUrl}): ${e.message}`);
+        }
       }
     }
 
-    // Intenta hacer click en el player para activar la carga del stream
-    await page.evaluate(() => {
-      const selectors = [
-        'video',
-        '[class*="play-btn"]',
-        '[class*="jw-icon-display"]',
-        '[class*="plyr__control"]',
-        'button[class*="play"]',
-        '[role="button"]',
-        '.play',
-        '#play',
-        'button'
-      ];
-      for (const sel of selectors) {
-        const el = document.querySelector(sel);
-        if (el) {
-          el.click();
-          return;
-        }
-      }
-    }).catch(() => {});
-
-    // Espera real post-click para que el XHR del player resuelva el .m3u8
-    // 6 segundos es el tiempo mínimo probado para vidsrc.me con iframes anidados
-    await page.waitForTimeout(6000);
-
-    // Último recurso si todavía no encontramos nada:
-    // busca en el HTML renderizado (cubre variantes con URL en variable JS)
+    // ── Paso 3: último recurso — HTML renderizado ─────────────────────────
     if (!found.some(isDirectStreamUrl)) {
-      const content = await page.content().catch(() => '');
-      const htmlUrls = extractDirectUrlsFromText(content, embedUrl);
-      found.push(...htmlUrls);
-
-      // Log de iframes para debug — útil para entender la cadena de redirección
-      const iframeSrcs = await page
-        .evaluate(() =>
-          [...document.querySelectorAll('iframe')]
-            .map((f) => f.src)
-            .filter((s) => s && s.startsWith('http'))
-        )
-        .catch(() => []);
-
-      if (iframeSrcs.length > 0) {
-        console.log(`[browser] Iframes en ${embedUrl}:`, iframeSrcs);
-      }
+      const page3 = await context.newPage();
+      await page3.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => { });
+      const content = await page3.content().catch(() => '');
+      found.push(...extractDirectUrlsFromText(content, embedUrl));
+      await page3.close();
     }
 
     await context.close();
+
   } catch (error) {
-    console.error(`[browser] Error en ${embedUrl}: ${error.message}`);
+    console.error(`[browser] Error crítico en ${embedUrl}: ${error.message}`);
     return { urls: unique(found).filter(isDirectStreamUrl), error: error.message };
   } finally {
-    if (browser) await browser.close().catch(() => {});
+    if (browser) await browser.close().catch(() => { });
   }
 
   return { urls: unique(found).filter(isDirectStreamUrl), error: null };
@@ -284,7 +270,6 @@ class VideoScraper {
     return [
       `https://vidsrc.me/embed/${path}`,
       `https://vidsrc.to/embed/${path}`,
-      `https://vidsrc.xyz/embed/${path}`,
       `https://vidsrc.win/embed/${path}`,
       `https://player.vidsrc.co/embed/${path}`,
       isTV
