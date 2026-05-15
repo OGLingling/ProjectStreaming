@@ -307,6 +307,13 @@ async function extractWithBrowser(embedUrl) {
         console.log(`[browser] timeout ignorado: ${url}`);
       }
 
+      // Dentro de scrapePage(), justo después del goto:
+      await page.screenshot({
+        path: `/tmp/debug_${Date.now()}.png`,
+        fullPage: true
+      });
+      console.log('[browser] Screenshot guardado en /tmp/');
+
       await page.waitForSelector(
         'video, iframe, .jw-video, .jw-display, .plyr, .vjs-tech, [class*="player"], [id*="player"]',
         { timeout: 8000 }
