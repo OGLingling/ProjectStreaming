@@ -60,7 +60,7 @@
         }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen text-gray-800">
+<body class="bg-gray-50 h-screen overflow-hidden text-gray-800">
     <!-- Login Modal -->
     <div id="loginModal" class="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-50">
         <div class="bg-white rounded-2xl p-10 w-full max-w-md shadow-2xl transform transition-all border-t-8 border-emerald-500">
@@ -95,9 +95,9 @@
     </div>
 
     <!-- Main Layout -->
-    <div id="mainLayout" class="flex opacity-0 transition-opacity duration-500">
+    <div id="mainLayout" class="flex h-screen opacity-0 transition-opacity duration-500">
         <!-- Sidebar -->
-        <div class="w-72 bg-white border-r border-gray-200 min-h-screen sticky top-0 shadow-sm flex flex-col">
+        <div class="w-72 bg-white border-r border-gray-200 h-full shadow-sm flex flex-col flex-shrink-0">
             <div class="p-8">
                 <div class="flex items-center gap-3 mb-8">
                     <div class="h-10 w-10 bg-gradient-premium rounded-lg flex items-center justify-center text-white shadow-lg">
@@ -107,19 +107,19 @@
                 </div>
                 
                 <nav class="space-y-2">
-                    <a href="#dashboard" onclick="showSection('dashboard')" id="nav-dashboard" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
-                        <i class="fas fa-grid-2 mr-3 group-hover:scale-110 transition-transform"></i> <span class="font-medium">Dashboard</span>
+                    <a href="#dashboard" onclick="showSection('dashboard', event)" id="nav-dashboard" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
+                        <i class="fas fa-th-large mr-3 group-hover:scale-110 transition-transform"></i> <span class="font-medium">Dashboard</span>
                     </a>
-                    <a href="#contents" onclick="showSection('contents')" id="nav-contents" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
+                    <a href="#contents" onclick="showSection('contents', event)" id="nav-contents" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
                         <i class="fas fa-clapperboard mr-3 group-hover:scale-110 transition-transform"></i> <span class="font-medium">Contenidos</span>
                     </a>
-                    <a href="#users" onclick="showSection('users')" id="nav-users" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
+                    <a href="#users" onclick="showSection('users', event)" id="nav-users" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
                         <i class="fas fa-users mr-3 group-hover:scale-110 transition-transform"></i> <span class="font-medium">Usuarios</span>
                     </a>
-                    <a href="#scraping" onclick="showSection('scraping')" id="nav-scraping" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
+                    <a href="#scraping" onclick="showSection('scraping', event)" id="nav-scraping" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
                         <i class="fas fa-terminal mr-3 group-hover:scale-110 transition-transform"></i> <span class="font-medium">Logs Scraping</span>
                     </a>
-                    <a href="#broken-links" onclick="showSection('broken-links')" id="nav-broken-links" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
+                    <a href="#broken-links" onclick="showSection('broken-links', event)" id="nav-broken-links" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
                         <i class="fas fa-triangle-exclamation mr-3 group-hover:scale-110 transition-transform"></i> <span class="font-medium">Enlaces Rotos</span>
                     </a>
                 </nav>
@@ -137,8 +137,8 @@
         </div>
 
         <!-- Main Content Area -->
-        <div class="flex-1 min-w-0 bg-gray-50">
-            <header class="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center sticky top-0 z-10">
+        <div class="flex-1 min-w-0 bg-gray-50 flex flex-col h-full">
+            <header class="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center flex-shrink-0">
                 <h2 id="sectionTitle" class="text-xl font-bold text-gray-800">Dashboard General</h2>
                 <div class="flex items-center gap-4">
                     <button class="p-2 text-gray-400 hover:text-emerald-500"><i class="fas fa-bell"></i></button>
@@ -148,7 +148,7 @@
                 </div>
             </header>
 
-            <main class="p-8">
+            <main class="p-8 flex-1 overflow-y-auto">
                 <!-- Dashboard Section -->
                 <div id="dashboard" class="section">
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
@@ -309,7 +309,14 @@
                 <!-- Scraping Section -->
                 <div id="scraping" class="section hidden">
                     <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold text-gray-800">Logs de Ingesta (Scraping)</h2>
+                        <div class="flex items-center gap-4">
+                            <h2 class="text-2xl font-bold text-gray-800">Logs de Ingesta (Scraping)</h2>
+                            <select id="scraperModeSelect" onchange="updateScraperMode()" class="bg-white border border-gray-200 text-gray-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500">
+                                <option value="auto">Modo: Auto</option>
+                                <option value="browserless">Modo: Browserless</option>
+                                <option value="local">Modo: Local (La Tuya)</option>
+                            </select>
+                        </div>
                         <button onclick="triggerWorker()" class="btn-premium text-white px-6 py-2 rounded-xl font-bold flex items-center">
                             <i class="fas fa-play-circle mr-2"></i>Forzar Ciclo
                         </button>
@@ -421,8 +428,13 @@
             showSection('dashboard');
         }
 
-        function showSection(id) {
+        function showSection(id, event) {
+            if (event) event.preventDefault();
             console.log('Navegando a:', id);
+            
+            // 0. Reset Scroll del contenedor principal
+            const mainContent = document.querySelector('main');
+            if (mainContent) mainContent.scrollTop = 0;
             
             // 1. Ocultar todas las secciones
             document.querySelectorAll('.section').forEach(sec => {
@@ -465,6 +477,25 @@
             if (id === 'contents') loadContents();
             if (id === 'users') loadUsers();
             if (id === 'dashboard') loadStats();
+            if (id === 'scraping') loadSettings();
+        }
+
+        async function loadSettings() {
+            try {
+                const settings = await apiCall('/settings');
+                document.getElementById('scraperModeSelect').value = settings.scraperMode;
+            } catch (e) {}
+        }
+
+        async function updateScraperMode() {
+            const mode = document.getElementById('scraperModeSelect').value;
+            try {
+                await apiCall('/settings', {
+                    method: 'POST',
+                    body: JSON.stringify({ scraperMode: mode })
+                });
+                console.log('Modo actualizado a:', mode);
+            } catch (e) { alert('Error al actualizar modo: ' + e); }
         }
 
         async function importFromTmdb() {

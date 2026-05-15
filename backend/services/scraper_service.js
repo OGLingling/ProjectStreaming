@@ -132,36 +132,70 @@ async function waitForStreamOrTimeout(found, maxMs = 20000, intervalMs = 300) {
 async function interactWithPlayer(page) {
   try {
     const { width, height } = page.viewportSize() || { width: 1280, height: 720 };
-    await page.mouse.click(width / 2, height / 2);
-  } catch (_) { }
+    
+    // 1. Simular movimiento humano errático antes de interactuar
+    console.log('[browser] 🖱 Simulando movimiento de ratón humano...');
+    for(let i=0; i<3; i++) {
+        await page.mouse.move(
+            Math.random() * width, 
+            Math.random() * height, 
+            { steps: 5 }
+        ).catch(() => {});
+    }
 
-  await page.evaluate(() => {
-    const selectors = [
-      'video',
-      '.jw-display-icon-container', '.jw-icon-display',
-      '.plyr__control--overlaid',
-      '.vjs-big-play-button',
-      '.play-button',
-      '[class*="play"]', '[id*="play"]',
-      '[role="button"]',
-      'button',
-      '.overlay', '#overlay'
+    // 2. Intentar clics en puntos estratégicos (Centro y Cuadrantes)
+    const points = [
+        { x: width / 2, y: height / 2 },
+        { x: width / 2 + 10, y: height / 2 + 10 },
+        { x: width / 2 - 10, y: height / 2 - 10 }
     ];
-    for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      if (el) { el.click(); return; }
+    
+    for (const p of points) {
+        await page.mouse.click(p.x, p.y).catch(() => {});
+        await page.waitForTimeout(500);
     }
-  }).catch(() => { });
 
-  await page.keyboard.press('Space').catch(() => { });
+    // 3. Buscar y clicar botones de Play específicos de la industria
+    await page.evaluate(() => {
+      const selectors = [
+        'video',
+        '.jw-display-icon-container', '.jw-icon-display',
+        '.plyr__control--overlaid',
+        '.vjs-big-play-button',
+        '.play-button', '#play-button',
+        '.play-icon', '.player-play-button',
+        '[class*="play" i]', '[id*="play" i]',
+        '[role="button"][aria-label*="play" i]',
+        'button', '.overlay', '#overlay'
+      ];
+      
+      for (const sel of selectors) {
+        try {
+          const elements = document.querySelectorAll(sel);
+          elements.forEach(el => {
+            const rect = el.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              el.click();
+              // Si es un video, forzar play programático
+              if (el.tagName === 'VIDEO') el.play().catch(() => {});
+            }
+          });
+        } catch (_) {}
+      }
+    }).catch(() => { });
 
-  await page.evaluate(() => {
-    const video = document.querySelector('video');
-    if (video) {
-      video.muted = true;
-      video.play().catch(() => { });
-    }
-  }).catch(() => { });
+    // 4. Atajos de teclado comunes
+    await page.keyboard.press('k').catch(() => {}); // YouTube/Common
+    await page.keyboard.press('Space').catch(() => {});
+
+    // 5. Scroll suave para activar Lazy Load
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(500);
+    await page.mouse.wheel(0, -300);
+
+  } catch (err) {
+    console.error(`[browser] Error en interacción: ${err.message}`);
+  }
 }
 
 // ─── EXTRACCIÓN DOM ──────────────────────────────────────────────────────────
@@ -229,11 +263,26 @@ async function extractWithBrowser(embedUrl) {
   const found = [];
   let browser;
   const browserlessToken = process.env.BROWSERLESS_TOKEN;
+  const scraperMode = process.env.SCRAPER_MODE || 'auto'; // 'browserless', 'local', 'auto'
+
+  console.log(`[browser] 🛠 Modo seleccionado: ${scraperMode}`);
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      if (attempt === 1 && browserlessToken) {
-        console.log('[browser] ☁ Intentando vía Browserless (CDP)...');
+      // DECISIÓN DE MOTOR DE NAVEGACIÓN
+      let useBrowserless = false;
+      
+      if (scraperMode === 'browserless') {
+        useBrowserless = true;
+      } else if (scraperMode === 'local') {
+        useBrowserless = false;
+      } else {
+        // Modo Auto: Browserless en primer intento si hay token
+        useBrowserless = (attempt === 1 && browserlessToken);
+      }
+
+      if (useBrowserless && browserlessToken) {
+        console.log('[browser] ☁ Conectando a Browserless.io...');
         try {
           browser = await chromium.connectOverCDP({
             endpointURL: `wss://chrome.browserless.io?token=${browserlessToken}&stealth&--disable-notifications`,
@@ -241,27 +290,25 @@ async function extractWithBrowser(embedUrl) {
           });
           console.log('[browser] ✅ Conectado a Browserless');
         } catch (e) {
-          console.error(`[browser] ❌ Fallo conexión Browserless, saltando a local...`);
-          continue; 
+          console.error(`[browser] ❌ Error Browserless: ${e.message}`);
+          if (scraperMode === 'browserless') break; // Si está forzado y falla, salimos
+          continue; // Si es auto, intentamos el siguiente (local)
         }
-      } else if (attempt === 2) {
-        const currentProxy = getNextProxy();
-        if (!currentProxy) { attempt++; } // Si no hay proxies, saltamos al intento 3
-        else {
-          console.log(`[browser] 🏠 Modo Local + Proxy: ${currentProxy}`);
-          browser = await chromium.launch({
-            headless: true,
-            proxy: { server: currentProxy.startsWith('http') ? currentProxy : `http://${currentProxy}` },
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
-          });
-        }
-      } 
-      
-      if (attempt === 3) {
-        console.log(`[browser] 🏠 Modo Local (IP Residencial propia)...`);
+      } else {
+        // MODO LOCAL ("LA TUYA")
+        const currentProxy = (attempt === 2) ? getNextProxy() : null;
+        console.log(`[browser] 🏠 Iniciando Navegador Local ${currentProxy ? '(con Proxy)' : '(IP Directa)'}...`);
+        
         browser = await chromium.launch({
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+          headless: true, // Cambiar a false si quieres ver qué pasa en local (solo si tienes GUI)
+          proxy: currentProxy ? { server: currentProxy.startsWith('http') ? currentProxy : `http://${currentProxy}` } : undefined,
+          args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox', 
+            '--disable-blink-features=AutomationControlled',
+            '--disable-web-security',
+            '--disable-features=IsolateOrigins,site-per-process'
+          ]
         });
       }
 
@@ -301,19 +348,26 @@ async function extractWithBrowser(embedUrl) {
           const navigationTimeout = attempt === 1 ? 35000 : 55000;
           await page.goto(url, { waitUntil: 'domcontentloaded', timeout: navigationTimeout });
 
-          // 5. INTENTAR ACTIVAR EL REPRODUCTOR (Simular Clic Humano)
-          console.log(`[browser] 🖱 Intentando activar reproductor con clic...`);
+          // 5. INTENTAR ACTIVAR EL REPRODUCTOR (Simular Clic Humano Aleatorio)
+          console.log(`[browser] 🖱 Intentando activar reproductor con clic aleatorio...`);
           try {
-            await page.waitForTimeout(4000); // Esperar a que aparezca el botón
-            await page.mouse.click(640, 360); // Clic en el centro
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(Math.floor(Math.random() * 3000) + 3000); 
             
-            // Si hay un botón de play gigante, darle clic
-            await page.click('button', { timeout: 2000 }).catch(() => {});
+            // Clic aleatorio cerca del centro (640, 360) +/- 50px
+            const randomX = 640 + (Math.floor(Math.random() * 100) - 50);
+            const randomY = 360 + (Math.floor(Math.random() * 100) - 50);
+            
+            await page.mouse.move(randomX, randomY, { steps: 10 });
+            await page.mouse.click(randomX, randomY);
+            
+            await page.waitForTimeout(1500);
+            
+            // Intentar presionar 'k' o 'Space' (atajos comunes de play)
+            await page.keyboard.press('k').catch(() => {});
           } catch (e) {}
 
-          console.log(`[browser] ⏳ Esperando respuesta del reproductor (10s)...`);
-          await page.waitForTimeout(10000); 
+          console.log(`[browser] ⏳ Esperando captura de red (12s)...`);
+          await page.waitForTimeout(12000); 
 
           const safeName = url.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
           await page.screenshot({ path: path.join(screenshotsDir, `${level}_At${attempt}_${safeName}.png`) }).catch(() => {});

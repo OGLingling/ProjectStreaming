@@ -356,6 +356,23 @@ router.post('/scrape-force', async (req, res) => {
 });
 
 // --- IMPORTACIÓN AUTOMÁTICA DESDE PANEL ---
+// --- CONFIGURACIÓN DINÁMICA ---
+router.get('/settings', (req, res) => {
+  res.json({
+    scraperMode: process.env.SCRAPER_MODE || 'auto',
+    concurrent: Number(process.env.SCRAPER_CONCURRENT) || 1
+  });
+});
+
+router.post('/settings', (req, res) => {
+  const { scraperMode } = req.body;
+  if (scraperMode) {
+    process.env.SCRAPER_MODE = scraperMode;
+    console.log(`[admin] ⚙️ Scraper Mode actualizado a: ${scraperMode}`);
+  }
+  res.json({ success: true, scraperMode: process.env.SCRAPER_MODE });
+});
+
 router.post('/import-content', async (req, res) => {
   try {
     const { title, type } = req.body;
