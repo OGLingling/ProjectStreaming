@@ -78,7 +78,10 @@ class TMDBApiService {
       const authParam = this.apiKeyV3 ? `api_key=${this.apiKeyV3}&` : '';
       const url = `${this.baseUrl}/search/${type}?${authParam}query=${encodeURIComponent(query)}&language=es-ES`;
       
-      const response = await axios.get(url, { headers: this.headers });
+      const config = { headers: { ...this.headers } };
+      if (this.apiKeyV3) delete config.headers.Authorization;
+
+      const response = await axios.get(url, config);
       const results = response.data.results;
 
       if (!results || results.length === 0) {

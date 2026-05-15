@@ -3,664 +3,855 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel - MovieWind Professional</title>
+    <title>MovieWind - Admin Premium</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        emerald: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
+                        },
+                        cyan: {
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        body { font-family: 'Outfit', sans-serif; }
+        body { font-family: 'Outfit', sans-serif; background-color: #f8fafc; }
         
         .bg-gradient-premium {
             background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
         }
         
         .glass-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
         }
 
-        .sidebar-item-active {
-            background: linear-gradient(90deg, rgba(16, 185, 129, 0.2) 0%, rgba(6, 182, 212, 0.2) 100%);
-            border-left: 4px solid #10b981;
+        .sidebar-link {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .sidebar-link.active {
+            background: linear-gradient(90deg, rgba(16, 185, 129, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%);
+            border-right: 4px solid #10b981;
             color: #059669;
-        }
-
-        .stats-card {
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-        .stats-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            font-weight: 600;
         }
 
         .btn-premium {
             background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
         }
+        
         .btn-premium:hover {
-            transform: scale(1.02);
-            box-shadow: 0 6px 20px rgba(6, 182, 212, 0.4);
-            filter: brightness(1.1);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.4);
+            filter: brightness(1.05);
         }
 
         /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
-        
-        .loader {
-            border-top-color: #06b6d4;
-            animation: spinner 1.5s linear infinite;
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #10b981; }
+
+        .section-fade-enter {
+            animation: fadeIn 0.4s ease-out;
         }
-        @keyframes spinner {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .toast {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
     </style>
 </head>
-<body class="bg-gray-50 h-screen overflow-hidden text-gray-800">
-    <!-- Login Modal -->
-    <div id="loginModal" class="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-50">
-        <div class="bg-white rounded-2xl p-10 w-full max-w-md shadow-2xl transform transition-all border-t-8 border-emerald-500">
-            <div class="text-center mb-8">
-                <div class="inline-flex p-4 bg-emerald-50 rounded-full mb-4 text-emerald-600">
-                    <i class="fas fa-shield-halved text-4xl"></i>
+<body class="h-screen overflow-hidden">
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- Login Overlay -->
+    <div id="loginOverlay" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-[100]">
+        <div class="bg-white rounded-3xl p-10 w-full max-w-md shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-white/20 overflow-hidden relative">
+            <div class="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-24 -left-24 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl"></div>
+            
+            <div class="text-center mb-8 relative z-10">
+                <div class="w-20 h-20 bg-gradient-premium rounded-2xl flex items-center justify-center text-white text-3xl mx-auto mb-6 shadow-xl shadow-emerald-500/20">
+                    <i class="fas fa-shield-halved"></i>
                 </div>
-                <h2 class="text-3xl font-bold text-gray-800">MovieWind Admin</h2>
-                <p class="text-gray-500 mt-2">Ingresa tus credenciales para continuar</p>
+                <h1 class="text-3xl font-bold text-slate-800 tracking-tight">MovieWind Admin</h1>
+                <p class="text-slate-500 mt-2 font-medium">Control Central de Operaciones</p>
             </div>
             
-            <div class="space-y-6">
+            <div class="space-y-5 relative z-10">
                 <div>
-                    <label class="block text-gray-700 text-sm font-semibold mb-2 ml-1">Usuario</label>
-                    <div class="relative">
-                        <i class="fas fa-user absolute left-3 top-3 text-gray-400"></i>
-                        <input type="text" id="username" class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all">
+                    <label class="block text-slate-400 text-xs font-bold uppercase tracking-widest mb-2 ml-1">Administrador</label>
+                    <div class="relative group">
+                        <i class="fas fa-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-emerald-500 transition-colors"></i>
+                        <input type="text" id="username" placeholder="Usuario" class="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium">
                     </div>
                 </div>
                 <div>
-                    <label class="block text-gray-700 text-sm font-semibold mb-2 ml-1">Contraseña</label>
-                    <div class="relative">
-                        <i class="fas fa-lock absolute left-3 top-3 text-gray-400"></i>
-                        <input type="password" id="password" class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all">
+                    <label class="block text-slate-400 text-xs font-bold uppercase tracking-widest mb-2 ml-1">Contraseña</label>
+                    <div class="relative group">
+                        <i class="fas fa-key absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-emerald-500 transition-colors"></i>
+                        <input type="password" id="password" placeholder="••••••••" class="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium">
                     </div>
                 </div>
-                <button onclick="login()" class="w-full btn-premium text-white font-bold py-4 px-4 rounded-xl shadow-lg">
-                    Iniciar Sesión Segura
+                <button onclick="handleLogin()" class="w-full btn-premium text-white font-bold py-4 rounded-2xl shadow-lg shadow-emerald-500/30 text-lg mt-4">
+                    Acceder al Panel
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Main Layout -->
-    <div id="mainLayout" class="flex h-screen opacity-0 transition-opacity duration-500">
-        <!-- Sidebar -->
-        <div class="w-72 bg-white border-r border-gray-200 h-full shadow-sm flex flex-col flex-shrink-0">
+    <!-- App Shell -->
+    <div id="appShell" class="flex h-screen opacity-0 transition-opacity duration-700">
+        <!-- Sidebar Fijo -->
+        <aside class="w-80 bg-white border-r border-slate-100 flex flex-col z-40 relative">
             <div class="p-8">
-                <div class="flex items-center gap-3 mb-8">
-                    <div class="h-10 w-10 bg-gradient-premium rounded-lg flex items-center justify-center text-white shadow-lg">
-                        <i class="fas fa-wind text-xl"></i>
+                <div class="flex items-center gap-4 mb-12">
+                    <div class="w-12 h-12 bg-gradient-premium rounded-xl flex items-center justify-center text-white text-2xl shadow-lg shadow-emerald-500/20">
+                        <i class="fas fa-wind"></i>
                     </div>
-                    <span class="text-xl font-bold tracking-tight text-gray-800">MovieWind</span>
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800 leading-none">MovieWind</h2>
+                        <span class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Premium Dashboard</span>
+                    </div>
                 </div>
-                
-                <nav class="space-y-2">
-                    <a href="#dashboard" onclick="showSection('dashboard', event)" id="nav-dashboard" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
-                        <i class="fas fa-th-large mr-3 group-hover:scale-110 transition-transform"></i> <span class="font-medium">Dashboard</span>
-                    </a>
-                    <a href="#contents" onclick="showSection('contents', event)" id="nav-contents" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
-                        <i class="fas fa-clapperboard mr-3 group-hover:scale-110 transition-transform"></i> <span class="font-medium">Contenidos</span>
-                    </a>
-                    <a href="#users" onclick="showSection('users', event)" id="nav-users" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
-                        <i class="fas fa-users mr-3 group-hover:scale-110 transition-transform"></i> <span class="font-medium">Usuarios</span>
-                    </a>
-                    <a href="#scraping" onclick="showSection('scraping', event)" id="nav-scraping" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
-                        <i class="fas fa-terminal mr-3 group-hover:scale-110 transition-transform"></i> <span class="font-medium">Logs Scraping</span>
-                    </a>
-                    <a href="#broken-links" onclick="showSection('broken-links', event)" id="nav-broken-links" class="flex items-center px-4 py-3 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all group">
-                        <i class="fas fa-triangle-exclamation mr-3 group-hover:scale-110 transition-transform"></i> <span class="font-medium">Enlaces Rotos</span>
-                    </a>
+
+                <nav class="space-y-1.5">
+                    <button onclick="showSection('dashboard')" id="nav-dashboard" class="sidebar-link w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-slate-500 hover:bg-slate-50 active group">
+                        <i class="fas fa-house-chimney text-lg transition-transform group-hover:scale-110"></i>
+                        <span class="font-semibold text-sm">Dashboard</span>
+                    </button>
+                    <button onclick="showSection('contents')" id="nav-contents" class="sidebar-link w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-slate-500 hover:bg-slate-50 group">
+                        <i class="fas fa-clapperboard text-lg transition-transform group-hover:scale-110"></i>
+                        <span class="font-semibold text-sm">Catálogo Media</span>
+                    </button>
+                    <button onclick="showSection('users')" id="nav-users" class="sidebar-link w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-slate-500 hover:bg-slate-50 group">
+                        <i class="fas fa-user-group text-lg transition-transform group-hover:scale-110"></i>
+                        <span class="font-semibold text-sm">Usuarios</span>
+                    </button>
+                    <div class="py-4">
+                        <div class="h-px bg-slate-100 w-full mb-4"></div>
+                        <span class="text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em] px-5">Sistema & Scraping</span>
+                    </div>
+                    <button onclick="showSection('scraping')" id="nav-scraping" class="sidebar-link w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-slate-500 hover:bg-slate-50 group">
+                        <i class="fas fa-code-merge text-lg transition-transform group-hover:scale-110"></i>
+                        <span class="font-semibold text-sm">Consola de Ingesta</span>
+                    </button>
+                    <button onclick="showSection('broken-links')" id="nav-broken-links" class="sidebar-link w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-slate-500 hover:bg-slate-50 group">
+                        <i class="fas fa-shield-virus text-lg transition-transform group-hover:scale-110"></i>
+                        <span class="font-semibold text-sm">Auditoría de Links</span>
+                    </button>
                 </nav>
             </div>
-            
-            <div class="mt-auto p-8 border-t border-gray-100">
-                <div class="flex items-center gap-3">
-                    <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" class="h-10 w-10 rounded-full border-2 border-emerald-500 shadow-sm">
-                    <div>
-                        <p class="text-sm font-bold text-gray-800">Administrador</p>
-                        <p class="text-xs text-emerald-600 font-medium">Online</p>
+
+            <div class="mt-auto p-8">
+                <div class="bg-slate-50 rounded-2xl p-4 flex items-center gap-3 border border-slate-100">
+                    <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" class="w-10 h-10 rounded-full border-2 border-white shadow-sm">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-bold text-slate-800 truncate">Administrador Principal</p>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                            <span class="text-[10px] font-bold text-emerald-600 uppercase">Sistema Activo</span>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </aside>
 
-        <!-- Main Content Area -->
-        <div class="flex-1 min-w-0 bg-gray-50 flex flex-col h-full">
-            <header class="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center flex-shrink-0">
-                <h2 id="sectionTitle" class="text-xl font-bold text-gray-800">Dashboard General</h2>
+        <!-- Main Workspace -->
+        <div class="flex-1 flex flex-col min-w-0 relative h-full">
+            <!-- Header Fijo -->
+            <header class="h-24 bg-white/80 backdrop-blur-md border-b border-slate-100 px-10 flex items-center justify-between z-30 sticky top-0">
+                <div>
+                    <h1 id="headerTitle" class="text-2xl font-bold text-slate-800 tracking-tight">Cargando...</h1>
+                    <div id="breadcrumb" class="flex items-center gap-2 text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">
+                        <span>MovieWind</span>
+                        <i class="fas fa-chevron-right text-[8px]"></i>
+                        <span id="currentPath" class="text-emerald-500">Dashboard</span>
+                    </div>
+                </div>
+                
                 <div class="flex items-center gap-4">
-                    <button class="p-2 text-gray-400 hover:text-emerald-500"><i class="fas fa-bell"></i></button>
-                    <button onclick="location.reload()" class="btn-premium text-white text-sm font-bold py-2 px-5 rounded-lg">
-                        <i class="fas fa-rotate mr-2"></i>Refrescar
+                    <div class="relative group">
+                        <button class="w-11 h-11 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 hover:text-emerald-500 transition-colors">
+                            <i class="fas fa-magnifying-glass"></i>
+                        </button>
+                    </div>
+                    <button onclick="window.location.reload()" class="btn-premium px-6 py-3 rounded-xl text-white font-bold text-sm shadow-lg shadow-emerald-500/20 flex items-center gap-2">
+                        <i class="fas fa-rotate"></i>
+                        <span>Sincronizar Datos</span>
                     </button>
                 </div>
             </header>
 
-            <main class="p-8 flex-1 overflow-y-auto">
-                <!-- Dashboard Section -->
-                <div id="dashboard" class="section">
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                        <div class="stats-card glass-card rounded-2xl p-6 shadow-sm border-l-4 border-emerald-500">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-500 text-sm font-semibold uppercase tracking-wider">Usuarios</p>
-                                    <p id="totalUsers" class="text-3xl font-bold text-gray-800 mt-1">0</p>
+            <!-- Content Area - Única área con Scroll -->
+            <main id="mainScrollArea" class="flex-1 overflow-y-auto p-10 bg-[#f8fafc] space-y-10">
+                
+                <!-- Section: Dashboard -->
+                <div id="section-dashboard" class="content-section section-fade-enter space-y-10">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <!-- Stat Card -->
+                        <div class="glass-card p-6 rounded-[2rem] shadow-sm border border-slate-200/50 flex flex-col justify-between h-40 group hover:border-emerald-500/30 transition-all">
+                            <div class="flex justify-between items-start">
+                                <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center text-xl group-hover:bg-emerald-500 group-hover:text-white transition-all duration-500">
+                                    <i class="fas fa-users"></i>
                                 </div>
-                                <div class="h-12 w-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-xl">
-                                    <i class="fas fa-user-group"></i>
-                                </div>
+                                <span class="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-1 rounded-md">+12% hoy</span>
+                            </div>
+                            <div>
+                                <h3 id="stat-users" class="text-3xl font-bold text-slate-800 leading-none">0</h3>
+                                <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-2">Usuarios Totales</p>
                             </div>
                         </div>
                         
-                        <div class="stats-card glass-card rounded-2xl p-6 shadow-sm border-l-4 border-cyan-500">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-500 text-sm font-semibold uppercase tracking-wider">Contenidos</p>
-                                    <p id="totalContents" class="text-3xl font-bold text-gray-800 mt-1">0</p>
-                                </div>
-                                <div class="h-12 w-12 bg-cyan-100 text-cyan-600 rounded-xl flex items-center justify-center text-xl">
-                                    <i class="fas fa-photo-film"></i>
+                        <div class="glass-card p-6 rounded-[2rem] shadow-sm border border-slate-200/50 flex flex-col justify-between h-40 group hover:border-cyan-500/30 transition-all">
+                            <div class="flex justify-between items-start">
+                                <div class="w-12 h-12 bg-cyan-50 text-cyan-600 rounded-2xl flex items-center justify-center text-xl group-hover:bg-cyan-500 group-hover:text-white transition-all duration-500">
+                                    <i class="fas fa-clapperboard"></i>
                                 </div>
                             </div>
-                        </div>
-                        
-                        <div class="stats-card glass-card rounded-2xl p-6 shadow-sm border-l-4 border-indigo-500">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-500 text-sm font-semibold uppercase tracking-wider">Scraping</p>
-                                    <p id="scrapingRequests" class="text-3xl font-bold text-gray-800 mt-1">0</p>
-                                </div>
-                                <div class="h-12 w-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-xl">
-                                    <i class="fas fa-bolt"></i>
-                                </div>
+                            <div>
+                                <h3 id="stat-contents" class="text-3xl font-bold text-slate-800 leading-none">0</h3>
+                                <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-2">Contenidos Media</p>
                             </div>
                         </div>
-                        
-                        <div class="stats-card glass-card rounded-2xl p-6 shadow-sm border-l-4 border-rose-500">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-500 text-sm font-semibold uppercase tracking-wider">Éxito</p>
-                                    <p id="successRate" class="text-3xl font-bold text-gray-800 mt-1">0%</p>
+
+                        <div class="glass-card p-6 rounded-[2rem] shadow-sm border border-slate-200/50 flex flex-col justify-between h-40 group hover:border-amber-500/30 transition-all">
+                            <div class="flex justify-between items-start">
+                                <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center text-xl group-hover:bg-amber-500 group-hover:text-white transition-all duration-500">
+                                    <i class="fas fa-bolt-lightning"></i>
                                 </div>
-                                <div class="h-12 w-12 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center text-xl">
-                                    <i class="fas fa-heart-pulse"></i>
+                            </div>
+                            <div>
+                                <h3 id="stat-requests" class="text-3xl font-bold text-slate-800 leading-none">0</h3>
+                                <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-2">Peticiones Scraping</p>
+                            </div>
+                        </div>
+
+                        <div class="glass-card p-6 rounded-[2rem] shadow-sm border border-slate-200/50 flex flex-col justify-between h-40 group hover:border-rose-500/30 transition-all">
+                            <div class="flex justify-between items-start">
+                                <div class="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center text-xl group-hover:bg-rose-500 group-hover:text-white transition-all duration-500">
+                                    <i class="fas fa-circle-check"></i>
                                 </div>
+                            </div>
+                            <div>
+                                <h3 id="stat-success" class="text-3xl font-bold text-slate-800 leading-none">0%</h3>
+                                <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-2">Tasa de Efectividad</p>
                             </div>
                         </div>
                     </div>
 
-                    <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-100">
-                        <div class="flex justify-between items-center mb-6">
-                            <h3 class="text-xl font-bold text-gray-800">Actividad Reciente</h3>
-                            <span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full uppercase">En Vivo</span>
+                    <!-- Recent Activity -->
+                    <div class="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm relative overflow-hidden">
+                        <div class="absolute top-0 right-0 p-10 opacity-[0.03]">
+                            <i class="fas fa-chart-line text-9xl text-slate-900"></i>
                         </div>
-                        <div id="recentActivity" class="space-y-4">
-                            <p class="text-gray-400 text-center py-10 italic">Cargando flujos de datos...</p>
+                        <div class="flex justify-between items-center mb-8">
+                            <h3 class="text-xl font-bold text-slate-800">Historial de Operaciones</h3>
+                            <div class="flex gap-2">
+                                <span class="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-bold uppercase">Real-time</span>
+                            </div>
+                        </div>
+                        <div id="activity-container" class="space-y-4">
+                            <!-- Loader -->
+                            <div class="flex flex-col items-center justify-center py-20 opacity-20">
+                                <i class="fas fa-circle-notch fa-spin text-4xl mb-4"></i>
+                                <p class="font-bold uppercase text-xs tracking-widest">Consultando logs...</p>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Contents Section -->
-                <div id="contents" class="section hidden">
-                    <!-- TMDB Smart Importer -->
-                    <div class="bg-white rounded-2xl p-8 shadow-lg border border-emerald-100 mb-10 overflow-hidden relative">
-                        <div class="absolute top-0 right-0 p-10 opacity-5">
-                            <i class="fas fa-wand-magic-sparkles text-8xl text-emerald-500"></i>
-                        </div>
-                        <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center">
-                            <span class="h-8 w-8 bg-emerald-500 text-white rounded-lg flex items-center justify-center mr-3 text-sm">
-                                <i class="fas fa-plus"></i>
-                            </span>
-                            Importador Inteligente TMDB
-                        </h3>
-                        <div class="flex flex-wrap gap-4 relative z-10">
-                            <div class="flex-1 min-w-[300px]">
-                                <label class="text-xs font-bold text-gray-400 uppercase ml-1 mb-1 block">Título del Contenido</label>
-                                <input type="text" id="tmdbImportTitle" placeholder="Ej: Interstellar, Tokyo Ghoul..." 
-                                    class="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-medium">
+                <!-- Section: Contents Catalog -->
+                <div id="section-contents" class="content-section hidden section-fade-enter space-y-10">
+                    <!-- Advanced Importer -->
+                    <div class="bg-slate-900 rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden border border-white/5">
+                        <div class="absolute -top-24 -right-24 w-96 h-96 bg-emerald-500/10 rounded-full blur-[100px]"></div>
+                        
+                        <div class="relative z-10">
+                            <div class="flex items-center gap-3 mb-8">
+                                <div class="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                                    <i class="fas fa-magic"></i>
+                                </div>
+                                <h3 class="text-xl font-bold text-white">Importación Automatizada TMDB</h3>
                             </div>
-                            <div class="w-48">
-                                <label class="text-xs font-bold text-gray-400 uppercase ml-1 mb-1 block">Tipo</label>
-                                <select id="tmdbImportType" class="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-medium">
-                                    <option value="movie">🎬 Película</option>
-                                    <option value="tv">📺 Serie / Anime</option>
-                                </select>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-end">
+                                <div class="lg:col-span-6">
+                                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block ml-1">Título de la Obra (Película o Serie)</label>
+                                    <div class="relative group">
+                                        <i class="fas fa-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-400 transition-colors"></i>
+                                        <input type="text" id="tmdb-query" placeholder="Ej: Dragon Ball Z, Inception..." 
+                                            class="w-full pl-14 pr-6 py-5 bg-white/5 border border-white/10 rounded-2xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all font-medium placeholder:text-slate-600">
+                                    </div>
+                                </div>
+                                <div class="lg:col-span-3">
+                                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block ml-1">Formato</label>
+                                    <select id="tmdb-type" class="w-full px-6 py-5 bg-white/5 border border-white/10 rounded-2xl text-white focus:outline-none focus:border-emerald-500 appearance-none font-medium cursor-pointer">
+                                        <option value="movie" class="bg-slate-900 text-white">🎬 Película</option>
+                                        <option value="tv" class="bg-slate-900 text-white">📺 Serie / TV</option>
+                                    </select>
+                                </div>
+                                <div class="lg:col-span-3">
+                                    <button onclick="handleTmdbImport()" id="btn-import" class="w-full btn-premium py-5 rounded-2xl text-white font-bold flex items-center justify-center gap-3">
+                                        <span id="import-loader" class="hidden"><i class="fas fa-circle-notch fa-spin"></i></span>
+                                        <i class="fas fa-cloud-arrow-down"></i>
+                                        <span>Procesar Ingesta</span>
+                                    </button>
+                                </div>
                             </div>
-                            <div class="flex items-end">
-                                <button id="btnImport" onclick="importFromTmdb()" class="btn-premium text-white font-bold py-4 px-10 rounded-xl flex items-center h-[58px]">
-                                    <span id="importSpinner" class="hidden mr-3"><i class="fas fa-circle-notch fa-spin"></i></span>
-                                    Importar Metadata
-                                </button>
-                            </div>
-                        </div>
-                        <div class="mt-4 flex items-center text-xs text-gray-400 font-medium italic">
-                            <i class="fas fa-info-circle mr-2 text-emerald-500"></i> Se auto-generarán trailers, posters, géneros y temporadas completas.
                         </div>
                     </div>
 
-                    <div class="flex justify-between items-center mb-6">
+                    <!-- Filter Bar -->
+                    <div class="flex flex-wrap gap-4 items-center justify-between">
                         <div class="flex gap-4 items-center">
-                            <div class="relative">
-                                <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
-                                <input type="text" id="contentSearch" placeholder="Buscar en biblioteca..." class="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 w-80">
+                            <div class="relative group">
+                                <i class="fas fa-filter absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors"></i>
+                                <input type="text" id="search-content" oninput="loadContentsData()" placeholder="Filtrar por nombre..." class="pl-12 pr-6 py-3 bg-white border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 w-64 shadow-sm font-medium">
                             </div>
-                            <select id="contentType" class="px-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium">
-                                <option value="">Todos</option>
+                            <select id="filter-type" onchange="loadContentsData()" class="px-4 py-3 bg-white border border-slate-100 rounded-xl text-sm font-bold text-slate-600 shadow-sm cursor-pointer hover:border-emerald-500 transition-colors">
+                                <option value="">Todos los tipos</option>
                                 <option value="movie">Películas</option>
                                 <option value="tv">Series</option>
                             </select>
-                            <button onclick="loadContents()" class="p-2 bg-white border border-gray-200 text-gray-600 rounded-xl hover:text-emerald-500 hover:border-emerald-500">
-                                <i class="fas fa-filter"></i>
+                        </div>
+                        
+                        <div class="flex items-center gap-2">
+                            <button class="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-emerald-500 transition-all shadow-sm">
+                                <i class="fas fa-grip"></i>
+                            </button>
+                            <button onclick="openManualModal()" class="bg-slate-800 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-slate-900 transition-all flex items-center gap-2 shadow-xl shadow-slate-900/10">
+                                <i class="fas fa-plus"></i>
+                                <span>Agregar Manual</span>
                             </button>
                         </div>
-                        <button onclick="showAddContentModal()" class="bg-gray-800 text-white px-6 py-2 rounded-xl hover:bg-gray-900 font-bold flex items-center transition-all">
-                            <i class="fas fa-plus mr-2"></i>Manual
-                        </button>
                     </div>
 
-                    <!-- Contents Table -->
-                    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                        <table class="w-full">
+                    <!-- Content Table -->
+                    <div class="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+                        <table class="w-full text-left">
                             <thead>
-                                <tr class="bg-gray-50 border-b border-gray-100">
-                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Información</th>
-                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Estado</th>
-                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Streaming</th>
-                                    <th class="px-8 py-5 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Acciones</th>
+                                <tr class="border-b border-slate-50">
+                                    <th class="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Referencia</th>
+                                    <th class="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Metadata</th>
+                                    <th class="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Stream Status</th>
+                                    <th class="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] text-right">Control</th>
                                 </tr>
                             </thead>
-                            <tbody id="contentsTable" class="divide-y divide-gray-50">
-                                <tr><td colspan="4" class="p-20 text-center text-gray-400">Inicializando base de datos...</td></tr>
+                            <tbody id="table-contents" class="divide-y divide-slate-50">
+                                <!-- Filas dinámicas -->
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- (Other sections follow the same aesthetic...) -->
-                <div id="users" class="section hidden">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Gestión de Usuarios</h2>
-                    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                         <table class="w-full" id="usersTableContainer">
-                            <thead>
-                                <tr class="bg-gray-50 border-b border-gray-100">
-                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Usuario</th>
-                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Plan</th>
-                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Actividad</th>
-                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Fecha</th>
-                                </tr>
-                            </thead>
-                            <tbody id="usersTable" class="divide-y divide-gray-50"></tbody>
-                         </table>
+                <!-- Section: Scraping Console -->
+                <div id="section-scraping" class="content-section hidden section-fade-enter space-y-8">
+                    <div class="flex justify-between items-end">
+                        <div class="space-y-1">
+                            <h2 class="text-2xl font-bold text-slate-800">Consola de Ingesta Dinámica</h2>
+                            <p class="text-slate-400 text-sm font-medium">Monitorea el proceso de extracción de .m3u8 en tiempo real</p>
+                        </div>
+                        <div class="flex gap-4">
+                            <div class="bg-white p-1 rounded-2xl border border-slate-100 flex shadow-sm">
+                                <button onclick="setGlobalScraperMode('auto')" id="mode-auto" class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all">Auto</button>
+                                <button onclick="setGlobalScraperMode('browserless')" id="mode-browserless" class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all">Cloud</button>
+                                <button onclick="setGlobalScraperMode('local')" id="mode-local" class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all">Local</button>
+                            </div>
+                            <button onclick="handleManualScrapeRun()" class="btn-premium px-8 rounded-2xl text-white font-bold text-sm shadow-xl shadow-emerald-500/20 flex items-center gap-2">
+                                <i class="fas fa-play"></i>
+                                <span>Forzar Escaneo</span>
+                            </button>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Scraping Section -->
-                <div id="scraping" class="section hidden">
-                    <div class="flex justify-between items-center mb-6">
-                        <div class="flex items-center gap-4">
-                            <h2 class="text-2xl font-bold text-gray-800">Logs de Ingesta (Scraping)</h2>
-                            <select id="scraperModeSelect" onchange="updateScraperMode()" class="bg-white border border-gray-200 text-gray-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500">
-                                <option value="auto">Modo: Auto</option>
-                                <option value="browserless">Modo: Browserless</option>
-                                <option value="local">Modo: Local (La Tuya)</option>
-                            </select>
+                    <div class="bg-slate-950 rounded-[2.5rem] p-10 shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-white/5 relative overflow-hidden h-[600px] flex flex-col">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-premium"></div>
+                        <div class="flex items-center gap-3 mb-6 pb-4 border-b border-white/5">
+                            <div class="flex gap-1.5">
+                                <div class="w-2.5 h-2.5 rounded-full bg-rose-500/50"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-amber-500/50"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500/50"></div>
+                            </div>
+                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">system@moviewind:~/scraping_logs</span>
                         </div>
-                        <button onclick="triggerWorker()" class="btn-premium text-white px-6 py-2 rounded-xl font-bold flex items-center">
-                            <i class="fas fa-play-circle mr-2"></i>Forzar Ciclo
-                        </button>
-                    </div>
-                    <div class="bg-gray-900 rounded-2xl p-6 shadow-2xl font-mono text-sm text-emerald-400 overflow-hidden border-t-8 border-gray-800">
-                        <div class="flex items-center gap-2 mb-4 border-b border-gray-800 pb-4">
-                            <div class="h-3 w-3 rounded-full bg-rose-500"></div>
-                            <div class="h-3 w-3 rounded-full bg-amber-500"></div>
-                            <div class="h-3 w-3 rounded-full bg-emerald-500"></div>
-                            <span class="text-gray-500 ml-2 text-xs">terminal — scraping_worker.log</span>
-                        </div>
-                        <div id="scrapingLogs" class="space-y-1 h-[500px] overflow-y-auto custom-scrollbar">
-                            <p class="text-gray-600">[info] Esperando flujo de datos en tiempo real...</p>
+                        <div id="scraping-console" class="flex-1 overflow-y-auto font-mono text-sm space-y-2 text-emerald-500/90 custom-scrollbar pr-4">
+                            <p class="text-slate-600 italic">>> Conexión establecida. Esperando flujo de datos...</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Broken Links Section -->
-                <div id="broken-links" class="section hidden">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Auditoría de Enlaces</h2>
-                    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                        <table class="w-full">
+                <!-- Section: Users -->
+                <div id="section-users" class="content-section hidden section-fade-enter space-y-10">
+                     <div class="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+                        <table class="w-full text-left">
                             <thead>
-                                <tr class="bg-gray-50 border-b border-gray-100">
-                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">URL Afectada</th>
-                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Error</th>
-                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Proveedor</th>
-                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Fecha</th>
+                                <tr class="border-b border-slate-50 bg-slate-50/50">
+                                    <th class="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Identidad</th>
+                                    <th class="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Plan / Status</th>
+                                    <th class="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Registro</th>
+                                    <th class="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] text-right">Opciones</th>
                                 </tr>
                             </thead>
-                            <tbody id="brokenLinksTable" class="divide-y divide-gray-50">
-                                <tr><td colspan="4" class="p-20 text-center text-gray-400 italic">No se han detectado enlaces rotos recientemente.</td></tr>
-                            </tbody>
+                            <tbody id="table-users" class="divide-y divide-slate-50"></tbody>
                         </table>
                     </div>
                 </div>
+
+                <!-- Section: Broken Links -->
+                <div id="section-broken-links" class="content-section hidden section-fade-enter space-y-8">
+                    <div class="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr class="border-b border-slate-50">
+                                    <th class="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">URL Objetivo</th>
+                                    <th class="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Naturaleza del Error</th>
+                                    <th class="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Detección</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-broken-links" class="divide-y divide-slate-50"></tbody>
+                        </table>
+                    </div>
+                </div>
+
             </main>
         </div>
     </div>
 
-    <!-- Modals (Add Content, etc) -->
-    <div id="addContentModal" class="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-50 hidden p-4">
-        <div class="bg-white rounded-2xl p-10 w-full max-w-lg shadow-2xl">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Manualmente</h2>
-            <div class="grid grid-cols-2 gap-4">
-                <div class="col-span-2">
-                    <label class="block text-gray-500 text-xs font-bold uppercase mb-1">Título</label>
-                    <input type="text" id="contentTitle" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+    <!-- Modals -->
+    <div id="modal-manual" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[150] hidden flex items-center justify-center p-6">
+        <div class="bg-white rounded-[2.5rem] p-10 w-full max-w-xl shadow-2xl relative overflow-hidden">
+            <h2 class="text-2xl font-bold text-slate-800 mb-8">Nueva Inserción Manual</h2>
+            <div class="space-y-6">
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="col-span-2">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Título Público</label>
+                        <input type="text" id="manual-title" class="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all outline-none font-medium">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">ID de TMDB (Ref)</label>
+                        <input type="text" id="manual-tmdbid" class="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all outline-none font-medium">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Tipo de Contenido</label>
+                        <select id="manual-type" class="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all outline-none font-bold text-slate-600">
+                            <option value="movie">🎬 Película</option>
+                            <option value="tv">📺 Serie</option>
+                        </select>
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-gray-500 text-xs font-bold uppercase mb-1">TMDB ID</label>
-                    <input type="text" id="contentTmdbId" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+                <div class="flex gap-4 pt-4">
+                    <button onclick="closeManualModal()" class="flex-1 py-4 bg-slate-100 text-slate-500 font-bold rounded-2xl hover:bg-slate-200 transition-all">Descartar</button>
+                    <button onclick="handleManualInsert()" class="flex-1 btn-premium py-4 text-white font-bold rounded-2xl shadow-lg shadow-emerald-500/20">Registrar</button>
                 </div>
-                <div>
-                    <label class="block text-gray-500 text-xs font-bold uppercase mb-1">Tipo</label>
-                    <select id="contentTypeSelect" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
-                        <option value="movie">Película</option>
-                        <option value="tv">Serie</option>
-                    </select>
-                </div>
-            </div>
-            <div class="mt-8 flex gap-4">
-                <button onclick="hideAddContentModal()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-200">Cancelar</button>
-                <button onclick="addContent()" class="flex-1 btn-premium text-white font-bold py-3 rounded-xl shadow-lg">Guardar Contenido</button>
             </div>
         </div>
     </div>
 
     <script>
-        let currentPage = 1;
-        const limit = 20;
         let authToken = '';
+        let currentSection = 'dashboard';
 
-        function login() {
-            const user = document.getElementById('username').value;
-            const pass = document.getElementById('password').value;
-            if(!user || !pass) return alert('Campos obligatorios');
-            
-            authToken = btoa(`${user}:${pass}`);
-            document.getElementById('loginModal').style.display = 'none';
-            const layout = document.getElementById('mainLayout');
-            layout.classList.remove('opacity-0');
-            
-            init();
-        }
-
-        async function apiCall(endpoint, options = {}) {
-            const res = await fetch(`/api/admin${endpoint}`, {
-                headers: { 'Authorization': `Basic ${authToken}`, 'Content-Type': 'application/json', ...options.headers },
-                ...options
-            });
-            if (res.status === 401) { location.reload(); throw 'Unauthorized'; }
-            
-            const contentType = res.headers.get("content-type");
-            if (contentType && contentType.includes("text/html")) {
-                const text = await res.text();
-                console.error("Error HTML del servidor:", text);
-                throw "El servidor devolvió un error inesperado (HTML). Verifica que el backend esté encendido.";
-            }
-            
-            return res.json();
-        }
-
-        async function init() {
-            loadStats();
-            loadRecentActivity();
-            loadContents();
-            loadUsers();
-            showSection('dashboard');
-        }
-
-        function showSection(id, event) {
-            if (event) event.preventDefault();
-            console.log('Navegando a:', id);
-            
-            // 0. Reset Scroll del contenedor principal
-            const mainContent = document.querySelector('main');
-            if (mainContent) mainContent.scrollTop = 0;
-            
-            // 1. Ocultar todas las secciones
-            document.querySelectorAll('.section').forEach(sec => {
-                sec.classList.add('hidden');
-            });
-            
-            // 2. Mostrar la sección solicitada
-            const target = document.getElementById(id);
-            if (target) {
-                target.classList.remove('hidden');
-            } else {
-                console.error('Sección no encontrada:', id);
-                return;
-            }
-
-            // 3. Actualizar Sidebar (Estilo Activo)
-            document.querySelectorAll('nav a').forEach(link => {
-                link.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-r-4', 'border-emerald-500');
-                link.classList.add('text-gray-600');
-            });
-
-            const activeLink = document.getElementById('nav-' + id);
-            if (activeLink) {
-                activeLink.classList.remove('text-gray-600');
-                activeLink.classList.add('text-emerald-600', 'bg-emerald-50', 'border-r-4', 'border-emerald-500');
-            }
-
-            // 4. Actualizar Título de Cabecera
-            const titles = {
-                'dashboard': 'Dashboard General',
-                'contents': 'Gestión de Contenidos',
-                'users': 'Usuarios y Suscripciones',
-                'scraping': 'Logs del Sistema (Scraping)',
-                'broken-links': 'Auditoría de Enlaces Rotos'
+        // --- AUTH & CORE ---
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const colors = {
+                success: 'bg-emerald-500 text-white',
+                error: 'bg-rose-500 text-white',
+                info: 'bg-slate-800 text-white'
             };
-            document.getElementById('sectionTitle').innerText = titles[id] || 'Panel de Administración';
+            const icons = {
+                success: 'fa-circle-check',
+                error: 'fa-triangle-exclamation',
+                info: 'fa-circle-info'
+            };
+            
+            toast.className = `toast ${colors[type]} px-6 py-4 rounded-2xl shadow-xl flex items-center gap-4 mb-3 min-w-[300px] border border-white/10`;
+            toast.innerHTML = `
+                <i class="fas ${icons[type]} text-xl"></i>
+                <span class="font-bold text-sm">${message}</span>
+            `;
+            
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
 
-            // 5. Cargar datos específicos de la sección
-            if (id === 'broken-links') loadBrokenLinks();
-            if (id === 'contents') loadContents();
-            if (id === 'users') loadUsers();
-            if (id === 'dashboard') loadStats();
-            if (id === 'scraping') loadSettings();
+        function handleLogin() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            if(!u || !p) return showToast('Completa todos los campos', 'error');
+
+            authToken = btoa(`${u}:${p}`);
+            document.getElementById('loginOverlay').style.display = 'none';
+            const shell = document.getElementById('appShell');
+            shell.classList.remove('opacity-0');
+            
+            initializeDashboard();
+            showToast('Conexión segura establecida', 'success');
+        }
+
+        async function api(endpoint, options = {}) {
+            try {
+                const res = await fetch(`/api/admin${endpoint}`, {
+                    headers: { 
+                        'Authorization': `Basic ${authToken}`,
+                        'Content-Type': 'application/json',
+                        ...options.headers 
+                    },
+                    ...options
+                });
+                
+                if (res.status === 401) {
+                    showToast('Sesión expirada', 'error');
+                    setTimeout(() => location.reload(), 1000);
+                    return;
+                }
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw err.error || 'Error en el servidor';
+                }
+
+                return await res.json();
+            } catch (error) {
+                console.error('[API Error]', error);
+                throw error;
+            }
+        }
+
+        // --- NAVIGATION ---
+        function showSection(id) {
+            currentSection = id;
+            
+            // UI Sidebar Update
+            document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+            document.getElementById('nav-' + id)?.classList.add('active');
+
+            // Workspace Header Update
+            const titles = {
+                dashboard: 'Dashboard General',
+                contents: 'Gestión de Contenidos',
+                users: 'Directorio de Usuarios',
+                scraping: 'Consola de Ingesta',
+                'broken-links': 'Auditoría de Enlaces'
+            };
+            document.getElementById('headerTitle').innerText = titles[id];
+            document.getElementById('currentPath').innerText = id.charAt(0).toUpperCase() + id.slice(1);
+
+            // Visibility
+            document.querySelectorAll('.content-section').forEach(s => s.classList.add('hidden'));
+            document.getElementById('section-' + id).classList.remove('hidden');
+
+            // Scroll Reset
+            document.getElementById('mainScrollArea').scrollTop = 0;
+
+            // Load Data
+            refreshSectionData(id);
+        }
+
+        function refreshSectionData(id) {
+            if (id === 'dashboard') { loadStats(); loadRecentActivity(); }
+            if (id === 'contents') { loadContentsData(); }
+            if (id === 'users') { loadUsersData(); }
+            if (id === 'scraping') { loadSettings(); }
+            if (id === 'broken-links') { loadBrokenLinksData(); }
+        }
+
+        // --- DATA LOADERS ---
+        async function loadStats() {
+            try {
+                const s = await api('/stats');
+                document.getElementById('stat-users').innerText = s.totalUsers;
+                document.getElementById('stat-contents').innerText = s.totalContents;
+                document.getElementById('stat-requests').innerText = s.scrapingRequests;
+                document.getElementById('stat-success').innerText = s.successRate + '%';
+            } catch (e) {}
+        }
+
+        async function loadRecentActivity() {
+            try {
+                const data = await api('/recent-activity');
+                const container = document.getElementById('activity-container');
+                if(!data || data.length === 0) {
+                    container.innerHTML = '<p class="text-slate-300 text-center py-10">Sin actividad reciente</p>';
+                    return;
+                }
+                container.innerHTML = data.map(a => `
+                    <div class="flex items-center gap-5 p-5 bg-slate-50/50 rounded-2xl border border-slate-100 hover:bg-white hover:shadow-md transition-all">
+                        <div class="w-12 h-12 ${a.success ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'} rounded-xl flex items-center justify-center text-lg">
+                            <i class="fas ${a.success ? 'fa-check-circle' : 'fa-circle-xmark'}"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold text-slate-800 truncate">${a.targetUrl}</p>
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">${new Date(a.createdAt).toLocaleString()}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[10px] font-bold ${a.success ? 'text-emerald-500' : 'text-rose-500'} uppercase">${a.success ? 'Completado' : 'Fallido'}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {}
+        }
+
+        async function loadContentsData() {
+            try {
+                const q = document.getElementById('search-content').value;
+                const t = document.getElementById('filter-type').value;
+                const data = await api(`/contents?search=${q}&type=${t}&limit=50`);
+                
+                const tbody = document.getElementById('table-contents');
+                tbody.innerHTML = data.contents.map(c => `
+                    <tr class="group hover:bg-slate-50/50 transition-colors">
+                        <td class="px-8 py-5">
+                            <div class="flex items-center gap-4">
+                                <div class="w-14 h-20 bg-slate-100 rounded-xl overflow-hidden shadow-sm flex-shrink-0">
+                                    <img src="${c.imageUrl}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onerror="this.src='https://placehold.co/300x450?text=No+Image'">
+                                </div>
+                                <div class="min-w-0">
+                                    <p class="text-sm font-bold text-slate-800 truncate">${c.title}</p>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <span class="text-[10px] font-bold ${c.type === 'movie' ? 'text-cyan-500 bg-cyan-50' : 'text-emerald-500 bg-emerald-50'} px-2 py-0.5 rounded-md uppercase tracking-tighter">${c.type}</span>
+                                        <span class="text-[10px] font-bold text-slate-400">ID: ${c.tmdbId}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-8 py-5">
+                            <div class="flex items-center gap-1 text-amber-500 text-[10px] mb-1">
+                                <i class="fas fa-star"></i>
+                                <span class="font-bold">${c.rating || '0.0'}</span>
+                            </div>
+                            <p class="text-xs text-slate-400 font-medium truncate max-w-[200px]">${c.description || 'Sin descripción'}</p>
+                        </td>
+                        <td class="px-8 py-5">
+                            <div class="flex items-center gap-2">
+                                <div class="w-2 h-2 rounded-full ${c.videoUrl ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-300'}"></div>
+                                <span class="text-xs font-bold ${c.videoUrl ? 'text-emerald-600' : 'text-slate-400'}">${c.videoUrl ? 'Enlace Disponible' : 'Pendiente Scrape'}</span>
+                            </div>
+                        </td>
+                        <td class="px-8 py-5 text-right">
+                            <div class="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button class="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 transition-all"><i class="fas fa-pen-to-square"></i></button>
+                                <button onclick="deleteContent(${c.id})" class="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all"><i class="fas fa-trash-can"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {}
+        }
+
+        async function loadUsersData() {
+            try {
+                const users = await api('/users');
+                const tbody = document.getElementById('table-users');
+                tbody.innerHTML = users.map(u => `
+                    <tr class="hover:bg-slate-50/50 transition-colors">
+                        <td class="px-8 py-5">
+                            <div class="flex items-center gap-3">
+                                <div class="w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 font-bold text-xs uppercase">
+                                    ${u.name ? u.name.charAt(0) : '?'}
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-800">${u.name || 'Usuario'}</p>
+                                    <p class="text-xs text-slate-400">${u.email}</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-8 py-5">
+                            <span class="px-3 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-full uppercase tracking-tighter">${u.plan}</span>
+                        </td>
+                        <td class="px-8 py-5 text-xs text-slate-400 font-medium">
+                            ${new Date(u.createdAt).toLocaleDateString()}
+                        </td>
+                        <td class="px-8 py-5 text-right">
+                            <button class="text-slate-300 hover:text-slate-600"><i class="fas fa-ellipsis-v"></i></button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {}
+        }
+
+        async function loadBrokenLinksData() {
+            try {
+                const data = await api('/broken-links');
+                const tbody = document.getElementById('table-broken-links');
+                if(!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" class="py-20 text-center text-slate-300 font-bold uppercase tracking-widest text-xs">No se detectaron errores críticos</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.map(l => `
+                    <tr class="hover:bg-rose-50/50 transition-colors">
+                        <td class="px-8 py-5">
+                            <p class="text-xs font-mono text-slate-500 truncate max-w-sm">${l.targetUrl}</p>
+                        </td>
+                        <td class="px-8 py-5">
+                            <span class="text-rose-600 text-[10px] font-bold uppercase border border-rose-100 bg-rose-50 px-2 py-0.5 rounded">${l.error || 'Connection Failed'}</span>
+                        </td>
+                        <td class="px-8 py-5 text-xs text-slate-400 font-medium">
+                            ${new Date(l.createdAt).toLocaleString()}
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {}
+        }
+
+        // --- ACTIONS ---
+        async function handleTmdbImport() {
+            const title = document.getElementById('tmdb-query').value;
+            const type = document.getElementById('tmdb-type').value;
+            if(!title) return showToast('Escribe un título para buscar', 'info');
+
+            const btn = document.getElementById('btn-import');
+            const loader = document.getElementById('import-loader');
+            
+            btn.disabled = true;
+            loader.classList.remove('hidden');
+
+            try {
+                const res = await api('/import-content', {
+                    method: 'POST',
+                    body: JSON.stringify({ title, type })
+                });
+                showToast(res.message, 'success');
+                document.getElementById('tmdb-query').value = '';
+                loadContentsData();
+                loadStats();
+            } catch (e) {
+                showToast(e, 'error');
+            } finally {
+                btn.disabled = false;
+                loader.classList.add('hidden');
+            }
         }
 
         async function loadSettings() {
             try {
-                const settings = await apiCall('/settings');
-                document.getElementById('scraperModeSelect').value = settings.scraperMode;
+                const s = await api('/settings');
+                updateScraperModeUI(s.scraperMode);
             } catch (e) {}
         }
 
-        async function updateScraperMode() {
-            const mode = document.getElementById('scraperModeSelect').value;
-            try {
-                await apiCall('/settings', {
-                    method: 'POST',
-                    body: JSON.stringify({ scraperMode: mode })
-                });
-                console.log('Modo actualizado a:', mode);
-            } catch (e) { alert('Error al actualizar modo: ' + e); }
-        }
-
-        async function importFromTmdb() {
-            const title = document.getElementById('tmdbImportTitle').value;
-            const type = document.getElementById('tmdbImportType').value;
-            const btn = document.getElementById('btnImport');
-            const spinner = document.getElementById('importSpinner');
-
-            if (!title) return alert('Escribe el título');
-
-            btn.disabled = true;
-            spinner.classList.remove('hidden');
-            
-            try {
-                const res = await apiCall('/import-content', {
-                    method: 'POST',
-                    body: JSON.stringify({ title, type })
-                });
-                if (res.success) {
-                    alert(res.message);
-                    document.getElementById('tmdbImportTitle').value = '';
-                    loadContents();
-                    loadStats();
+        function updateScraperModeUI(mode) {
+            const btns = ['mode-auto', 'mode-browserless', 'mode-local'];
+            btns.forEach(id => {
+                const b = document.getElementById(id);
+                if(id === 'mode-' + mode) {
+                    b.className = 'px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-500 text-white shadow-lg shadow-emerald-500/20';
+                } else {
+                    b.className = 'px-5 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-600';
                 }
-            } catch (e) { alert('Error: ' + e); }
-            finally {
-                btn.disabled = false;
-                spinner.classList.add('hidden');
-            }
+            });
         }
 
-        async function loadStats() {
-            const s = await apiCall('/stats');
-            document.getElementById('totalUsers').innerText = s.totalUsers;
-            document.getElementById('totalContents').innerText = s.totalContents;
-            document.getElementById('scrapingRequests').innerText = s.scrapingRequests;
-            document.getElementById('successRate').innerText = s.successRate + '%';
-        }
-
-        async function loadRecentActivity() {
-            const data = await apiCall('/recent-activity');
-            const container = document.getElementById('recentActivity');
-            container.innerHTML = data.map(a => `
-                <div class="flex items-center p-4 bg-gray-50 rounded-xl border border-gray-100 hover:border-emerald-200 transition-colors">
-                    <div class="h-10 w-10 ${a.success ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'} rounded-lg flex items-center justify-center mr-4">
-                        <i class="fas ${a.success ? 'fa-check' : 'fa-xmark'}"></i>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <p class="text-sm font-bold text-gray-800 truncate">${a.targetUrl}</p>
-                        <p class="text-xs text-gray-400">${new Date(a.createdAt).toLocaleString()}</p>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        async function loadContents() {
-            const q = document.getElementById('contentSearch').value;
-            const t = document.getElementById('contentType').value;
-            const data = await apiCall(`/contents?page=${currentPage}&limit=${limit}&search=${q}&type=${t}`);
-            
-            const tbody = document.getElementById('contentsTable');
-            tbody.innerHTML = data.contents.map(c => `
-                <tr class="hover:bg-emerald-50/30 transition-colors">
-                    <td class="px-8 py-4">
-                        <div class="flex items-center">
-                            <img src="${c.imageUrl}" class="h-14 w-10 rounded-lg object-cover shadow-sm mr-4 border border-gray-100">
-                            <div>
-                                <p class="text-sm font-bold text-gray-800">${c.title}</p>
-                                <p class="text-xs text-gray-400">ID: ${c.tmdbId}</p>
-                            </div>
-                        </div>
-                    </td>
-                    <td class="px-8 py-4 text-xs">
-                        <span class="px-3 py-1 font-bold ${c.type === 'movie' ? 'bg-cyan-100 text-cyan-700' : 'bg-emerald-100 text-emerald-700'} rounded-full uppercase">
-                            ${c.type}
-                        </span>
-                    </td>
-                    <td class="px-8 py-4">
-                        <div class="flex gap-2">
-                            <span class="h-2 w-2 rounded-full ${c.videoUrl ? 'bg-emerald-500' : 'bg-gray-300'}"></span>
-                            <p class="text-xs font-medium text-gray-500">${c.videoUrl ? 'Link Activo' : 'Sin Link'}</p>
-                        </div>
-                    </td>
-                    <td class="px-8 py-4 text-right">
-                        <button class="text-gray-400 hover:text-emerald-600 p-2"><i class="fas fa-pen"></i></button>
-                        <button class="text-gray-400 hover:text-rose-600 p-2"><i class="fas fa-trash"></i></button>
-                    </td>
-                </tr>
-            `).join('');
-        }
-
-        async function loadUsers() {
-            const users = await apiCall('/users');
-            document.getElementById('usersTable').innerHTML = users.map(u => `
-                <tr>
-                    <td class="px-8 py-4">
-                        <p class="text-sm font-bold">${u.email}</p>
-                        <p class="text-xs text-gray-400">${u.name || 'Sin nombre'}</p>
-                    </td>
-                    <td class="px-8 py-4"><span class="text-xs font-bold bg-gray-100 px-2 py-1 rounded">${u.plan}</span></td>
-                    <td class="px-8 py-4 text-xs font-medium text-emerald-600">${u._count?.myList || 0} en lista</td>
-                    <td class="px-8 py-4 text-xs text-gray-400">${new Date(u.createdAt).toLocaleDateString()}</td>
-                </tr>
-            `).join('');
-        }
-
-        function showAddContentModal() { document.getElementById('addContentModal').classList.remove('hidden'); }
-        function hideAddContentModal() { document.getElementById('addContentModal').classList.add('hidden'); }
-
-        async function triggerWorker() {
+        async function setGlobalScraperMode(mode) {
             try {
-                const res = await apiCall('/trigger-worker', { method: 'POST' });
-                alert(res.message || 'Ciclo de scraping iniciado');
-            } catch (e) { alert('Error: ' + e); }
+                await api('/settings', { method: 'POST', body: JSON.stringify({ scraperMode: mode }) });
+                updateScraperModeUI(mode);
+                showToast(`Modo cambiado a: ${mode.toUpperCase()}`, 'info');
+            } catch (e) { showToast(e, 'error'); }
         }
 
-        async function loadBrokenLinks() {
-            const container = document.getElementById('brokenLinksTable');
+        async function handleManualScrapeRun() {
             try {
-                const data = await apiCall('/broken-links');
-                if (data.length === 0) {
-                    container.innerHTML = '<tr><td colspan="4" class="p-20 text-center text-gray-400 italic">No se han detectado enlaces rotos.</td></tr>';
-                    return;
-                }
-                container.innerHTML = data.map(l => `
-                    <tr class="hover:bg-rose-50/30 transition-colors">
-                        <td class="px-8 py-4 text-xs font-mono text-gray-500 max-w-xs truncate">${l.targetUrl}</td>
-                        <td class="px-8 py-4"><span class="text-rose-600 font-bold text-xs uppercase">${l.errorType || '404'}</span></td>
-                        <td class="px-8 py-4 text-gray-400 text-xs">${l.provider || 'N/A'}</td>
-                        <td class="px-8 py-4 text-gray-400 text-xs">${new Date(l.createdAt).toLocaleDateString()}</td>
-                    </tr>
-                `).join('');
-            } catch (e) { container.innerHTML = '<tr><td colspan="4" class="p-10 text-center text-rose-500">Error cargando datos</td></tr>'; }
+                const res = await api('/trigger-worker', { method: 'POST' });
+                showToast(res.message, 'success');
+            } catch (e) { showToast(e, 'error'); }
         }
 
-        async function addContent() {
-            const title = document.getElementById('contentTitle').value;
-            const tmdbId = document.getElementById('contentTmdbId').value;
-            const type = document.getElementById('contentTypeSelect').value;
-            
-            if(!title || !tmdbId) return alert('Campos obligatorios');
+        function openManualModal() { document.getElementById('modal-manual').classList.remove('hidden'); }
+        function closeManualModal() { document.getElementById('modal-manual').classList.add('hidden'); }
+
+        async function handleManualInsert() {
+            const title = document.getElementById('manual-title').value;
+            const tmdbId = document.getElementById('manual-tmdbid').value;
+            const type = document.getElementById('manual-type').value;
+
+            if(!title || !tmdbId) return showToast('Completa los datos obligatorios', 'error');
 
             try {
-                const res = await apiCall('/contents', {
+                await api('/contents', {
                     method: 'POST',
                     body: JSON.stringify({ title, tmdbId, type })
                 });
-                alert('Guardado correctamente');
-                hideAddContentModal();
-                loadContents();
-            } catch (e) { alert('Error: ' + e); }
+                showToast('Contenido registrado manualmente', 'success');
+                closeManualModal();
+                loadContentsData();
+            } catch (e) { showToast(e, 'error'); }
         }
 
-        // Auto-refresh logs if visible
-        setInterval(async () => {
-            const logsSection = document.getElementById('scraping');
-            if (logsSection && !logsSection.classList.contains('hidden')) {
-                const logs = await apiCall('/logs/scraping');
-                const container = document.getElementById('scrapingLogs');
-                if(logs && logs.length > 0) {
-                    container.innerHTML = logs.map(l => `<p class="border-l-2 border-emerald-900 pl-3 py-0.5"><span class="text-gray-600 mr-2">[${new Date(l.timestamp).toLocaleTimeString()}]</span> ${l.message}</p>`).join('');
-                    container.scrollTop = container.scrollHeight;
+        async function deleteContent(id) {
+            if(!confirm('¿Seguro que quieres eliminar este contenido permanentemente?')) return;
+            try {
+                await api(`/contents/${id}`, { method: 'DELETE' });
+                showToast('Eliminado correctamente', 'success');
+                loadContentsData();
+                loadStats();
+            } catch (e) { showToast(e, 'error'); }
+        }
+
+        function initializeDashboard() {
+            showSection('dashboard');
+            
+            // Console Polling
+            setInterval(async () => {
+                if(currentSection === 'scraping') {
+                    const logs = await api('/logs/scraping');
+                    const console = document.getElementById('scraping-console');
+                    if(logs && logs.length > 0) {
+                        console.innerHTML = logs.map(l => `
+                            <p class="flex gap-3">
+                                <span class="text-slate-700 font-bold shrink-0">[${new Date(l.timestamp).toLocaleTimeString()}]</span>
+                                <span class="${l.message.includes('✅') ? 'text-emerald-400' : l.message.includes('❌') ? 'text-rose-400' : 'text-emerald-500/70'}">${l.message}</span>
+                            </p>
+                        `).join('');
+                        console.scrollTop = console.scrollHeight;
+                    }
                 }
-            }
-        }, 3000);
+            }, 3000);
+        }
     </script>
 </body>
 </html>

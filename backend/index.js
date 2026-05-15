@@ -16,19 +16,25 @@ const { getStreamLink, getStatus, forceRefresh, runWorkerCycle } = require('./co
 const { startWorker } = require('./services/stream_worker');
 
 // 1. MIDDLEWARES
+// 1. MIDDLEWARES
 const allowedOrigins = [
   'https://oglingling.github.io',
   'http://localhost:3000',
-  'http://localhost:5173'
-];
+  'http://localhost:5173',
+  process.env.FRONTEND_URL // Dominio de Render si existe
+].filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    // Permitir si no hay origen (peticiones locales/mismo dominio) o si está en la lista
+    if (!origin || allowedOrigins.includes(origin) || origin.includes('.onrender.com')) {
+      return callback(null, true);
+    }
+    console.warn(`[cors] Bloqueado origen: ${origin}`);
     return callback(new Error('Origen no permitido por CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Accept', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'x-admin-key']
 }));
 
 app.use(express.json());
