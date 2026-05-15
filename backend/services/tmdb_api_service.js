@@ -22,9 +22,9 @@ class TMDBApiService {
       // Intentamos con la API Key v3 en la URL si está disponible
       const authParam = this.apiKeyV3 ? `api_key=${this.apiKeyV3}&` : '';
       const url = `${this.baseUrl}/${type}/${tmdbId}?${authParam}append_to_response=videos,credits&language=es-ES`;
-      
+
       console.log(`[tmdb-api] 📡 Llamando a: ${url.replace(this.apiKeyV3, '***')}`);
-      
+
       // Si usamos api_key en la URL, no mandamos la cabecera Authorization para evitar conflictos
       const config = { headers: { ...this.headers } };
       if (this.apiKeyV3) delete config.headers.Authorization;
@@ -77,7 +77,7 @@ class TMDBApiService {
     try {
       const authParam = this.apiKeyV3 ? `api_key=${this.apiKeyV3}&` : '';
       const url = `${this.baseUrl}/search/${type}?${authParam}query=${encodeURIComponent(query)}&language=es-ES`;
-      
+
       const config = { headers: { ...this.headers } };
       if (this.apiKeyV3) delete config.headers.Authorization;
 
