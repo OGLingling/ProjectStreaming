@@ -9,55 +9,64 @@ class ContentService {
    * @param {string} type "movie" o "tv"
    */
   async importFromTMDB(tmdbId, type = 'movie') {
-    console.log(`[content-service] 🎬 Iniciando importación de ${type} ID: ${tmdbId}`);
+    const normalizedType = type === 'movie' ? 'movie' : 'tv';
+    console.log(`[content-service] 🎬 Iniciando importación de ${normalizedType} ID: ${tmdbId}`);
 
     try {
       // 1. Obtener metadata de la API
-      const result = await TMDBApi.getFullMetadata(tmdbId, type);
+      const result = await TMDBApi.getFullMetadata(tmdbId, normalizedType);
       if (!result.success) {
-        throw new Error(result.error);
+        // Si falló con 'tv', intentamos con 'movie' como fallback (para OVAs/Especiales)
+        if (normalizedType === 'tv') {
+            console.log(`[content-service] 🔄 Falló como TV, reintentando como movie...`);
+            const fallback = await TMDBApi.getFullMetadata(tmdbId, 'movie');
+            if (fallback.success) return await this.importFromTMDB(tmdbId, 'movie');
+        }
+        throw new Error(result.error || 'No se pudo obtener información de TMDB');
       }
 
       const data = result.data;
+      const raw = result.raw;
 
-      // 2. Insertar o Actualizar en la base de datos (Upsert)
+      // 2. Upsert del Contenido Principal
       const content = await prisma.content.upsert({
         where: { tmdbId: String(tmdbId) },
         update: {
           title: data.title,
           description: data.description,
           releaseDate: data.releaseDate,
-          rating: data.rating,
+          rating: data.rating || 0,
           category: data.category,
           imageUrl: data.imageUrl,
           backdropUrl: data.backdropUrl,
           trailerUrl: data.trailerUrl,
-          type: type === 'movie' ? 'movie' : 'series',
+          type: normalizedType,
         },
         create: {
           tmdbId: String(tmdbId),
           title: data.title,
           description: data.description,
           releaseDate: data.releaseDate,
-          rating: data.rating,
+          rating: data.rating || 0,
           category: data.category,
           imageUrl: data.imageUrl,
           backdropUrl: data.backdropUrl,
           trailerUrl: data.trailerUrl,
-          type: type === 'movie' ? 'movie' : 'tv',
+          type: normalizedType,
         }
       });
 
-      // 3. Si es una serie, importar temporadas básicas
-      if (type === 'tv' || type === 'series') {
-        const fullData = await TMDBApi.getFullMetadata(tmdbId, 'tv');
-        // Aquí podrías expandir para traer episodios, pero por ahora creamos las temporadas
-        if (fullData.success && result.raw) {
-          const seasons = result.raw.seasons || [];
-          for (const s of seasons) {
+      // 3. Importación de Temporadas (solo si es TV y tenemos datos raw)
+      if (normalizedType === 'tv' && raw && raw.seasons) {
+        console.log(`[content-service] 📂 Importando ${raw.seasons.length} temporadas...`);
+        for (const s of raw.seasons) {
+          try {
             await prisma.season.upsert({
               where: { tmdbId: String(s.id) },
-              update: { seasonNumber: s.season_number, title: s.name },
+              update: { 
+                seasonNumber: s.season_number, 
+                title: s.name 
+              },
               create: {
                 tmdbId: String(s.id),
                 seasonNumber: s.season_number,
@@ -65,46 +74,51 @@ class ContentService {
                 contentId: content.id
               }
             });
+          } catch (seasonErr) {
+            console.warn(`[content-service] ⚠ No se pudo importar temporada ${s.season_number}:`, seasonErr.message);
           }
         }
       }
 
-      console.log(`[content-service] ✅ Contenido "${content.title}" guardado en DB (ID: ${content.id})`);
+      console.log(`[content-service] ✅ Contenido "${content.title}" (${normalizedType}) procesado.`);
       return { success: true, data: content };
 
     } catch (error) {
-      console.error(`[content-service] ❌ Error importando TMDB ${tmdbId}:`, error.message);
+      console.error(`[content-service] ❌ Error crítico:`, error.message);
       return { success: false, error: error.message };
     }
   }
 
   /**
-   * Busca una película o serie por nombre y la importa automáticamente
+   * Busca por nombre y tipo, luego importa
    */
   async autoImportByTitle(title, type = 'movie') {
-    console.log(`[content-service] 🔍 Buscando "${title}" para auto-importar...`);
+    const normalizedType = type === 'movie' ? 'movie' : 'tv';
+    console.log(`[content-service] 🔍 Buscando "${title}" (${normalizedType})...`);
     
     try {
-      // 1. Buscar el ID en TMDB
-      const searchResult = await TMDBApi.searchContent(title, type);
-      if (!searchResult.success) {
-        throw new Error(searchResult.error);
+      const searchResult = await TMDBApi.searchContent(title, normalizedType);
+      
+      // Fallback: si no encuentra como TV, busca como movie
+      if (!searchResult.success && normalizedType === 'tv') {
+          console.log(`[content-service] 🔄 No encontrado como TV, buscando como movie...`);
+          const fallbackSearch = await TMDBApi.searchContent(title, 'movie');
+          if (fallbackSearch.success) {
+              return await this.importFromTMDB(fallbackSearch.data.id, 'movie');
+          }
       }
 
-      const tmdbId = searchResult.data.id;
-      console.log(`[content-service] 🎯 Encontrado: "${searchResult.data.title || searchResult.data.name}" (ID: ${tmdbId})`);
+      if (!searchResult.success) {
+        return { success: false, error: 'No se encontró nada en TMDB con ese nombre.' };
+      }
 
-      // 2. Importar usando el ID encontrado
-      return await this.importFromTMDB(tmdbId, type);
+      return await this.importFromTMDB(searchResult.data.id, normalizedType);
 
     } catch (error) {
       return { success: false, error: error.message };
     }
   }
 
-  /**
-   * Obtiene todo el contenido de la base de datos
-   */
   async getAllContent() {
     return await prisma.content.findMany({
       orderBy: { createdAt: 'desc' }

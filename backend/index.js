@@ -75,13 +75,23 @@ app.get('/api/users', authController.getUserByEmail);
 app.get('/', (req, res) => res.send('Servidor MOVIEWIND Activo 🚀'));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-// 404
-app.use((req, res) => {
+// 4. MANEJO DE RUTAS NO ENCONTRADAS (404)
+app.use((req, res, next) => {
   console.log('❌ 404:', req.originalUrl);
-  res.status(404).send('Not Found - MovieWind API');
+  res.status(404).json({ success: false, error: 'Ruta no encontrada' });
 });
 
-// 4. ARRANQUE
+// 5. MANEJO DE ERRORES GLOBAL
+app.use((err, req, res, next) => {
+  console.error('[global-error] ❌:', err.stack);
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Error interno del servidor',
+    code: err.code
+  });
+});
+
+// 5. ARRANQUE
 const PORT = process.env.PORT || 8080;
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor activo en puerto ${PORT}`);

@@ -305,6 +305,47 @@
                          </table>
                     </div>
                 </div>
+
+                <!-- Scraping Section -->
+                <div id="scraping" class="section hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold text-gray-800">Logs de Ingesta (Scraping)</h2>
+                        <button onclick="triggerWorker()" class="btn-premium text-white px-6 py-2 rounded-xl font-bold flex items-center">
+                            <i class="fas fa-play-circle mr-2"></i>Forzar Ciclo
+                        </button>
+                    </div>
+                    <div class="bg-gray-900 rounded-2xl p-6 shadow-2xl font-mono text-sm text-emerald-400 overflow-hidden border-t-8 border-gray-800">
+                        <div class="flex items-center gap-2 mb-4 border-b border-gray-800 pb-4">
+                            <div class="h-3 w-3 rounded-full bg-rose-500"></div>
+                            <div class="h-3 w-3 rounded-full bg-amber-500"></div>
+                            <div class="h-3 w-3 rounded-full bg-emerald-500"></div>
+                            <span class="text-gray-500 ml-2 text-xs">terminal — scraping_worker.log</span>
+                        </div>
+                        <div id="scrapingLogs" class="space-y-1 h-[500px] overflow-y-auto custom-scrollbar">
+                            <p class="text-gray-600">[info] Esperando flujo de datos en tiempo real...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Broken Links Section -->
+                <div id="broken-links" class="section hidden">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Auditoría de Enlaces</h2>
+                    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-gray-100">
+                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">URL Afectada</th>
+                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Error</th>
+                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Proveedor</th>
+                                    <th class="px-8 py-5 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Fecha</th>
+                                </tr>
+                            </thead>
+                            <tbody id="brokenLinksTable" class="divide-y divide-gray-50">
+                                <tr><td colspan="4" class="p-20 text-center text-gray-400 italic">No se han detectado enlaces rotos recientemente.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </main>
         </div>
     </div>
@@ -361,6 +402,14 @@
                 ...options
             });
             if (res.status === 401) { location.reload(); throw 'Unauthorized'; }
+            
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.includes("text/html")) {
+                const text = await res.text();
+                console.error("Error HTML del servidor:", text);
+                throw "El servidor devolvió un error inesperado (HTML). Verifica que el backend esté encendido.";
+            }
+            
             return res.json();
         }
 
@@ -373,12 +422,49 @@
         }
 
         function showSection(id) {
-            document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
-            document.querySelectorAll('nav a').forEach(a => a.classList.remove('sidebar-item-active'));
+            console.log('Navegando a:', id);
             
-            document.getElementById(id).classList.remove('hidden');
-            document.getElementById('nav-' + id).classList.add('sidebar-item-active');
-            document.getElementById('sectionTitle').innerText = id.charAt(0).toUpperCase() + id.slice(1);
+            // 1. Ocultar todas las secciones
+            document.querySelectorAll('.section').forEach(sec => {
+                sec.classList.add('hidden');
+            });
+            
+            // 2. Mostrar la sección solicitada
+            const target = document.getElementById(id);
+            if (target) {
+                target.classList.remove('hidden');
+            } else {
+                console.error('Sección no encontrada:', id);
+                return;
+            }
+
+            // 3. Actualizar Sidebar (Estilo Activo)
+            document.querySelectorAll('nav a').forEach(link => {
+                link.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-r-4', 'border-emerald-500');
+                link.classList.add('text-gray-600');
+            });
+
+            const activeLink = document.getElementById('nav-' + id);
+            if (activeLink) {
+                activeLink.classList.remove('text-gray-600');
+                activeLink.classList.add('text-emerald-600', 'bg-emerald-50', 'border-r-4', 'border-emerald-500');
+            }
+
+            // 4. Actualizar Título de Cabecera
+            const titles = {
+                'dashboard': 'Dashboard General',
+                'contents': 'Gestión de Contenidos',
+                'users': 'Usuarios y Suscripciones',
+                'scraping': 'Logs del Sistema (Scraping)',
+                'broken-links': 'Auditoría de Enlaces Rotos'
+            };
+            document.getElementById('sectionTitle').innerText = titles[id] || 'Panel de Administración';
+
+            // 5. Cargar datos específicos de la sección
+            if (id === 'broken-links') loadBrokenLinks();
+            if (id === 'contents') loadContents();
+            if (id === 'users') loadUsers();
+            if (id === 'dashboard') loadStats();
         }
 
         async function importFromTmdb() {
@@ -487,6 +573,63 @@
 
         function showAddContentModal() { document.getElementById('addContentModal').classList.remove('hidden'); }
         function hideAddContentModal() { document.getElementById('addContentModal').classList.add('hidden'); }
+
+        async function triggerWorker() {
+            try {
+                const res = await apiCall('/trigger-worker', { method: 'POST' });
+                alert(res.message || 'Ciclo de scraping iniciado');
+            } catch (e) { alert('Error: ' + e); }
+        }
+
+        async function loadBrokenLinks() {
+            const container = document.getElementById('brokenLinksTable');
+            try {
+                const data = await apiCall('/broken-links');
+                if (data.length === 0) {
+                    container.innerHTML = '<tr><td colspan="4" class="p-20 text-center text-gray-400 italic">No se han detectado enlaces rotos.</td></tr>';
+                    return;
+                }
+                container.innerHTML = data.map(l => `
+                    <tr class="hover:bg-rose-50/30 transition-colors">
+                        <td class="px-8 py-4 text-xs font-mono text-gray-500 max-w-xs truncate">${l.targetUrl}</td>
+                        <td class="px-8 py-4"><span class="text-rose-600 font-bold text-xs uppercase">${l.errorType || '404'}</span></td>
+                        <td class="px-8 py-4 text-gray-400 text-xs">${l.provider || 'N/A'}</td>
+                        <td class="px-8 py-4 text-gray-400 text-xs">${new Date(l.createdAt).toLocaleDateString()}</td>
+                    </tr>
+                `).join('');
+            } catch (e) { container.innerHTML = '<tr><td colspan="4" class="p-10 text-center text-rose-500">Error cargando datos</td></tr>'; }
+        }
+
+        async function addContent() {
+            const title = document.getElementById('contentTitle').value;
+            const tmdbId = document.getElementById('contentTmdbId').value;
+            const type = document.getElementById('contentTypeSelect').value;
+            
+            if(!title || !tmdbId) return alert('Campos obligatorios');
+
+            try {
+                const res = await apiCall('/contents', {
+                    method: 'POST',
+                    body: JSON.stringify({ title, tmdbId, type })
+                });
+                alert('Guardado correctamente');
+                hideAddContentModal();
+                loadContents();
+            } catch (e) { alert('Error: ' + e); }
+        }
+
+        // Auto-refresh logs if visible
+        setInterval(async () => {
+            const logsSection = document.getElementById('scraping');
+            if (logsSection && !logsSection.classList.contains('hidden')) {
+                const logs = await apiCall('/logs/scraping');
+                const container = document.getElementById('scrapingLogs');
+                if(logs && logs.length > 0) {
+                    container.innerHTML = logs.map(l => `<p class="border-l-2 border-emerald-900 pl-3 py-0.5"><span class="text-gray-600 mr-2">[${new Date(l.timestamp).toLocaleTimeString()}]</span> ${l.message}</p>`).join('');
+                    container.scrollTop = container.scrollHeight;
+                }
+            }
+        }, 3000);
     </script>
 </body>
 </html>

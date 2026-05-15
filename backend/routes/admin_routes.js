@@ -18,7 +18,12 @@ const adminAuth = (req, res, next) => {
   const credentials = Buffer.from(authHeader.slice(6), 'base64').toString('utf-8');
   const [username, password] = credentials.split(':');
   
-  // Credenciales hardcodeadas (puedes cambiarlas por variables de entorno)
+  // Verificación de variables de entorno
+  if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD) {
+    console.error('[admin] ❌ ADMIN_USERNAME o ADMIN_PASSWORD no configurados en .env / Render');
+    return res.status(503).json({ error: 'Servicio administrativo no configurado' });
+  }
+  
   if (username !== process.env.ADMIN_USERNAME || password !== process.env.ADMIN_PASSWORD) {
     return res.status(401).json({ error: 'Credenciales inválidas' });
   }
@@ -311,7 +316,45 @@ router.post('/scrape-run', async (req, res) => {
   }
 });
 
+// Alias para el panel
+router.post('/trigger-worker', async (req, res) => {
+  try {
+    const result = await triggerManualCycle();
+    res.json({ success: true, message: 'Ciclo de scraping iniciado manualmente', ...result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint simplificado para la terminal del admin panel
+router.get('/logs/scraping', async (req, res) => {
+  try {
+    const logs = await prisma.scrapeLog.findMany({
+      take: 50,
+      orderBy: { createdAt: 'desc' }
+    });
+    // Mapear para compatibilidad con el frontend
+    res.json(logs.map(l => ({
+      timestamp: l.createdAt,
+      message: `${l.success ? '✅' : '❌'} [${l.provider || 'System'}] ${l.targetUrl.split('/').pop()} - ${l.success ? 'OK' : 'Error'}`
+    })));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // --- FORCE REFRESH DE UN CONTENIDO ESPECÍFICO ---
+router.post('/scrape-force', async (req, res) => {
+  try {
+    const { tmdbId, type = 'movie', season = 1, episode = 1 } = req.body;
+    if (!tmdbId) return res.status(400).json({ error: 'tmdbId requerido' });
+    const result = await enqueue(tmdbId, type, Number(season), Number(episode), true);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(503).json({ success: false, error: error.message });
+  }
+});
+
 // --- IMPORTACIÓN AUTOMÁTICA DESDE PANEL ---
 router.post('/import-content', async (req, res) => {
   try {
@@ -319,8 +362,6 @@ router.post('/import-content', async (req, res) => {
     if (!title) return res.status(400).json({ error: 'El título es requerido' });
 
     console.log(`[admin] 🚀 Iniciando importación remota: "${title}" (${type})`);
-    
-    // El servicio ya maneja la lógica de buscar e insertar
     const result = await ContentService.autoImportByTitle(title, type || 'movie');
 
     if (result.success) {

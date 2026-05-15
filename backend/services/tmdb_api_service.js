@@ -52,7 +52,7 @@ class TMDBApiService {
           imageUrl: data.poster_path ? `${this.imgBaseUrl}${data.poster_path}` : null,
           backdropUrl: data.backdrop_path ? `${this.imgBaseUrl}${data.backdrop_path}` : null,
           trailerUrl: trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : null,
-          type: type === 'movie' ? 'movie' : 'series',
+          type: type === 'movie' ? 'movie' : 'tv',
           cast: data.credits?.cast?.slice(0, 10).map(actor => ({
             name: actor.name,
             character: actor.character,
