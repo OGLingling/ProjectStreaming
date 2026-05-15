@@ -1,4 +1,6 @@
-// services/scraper_service.js
+
+const path = require('path');
+const fs = require('fs');
 
 // ─── STEALTH SETUP ────────────────────────────────────────────────────────────
 let chromium;
@@ -11,6 +13,17 @@ try {
 } catch (e) {
   console.warn('[scraper] ⚠ playwright-extra no disponible, usando playwright nativo:', e.message);
   chromium = require('playwright').chromium;
+}
+
+// ─── PROXY SETUP ──────────────────────────────────────────────────────────────
+const PROXIES = process.env.PROXY_LIST ? process.env.PROXY_LIST.split(',') : [];
+let proxyIndex = 0;
+
+function getNextProxy() {
+  if (PROXIES.length === 0) return null;
+  const proxy = PROXIES[proxyIndex % PROXIES.length];
+  proxyIndex++;
+  return proxy.trim();
 }
 
 // ─── CACHE LRU ───────────────────────────────────────────────────────────────
@@ -215,192 +228,152 @@ async function extractFromDOM(page, baseUrl) {
 async function extractWithBrowser(embedUrl) {
   const found = [];
   let browser;
+  const browserlessToken = process.env.BROWSERLESS_TOKEN;
 
-  try {
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process',
-        '--allow-running-insecure-content',
-        '--autoplay-policy=no-user-gesture-required',
-        '--disable-blink-features=AutomationControlled',
-        '--window-size=1280,720'
-      ]
-    });
-
-    const context = await browser.newContext({
-      userAgent: DESKTOP_UA,
-      viewport: { width: 1280, height: 720 },
-      hasTouch: false,
-      isMobile: false,
-      javaScriptEnabled: true,
-      ignoreHTTPSErrors: true
-    });
-
-    await context.addInitScript(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-      Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en-US', 'en'] });
-      window.chrome = { runtime: {} };
-    });
-
-    // ── Función interna para scrapear una página ─────────────────────────────
-    async function scrapePage(url, refererUrl = null) {
-      const page = await context.newPage();
-
-      const effectiveReferer = refererUrl && isValidUrl(refererUrl)
-        ? refererUrl
-        : `${new URL(url).origin}/`;
-      const effectiveOrigin = refererUrl && isValidUrl(refererUrl)
-        ? new URL(refererUrl).origin
-        : new URL(url).origin;
-
-      await page.setExtraHTTPHeaders({
-        'Referer': effectiveReferer,
-        'Origin': effectiveOrigin,
-        'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Sec-Fetch-Site': 'cross-site',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Dest': 'iframe'
-      });
-
-      // FIX: solo route() — sin response.text() para evitar cuelgues con streams binarios
-      await page.route('**/*', async (route) => {
-        const reqUrl = route.request().url();
-        const resType = route.request().resourceType();
-
-        if (isDirectStreamUrl(reqUrl) && !isAdOrNoiseUrl(reqUrl)) {
-          found.push(reqUrl);
-          console.log(`[browser] ✅ Stream: ${reqUrl.substring(0, 90)}`);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      if (attempt === 1 && browserlessToken) {
+        console.log('[browser] ☁ Intentando vía Browserless (CDP)...');
+        try {
+          browser = await chromium.connectOverCDP({
+            endpointURL: `wss://chrome.browserless.io?token=${browserlessToken}&stealth&--disable-notifications`,
+            timeout: 25000
+          });
+          console.log('[browser] ✅ Conectado a Browserless');
+        } catch (e) {
+          console.error(`[browser] ❌ Fallo conexión Browserless, saltando a local...`);
+          continue; 
         }
-
-        // FIX: NO bloquear imágenes — algunos players las usan como señal de carga
-        if (resType === 'font' || isAdOrNoiseUrl(reqUrl)) {
-          return route.abort();
+      } else if (attempt === 2) {
+        const currentProxy = getNextProxy();
+        if (!currentProxy) { attempt++; } // Si no hay proxies, saltamos al intento 3
+        else {
+          console.log(`[browser] 🏠 Modo Local + Proxy: ${currentProxy}`);
+          browser = await chromium.launch({
+            headless: true,
+            proxy: { server: currentProxy.startsWith('http') ? currentProxy : `http://${currentProxy}` },
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+          });
         }
-
-        return route.continue();
-      });
-
-      // Listener redundante para no perder nada
-      page.on('request', (req) => {
-        const reqUrl = req.url();
-        if (isDirectStreamUrl(reqUrl) && !isAdOrNoiseUrl(reqUrl)) {
-          found.push(reqUrl);
-        }
-      });
-
-      // Navegar
-      console.log(`[browser] → Navegando: ${url}`);
-      try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-      } catch (e) {
-        if (!e.message.toLowerCase().includes('timeout')) {
-          await page.close().catch(() => { });
-          throw e;
-        }
-        console.log(`[browser] timeout ignorado: ${url}`);
+      } 
+      
+      if (attempt === 3) {
+        console.log(`[browser] 🏠 Modo Local (IP Residencial propia)...`);
+        browser = await chromium.launch({
+          headless: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+        });
       }
 
-      // Dentro de scrapePage(), justo después del goto:
-      await page.screenshot({
-        path: `/tmp/debug_${Date.now()}.png`,
-        fullPage: true
-      });
-      console.log('[browser] Screenshot guardado en /tmp/');
-
-      await page.waitForSelector(
-        'video, iframe, .jw-video, .jw-display, .plyr, .vjs-tech, [class*="player"], [id*="player"]',
-        { timeout: 8000 }
-      ).catch(() => { });
-
-      await page.waitForTimeout(1500);
-      await interactWithPlayer(page);
-      await waitForStreamOrTimeout(found, 20000);
-
-      if (!found.some(isDirectStreamUrl)) {
-        console.log(`[browser] DOM extraction: ${url}`);
-        const domUrls = await extractFromDOM(page, url);
-        if (domUrls.length > 0) {
-          found.push(...domUrls);
-          console.log(`[browser] ✅ DOM: ${domUrls.length} URL(s)`);
+      const context = await browser.newContext({ 
+        userAgent: DESKTOP_UA, 
+        viewport: { width: 1280, height: 720 },
+        ignoreHTTPSErrors: true,
+        extraHTTPHeaders: {
+          'Referer': 'https://vidsrc.to/',
+          'Origin': 'https://vidsrc.to/',
+          'Accept-Language': 'en-US,en;q=0.9,es;q=0.8'
         }
-      }
-
-      if (!found.some(isDirectStreamUrl)) {
-        await interactWithPlayer(page);
-        await waitForStreamOrTimeout(found, 10000);
-      }
-
-      const iframes = await page.evaluate(() =>
-        [...document.querySelectorAll('iframe[src]')]
-          .map(f => f.src)
-          .filter(s => s && s.startsWith('http'))
-      ).catch(() => []);
-
-      await page.close().catch(() => { });
-
-      return iframes.filter(u => !IFRAME_NOISE.some(n => u.toLowerCase().includes(n)));
-    }
-
-    // ── NIVEL 1 ───────────────────────────────────────────────────────────────
-    console.log(`[browser] L1: ${embedUrl}`);
-    const l1Iframes = await scrapePage(embedUrl, null);
-    console.log(`[browser] L1 iframes: ${l1Iframes.length}`);
-
-    // ── NIVEL 2 ───────────────────────────────────────────────────────────────
-    if (!found.some(isDirectStreamUrl) && l1Iframes.length > 0) {
-      const PRIORITY = ['vsembed', 'cloudnestra', 'vidsrc', 'embedrise', 'filemoon', 'doodstream'];
-      const sorted = [...l1Iframes].sort((a, b) => {
-        const ai = PRIORITY.findIndex(h => a.includes(h));
-        const bi = PRIORITY.findIndex(h => b.includes(h));
-        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      });
+      
+      context.on('request', request => {
+        const u = request.url();
+        if (isDirectStreamUrl(u) && !found.includes(u)) {
+          console.log(`[browser] 🎯 Red: ${u.substring(0, 50)}...`);
+          found.push(u);
+        }
       });
 
-      for (const iframeUrl of sorted.slice(0, 4)) {
-        if (found.some(isDirectStreamUrl)) break;
-        console.log(`[browser] L2: ${iframeUrl}`);
+      const scrapePage = async (url, level = 'L1') => {
+        const page = await context.newPage();
+        const screenshotsDir = path.join(__dirname, '../screenshots');
+        if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
+
+        await page.route('**/*', (route) => {
+          const type = route.request().resourceType();
+          if (['image', 'font'].includes(type) && !isDirectStreamUrl(route.request().url())) return route.abort();
+          if (AD_HOST_HINTS.some(h => route.request().url().includes(h))) return route.abort();
+          route.continue();
+        });
 
         try {
-          // Pasa embedUrl como referer — crítico para vsembed y cloudnestra
-          const l2Iframes = await scrapePage(iframeUrl, embedUrl);
-          console.log(`[browser] L2 iframes: ${l2Iframes.length}`);
+          console.log(`[browser] → ${level} Navegando: ${url}`);
+          const navigationTimeout = attempt === 1 ? 35000 : 55000;
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: navigationTimeout });
 
-          // ── NIVEL 3 ───────────────────────────────────────────────────────
-          if (!found.some(isDirectStreamUrl) && l2Iframes.length > 0) {
-            for (const deepUrl of l2Iframes.slice(0, 3)) {
-              if (found.some(isDirectStreamUrl)) break;
-              console.log(`[browser] L3: ${deepUrl}`);
-              try {
-                await scrapePage(deepUrl, iframeUrl);
-              } catch (e) {
-                console.log(`[browser] L3 error: ${e.message}`);
-              }
+          // 5. INTENTAR ACTIVAR EL REPRODUCTOR (Simular Clic Humano)
+          console.log(`[browser] 🖱 Intentando activar reproductor con clic...`);
+          try {
+            await page.waitForTimeout(4000); // Esperar a que aparezca el botón
+            await page.mouse.click(640, 360); // Clic en el centro
+            await page.waitForTimeout(2000);
+            
+            // Si hay un botón de play gigante, darle clic
+            await page.click('button', { timeout: 2000 }).catch(() => {});
+          } catch (e) {}
+
+          console.log(`[browser] ⏳ Esperando respuesta del reproductor (10s)...`);
+          await page.waitForTimeout(10000); 
+
+          const safeName = url.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
+          await page.screenshot({ path: path.join(screenshotsDir, `${level}_At${attempt}_${safeName}.png`) }).catch(() => {});
+
+          const content = await page.content();
+          if (content.includes('Sorry, you have been blocked') || content.includes('Verify you are human') || content.includes('Cloudflare')) {
+            if (content.includes('Ray ID') || content.includes('challenge')) {
+               console.warn(`[browser] 🛡 Bloqueo en ${level}`);
+               await page.close();
+               return { blocked: true, iframes: [] };
             }
           }
+          
+          await page.waitForTimeout(3500);
+          await interactWithPlayer(page);
+          await waitForStreamOrTimeout(found, 15000);
+
+          const domUrls = await extractFromDOM(page, url);
+          if (domUrls.length > 0) found.push(...domUrls);
+
+          const iframes = await page.$$eval('iframe', el => el.map(i => i.src)).catch(() => []);
+          await page.close();
+          return { blocked: false, iframes: iframes.filter(s => s && s.startsWith('http') && !IFRAME_NOISE.some(n => s.includes(n))) };
         } catch (e) {
-          console.log(`[browser] L2 error: ${e.message}`);
+          console.error(`[browser] Error en ${level}: ${e.message}`);
+          await page.close().catch(() => {});
+          // Si el error es un timeout, marcamos como bloqueado para intentar otro proxy
+          if (e.message.includes('timeout') || e.message.includes('net::ERR')) {
+            return { blocked: true, iframes: [] };
+          }
+          return { blocked: false, iframes: [] };
+        }
+      };
+
+      const l1 = await scrapePage(embedUrl, 'L1');
+      if (l1.blocked && attempt < 3) {
+        console.log('[browser] 🔄 Reintentando con IP diferente...');
+        await browser.close();
+        continue;
+      }
+
+      for (const l2Url of l1.iframes.slice(0, 5)) {
+        if (found.length > 0) break;
+        const l2 = await scrapePage(l2Url, 'L2');
+        if (l2.blocked) break;
+        for (const l3Url of l2.iframes.slice(0, 3)) {
+           if (found.length > 0) break;
+           await scrapePage(l3Url, 'L3');
         }
       }
+
+      await browser.close();
+      if (found.length > 0 || attempt === 3) break;
+    } catch (err) {
+      console.error(`[browser] Intento ${attempt} fallido: ${err.message}`);
+      if (browser) await browser.close().catch(() => {});
+      if (attempt === 3) break;
     }
-
-    await context.close();
-
-  } catch (error) {
-    console.error(`[browser] Error crítico: ${error.message}`);
-    return { urls: unique(found).filter(isDirectStreamUrl), error: error.message };
-  } finally {
-    if (browser) await browser.close().catch(() => { });
   }
-
-  const result = unique(found).filter(isDirectStreamUrl);
-  console.log(`[browser] Total: ${result.length}${result.length > 0 ? ' → ' + result[0].substring(0, 80) : ''}`);
-  return { urls: result, error: null };
+  return { urls: unique(found).filter(isDirectStreamUrl), error: null };
 }
 
 // ─── CLASE PRINCIPAL ──────────────────────────────────────────────────────────

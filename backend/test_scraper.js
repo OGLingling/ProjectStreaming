@@ -8,7 +8,7 @@ require('dotenv').config();
 
 const VideoScraper = require('./services/scraper_service');
 
-const tmdbId = process.argv[2] || '550';
+const tmdbId = process.argv[2] || '157336';
 const type = process.argv[3] || 'movie';
 const season = parseInt(process.argv[4]) || 1;
 const episode = parseInt(process.argv[5]) || 1;

@@ -3,6 +3,7 @@ const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 const { triggerManualCycle, getWorkerStatus } = require('../services/stream_worker');
 const { enqueue, getQueueStats } = require('../services/scrape_queue');
+const ContentService = require('../services/content_service');
 const prisma = new PrismaClient();
 
 
@@ -311,15 +312,29 @@ router.post('/scrape-run', async (req, res) => {
 });
 
 // --- FORCE REFRESH DE UN CONTENIDO ESPECÍFICO ---
-router.post('/scrape-force', async (req, res) => {
+// --- IMPORTACIÓN AUTOMÁTICA DESDE PANEL ---
+router.post('/import-content', async (req, res) => {
   try {
-    const { tmdbId, type = 'movie', season = 1, episode = 1 } = req.body;
-    if (!tmdbId) return res.status(400).json({ error: 'tmdbId requerido' });
+    const { title, type } = req.body;
+    if (!title) return res.status(400).json({ error: 'El título es requerido' });
 
-    const result = await enqueue(tmdbId, type, Number(season), Number(episode), true);
-    res.json({ success: true, ...result });
+    console.log(`[admin] 🚀 Iniciando importación remota: "${title}" (${type})`);
+    
+    // El servicio ya maneja la lógica de buscar e insertar
+    const result = await ContentService.autoImportByTitle(title, type || 'movie');
+
+    if (result.success) {
+      res.json({ 
+        success: true, 
+        message: `¡${result.data.title} importado correctamente!`,
+        content: result.data 
+      });
+    } else {
+      res.status(404).json({ success: false, error: result.error });
+    }
   } catch (error) {
-    res.status(503).json({ success: false, error: error.message });
+    console.error('[admin] Error en import-content:', error);
+    res.status(500).json({ error: 'Error interno al procesar la importación' });
   }
 });
 
