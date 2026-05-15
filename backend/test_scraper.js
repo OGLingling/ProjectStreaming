@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 // test_scraper.js — Prueba el scraper con un tmdbId real
 // Ejecutar: node test_scraper.js
-// O probar con un ID específico: node test_scraper.js 687163 movie
+// Con ID específico: node test_scraper.js 687163 movie
+// Serie: node test_scraper.js 1396 tv 1 1
 
 require('dotenv').config();
 
 const VideoScraper = require('./services/scraper_service');
 
-const tmdbId  = process.argv[2] || '550';    // Fight Club por defecto
-const type    = process.argv[3] || 'movie';
-const season  = parseInt(process.argv[4]) || 1;
+const tmdbId = process.argv[2] || '550';
+const type = process.argv[3] || 'movie';
+const season = parseInt(process.argv[4]) || 1;
 const episode = parseInt(process.argv[5]) || 1;
 
-const label = type === 'tv' ? `TV ${tmdbId} S${season}E${episode}` : `Película ${tmdbId}`;
+const label = type === 'tv'
+  ? `TV ${tmdbId} S${season}E${episode}`
+  : `Película ${tmdbId}`;
 
 console.log('\n══════════════════════════════════════════════════════');
 console.log(`  TEST SCRAPER — ${label}`);
@@ -20,6 +23,7 @@ console.log('══════════════════════�
 
 const start = Date.now();
 
+// FIX: pasar objeto con tmdbId y type — no string directo
 VideoScraper.extractStreamUrl({ tmdbId, type, season, episode })
   .then(result => {
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
@@ -27,7 +31,7 @@ VideoScraper.extractStreamUrl({ tmdbId, type, season, episode })
     console.log(`  RESULTADO (${elapsed}s)`);
     console.log('══════════════════════════════════════════════════════');
     console.log('  Success:', result.success);
-    console.log('  Candidatos encontrados:', result.candidates?.length || 0);
+    console.log('  Candidatos:', result.candidates?.length || 0);
 
     if (result.candidates?.length > 0) {
       console.log('\n  URLs encontradas:');
@@ -40,15 +44,14 @@ VideoScraper.extractStreamUrl({ tmdbId, type, season, episode })
     }
 
     if (result.debug_info) {
-      console.log('\n  Debug info:');
-      console.log('  ', JSON.stringify(result.debug_info, null, 2).replace(/\n/g, '\n  '));
+      console.log('\n  Debug:');
+      console.log(JSON.stringify(result.debug_info, null, 2));
     }
     console.log('══════════════════════════════════════════════════════\n');
     process.exit(result.success ? 0 : 1);
   })
   .catch(err => {
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-    console.error(`\n  ❌ ERROR FATAL (${elapsed}s):`, err.message);
-    console.error(err.stack);
+    console.error(`\n  ❌ ERROR (${elapsed}s):`, err.message);
     process.exit(1);
   });

@@ -1,20 +1,17 @@
 // services/stream_worker.js
-// Refresca automáticamente las URLs que están por vencer.
-// Usa Content.streamExpiresAt y Episode.streamExpiresAt del schema.
 
 const { PrismaClient } = require('@prisma/client');
 const { enqueue, getQueueStats } = require('./scrape_queue');
 
 const prisma = new PrismaClient();
 
-// Refresca si le quedan menos de 2 horas (configurable)
 const REFRESH_THRESHOLD_MS = Number(process.env.STREAM_REFRESH_THRESHOLD_MS) || 2 * 60 * 60 * 1000;
-
-// Corre cada 30 minutos (configurable)
 const INTERVAL_MS = Number(process.env.WORKER_INTERVAL_MS) || 30 * 60 * 1000;
-
-// Máximo de items a refrescar por ciclo (evita saturar en BD grande)
 const BATCH_SIZE = Number(process.env.WORKER_BATCH_SIZE) || 10;
+
+// Máximo de intentos fallidos antes de dejar de reintentar automáticamente
+// El scrape manual (force-refresh) sigue funcionando igual
+const MAX_FAILED_ATTEMPTS = 3;
 
 let timer = null;
 let isRunning = false;
@@ -37,30 +34,46 @@ async function refreshCycle() {
   let moviesFound = 0, episodesFound = 0, ok = 0, fail = 0;
 
   try {
-    // ── 1. Películas: vencidas, próximas a vencer o sin stream ──────────────
+    // ── FIX: obtener tmdbIds que ya fallaron demasiado — no reintentar ────────
+    // Evita que el worker sature la cola con contenido que siempre falla
+    const [failedMovieIds, failedTvIds] = await Promise.all([
+      prisma.scrapeJob.findMany({
+        where: { type: 'movie', status: 'failed', attempts: { gte: MAX_FAILED_ATTEMPTS } },
+        select: { tmdbId: true }
+      }).then(jobs => jobs.map(j => j.tmdbId)).catch(() => []),
+
+      prisma.scrapeJob.findMany({
+        where: { type: 'tv', status: 'failed', attempts: { gte: MAX_FAILED_ATTEMPTS } },
+        select: { tmdbId: true }
+      }).then(jobs => jobs.map(j => j.tmdbId)).catch(() => [])
+    ]);
+
+    if (failedMovieIds.length > 0) {
+      console.log(`[worker] Excluyendo ${failedMovieIds.length} película(s) con ${MAX_FAILED_ATTEMPTS}+ fallos`);
+    }
+
+    // ── 1. Películas por refrescar ────────────────────────────────────────────
     const movies = await prisma.content.findMany({
       where: {
         type: 'movie',
-        tmdbId: { not: null },
+        tmdbId: {
+          not: null,
+          // FIX: excluir las que ya fallaron demasiadas veces
+          ...(failedMovieIds.length > 0 ? { notIn: failedMovieIds } : {})
+        },
         OR: [
-          // Nunca se scrapearon
           { videoUrl: null },
-          // Ya vencieron
           { streamExpiresAt: { lt: new Date() } },
-          // Están por vencer (dentro del umbral)
           { streamExpiresAt: { lt: threshold } }
         ]
       },
       select: { tmdbId: true, videoUrl: true, streamExpiresAt: true, title: true },
       take: BATCH_SIZE,
-      orderBy: [
-        // Primero las que nunca se scrapearon, luego las más próximas a vencer
-        { streamExpiresAt: 'asc' }
-      ]
+      orderBy: { streamExpiresAt: 'asc' }
     });
     moviesFound = movies.length;
 
-    // ── 2. Episodios: mismo criterio ─────────────────────────────────────────
+    // ── 2. Episodios por refrescar ────────────────────────────────────────────
     const episodes = await prisma.episode.findMany({
       where: {
         OR: [
@@ -68,9 +81,14 @@ async function refreshCycle() {
           { streamExpiresAt: { lt: new Date() } },
           { streamExpiresAt: { lt: threshold } }
         ],
-        // Solo episodios cuyo contenido padre tenga tmdbId
         season: {
-          content: { tmdbId: { not: null } }
+          content: {
+            tmdbId: {
+              not: null,
+              // FIX: excluir series que siempre fallan
+              ...(failedTvIds.length > 0 ? { notIn: failedTvIds } : {})
+            }
+          }
         }
       },
       select: {
@@ -97,16 +115,19 @@ async function refreshCycle() {
 
     console.log(`[worker] 🔄 ${moviesFound} película(s) + ${episodesFound} episodio(s) para refrescar`);
 
-    // Loguear qué se va a refrescar
     for (const m of movies) {
-      const status = !m.videoUrl ? 'sin stream' : m.streamExpiresAt < new Date() ? 'vencida' : 'próxima a vencer';
+      const status = !m.videoUrl
+        ? 'sin stream'
+        : m.streamExpiresAt < new Date()
+          ? 'vencida'
+          : 'próxima a vencer';
       console.log(`[worker]   📽 ${m.title || m.tmdbId} [${status}]`);
     }
 
-    // ── 3. Encolar con force=true para saltear verificación de caché ─────────
+    // ── 3. Encolar con force=true ─────────────────────────────────────────────
     const jobs = [
       ...movies.map(({ tmdbId }) =>
-        enqueue(tmdbId, 'movie', 1, 1, true) // force=true
+        enqueue(tmdbId, 'movie', 1, 1, true)
       ),
       ...episodes
         .filter(ep => ep.season?.content?.tmdbId)
@@ -116,13 +137,13 @@ async function refreshCycle() {
             'tv',
             ep.season.seasonNumber,
             ep.episodeNumber,
-            true // force=true
+            true
           )
         )
     ];
 
     const results = await Promise.allSettled(jobs);
-    ok   = results.filter(r => r.status === 'fulfilled').length;
+    ok = results.filter(r => r.status === 'fulfilled').length;
     fail = results.filter(r => r.status === 'rejected').length;
 
     if (fail > 0) {
@@ -144,9 +165,7 @@ async function refreshCycle() {
 // ─── API PÚBLICA ─────────────────────────────────────────────────────────────
 function startWorker() {
   if (timer) return;
-  console.log(`[worker] Iniciado — intervalo: ${INTERVAL_MS / 60000} min | umbral refresh: ${REFRESH_THRESHOLD_MS / 3600000}h | batch: ${BATCH_SIZE}`);
-
-  // Primer ciclo 90s después del arranque (da tiempo al servidor a estar listo)
+  console.log(`[worker] Iniciado — intervalo: ${INTERVAL_MS / 60000} min | umbral: ${REFRESH_THRESHOLD_MS / 3600000}h | batch: ${BATCH_SIZE}`);
   setTimeout(() => {
     refreshCycle();
     timer = setInterval(refreshCycle, INTERVAL_MS);
@@ -161,7 +180,6 @@ function stopWorker() {
   }
 }
 
-/** Fuerza un ciclo inmediato (para uso desde endpoint admin) */
 async function triggerManualCycle() {
   if (isRunning) return { skipped: true, reason: 'already_running' };
   await refreshCycle();
@@ -176,7 +194,8 @@ function getWorkerStatus() {
     lastCycleStats,
     intervalMs: INTERVAL_MS,
     refreshThresholdMs: REFRESH_THRESHOLD_MS,
-    batchSize: BATCH_SIZE
+    batchSize: BATCH_SIZE,
+    maxFailedAttempts: MAX_FAILED_ATTEMPTS
   };
 }
 
