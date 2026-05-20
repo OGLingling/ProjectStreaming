@@ -76,8 +76,41 @@ const unique = (arr) => [...new Set(arr.filter(Boolean))];
 
 const isDirectStreamUrl = (url) => {
   const s = String(url || '').toLowerCase();
-  return s.includes('.m3u8') || s.includes('.mp4') || s.includes('googlevideo.com/videoplayback');
+  // Incluimos patrones más amplios de HLS y MP4
+  return s.includes('.m3u8') || 
+         s.includes('.mp4') || 
+         s.includes('googlevideo.com/videoplayback') ||
+         (s.includes('/hls/') && s.includes('.ts')) || // Segmentos TS a veces ayudan a encontrar el playlist
+         s.includes('/playlist.m3u8') ||
+         s.includes('master.m3u8') ||
+         s.includes('manifest.m3u8');
 };
+
+const SNIFFER_SCRIPT = `
+(function() {
+    const originalOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url) {
+        if (url.includes('.m3u8') || url.includes('.mp4') || url.includes('videoplayback')) {
+            window.dispatchEvent(new CustomEvent('stream_found', { detail: url }));
+        }
+        return originalOpen.apply(this, arguments);
+    };
+    const originalFetch = window.fetch;
+    window.fetch = function() {
+        const url = typeof arguments[0] === 'string' ? arguments[0] : arguments[0].url;
+        if (url && (url.includes('.m3u8') || url.includes('.mp4') || url.includes('videoplayback'))) {
+            window.dispatchEvent(new CustomEvent('stream_found', { detail: url }));
+        }
+        return originalFetch.apply(this, arguments);
+    };
+    // Capturar si el player usa postMessage para comunicar el link
+    window.addEventListener('message', function(e) {
+        if (e.data && typeof e.data === 'string' && (e.data.includes('.m3u8') || e.data.includes('.mp4'))) {
+            window.dispatchEvent(new CustomEvent('stream_found', { detail: e.data }));
+        }
+    });
+})();
+`;
 
 const isAdOrNoiseUrl = (url) => {
   const s = String(url || '').toLowerCase();
@@ -131,67 +164,65 @@ async function waitForStreamOrTimeout(found, maxMs = 20000, intervalMs = 300) {
 // ─── INTERACCIÓN CON PLAYER ──────────────────────────────────────────────────
 async function interactWithPlayer(page) {
   try {
-    const { width, height } = page.viewportSize() || { width: 1280, height: 720 };
-    
-    // 1. Simular movimiento humano errático antes de interactuar
-    console.log('[browser] 🖱 Simulando movimiento de ratón humano...');
-    for(let i=0; i<3; i++) {
-        await page.mouse.move(
-            Math.random() * width, 
-            Math.random() * height, 
-            { steps: 5 }
-        ).catch(() => {});
-    }
+    const frames = page.frames();
+    console.log(`[browser] � Interactuando con ${frames.length} frames...`);
 
-    // 2. Intentar clics en puntos estratégicos (Centro y Cuadrantes)
-    const points = [
-        { x: width / 2, y: height / 2 },
-        { x: width / 2 + 10, y: height / 2 + 10 },
-        { x: width / 2 - 10, y: height / 2 - 10 }
-    ];
-    
-    for (const p of points) {
-        await page.mouse.click(p.x, p.y).catch(() => {});
-        await page.waitForTimeout(500);
-    }
+    for (const frame of frames) {
+      try {
+        const isVisible = await frame.evaluate(() => {
+          const el = document.body;
+          return el && el.getBoundingClientRect().width > 0;
+        }).catch(() => false);
 
-    // 3. Buscar y clicar botones de Play específicos de la industria
-    await page.evaluate(() => {
-      const selectors = [
-        'video',
-        '.jw-display-icon-container', '.jw-icon-display',
-        '.plyr__control--overlaid',
-        '.vjs-big-play-button',
-        '.play-button', '#play-button',
-        '.play-icon', '.player-play-button',
-        '[class*="play" i]', '[id*="play" i]',
-        '[role="button"][aria-label*="play" i]',
-        'button', '.overlay', '#overlay'
-      ];
-      
-      for (const sel of selectors) {
-        try {
-          const elements = document.querySelectorAll(sel);
-          elements.forEach(el => {
-            const rect = el.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
+        if (!isVisible) continue;
+
+        // 1. Simular clics en el centro del frame
+        await frame.evaluate(() => {
+          const width = window.innerWidth;
+          const height = window.innerHeight;
+          const points = [
+            { x: width / 2, y: height / 2 },
+            { x: width / 2 + 20, y: height / 2 + 20 },
+            { x: width / 2 - 20, y: height / 2 - 20 }
+          ];
+          points.forEach(p => {
+            const el = document.elementFromPoint(p.x, p.y);
+            if (el) {
               el.click();
-              // Si es un video, forzar play programático
-              if (el.tagName === 'VIDEO') el.play().catch(() => {});
+              // Eventos adicionales para engañar a scripts que detectan clics reales
+              el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: p.x, clientY: p.y }));
+              el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: p.x, clientY: p.y }));
             }
           });
-        } catch (_) {}
+        }).catch(() => { });
+
+        // 2. Buscar botones de Play y activarlos
+        await frame.evaluate(() => {
+          const playSelectors = [
+            'video', 'button', 'a', '.play', '#play', '[class*="play" i]', '[id*="play" i]',
+            '.jw-display-icon-container', '.vjs-big-play-button', '.plyr__control--overlaid'
+          ];
+          playSelectors.forEach(sel => {
+            document.querySelectorAll(sel).forEach(el => {
+              try {
+                if (el.tagName === 'VIDEO') {
+                  el.play().catch(() => { });
+                } else {
+                  el.click();
+                }
+              } catch (_) { }
+            });
+          });
+        }).catch(() => { });
+
+      } catch (frameError) {
+        // Ignorar errores de frames individuales (CORS, etc.)
       }
-    }).catch(() => { });
+    }
 
-    // 4. Atajos de teclado comunes
-    await page.keyboard.press('k').catch(() => {}); // YouTube/Common
-    await page.keyboard.press('Space').catch(() => {});
-
-    // 5. Scroll suave para activar Lazy Load
-    await page.mouse.wheel(0, 300);
-    await page.waitForTimeout(500);
-    await page.mouse.wheel(0, -300);
+    // Atajos globales en la página principal
+    await page.keyboard.press('k').catch(() => { });
+    await page.keyboard.press('Space').catch(() => { });
 
   } catch (err) {
     console.error(`[browser] Error en interacción: ${err.message}`);
@@ -263,48 +294,27 @@ async function extractWithBrowser(embedUrl) {
   const found = [];
   let browser;
   const browserlessToken = process.env.BROWSERLESS_TOKEN;
-  const scraperMode = process.env.SCRAPER_MODE || 'auto'; // 'browserless', 'local', 'auto'
+  const scraperMode = process.env.SCRAPER_MODE || 'auto';
 
-  console.log(`[browser] 🛠 Modo seleccionado: ${scraperMode}`);
+  const screenshotsDir = path.join(__dirname, '../screenshots');
+  if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
+
+  console.log(`[browser] 🛠 Modo: ${scraperMode} | Objetivo: ${embedUrl}`);
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      // DECISIÓN DE MOTOR DE NAVEGACIÓN
-      let useBrowserless = false;
-      
-      if (scraperMode === 'browserless') {
-        useBrowserless = true;
-      } else if (scraperMode === 'local') {
-        useBrowserless = false;
+      if (scraperMode === 'browserless' && browserlessToken) {
+        browser = await chromium.connectOverCDP({
+          endpointURL: `wss://chrome.browserless.io?token=${browserlessToken}&stealth&--disable-notifications`,
+          timeout: 40000
+        });
       } else {
-        // Modo Auto: Browserless en primer intento si hay token
-        useBrowserless = (attempt === 1 && browserlessToken);
-      }
-
-      if (useBrowserless && browserlessToken) {
-        console.log('[browser] ☁ Conectando a Browserless.io...');
-        try {
-          browser = await chromium.connectOverCDP({
-            endpointURL: `wss://chrome.browserless.io?token=${browserlessToken}&stealth&--disable-notifications`,
-            timeout: 25000
-          });
-          console.log('[browser] ✅ Conectado a Browserless');
-        } catch (e) {
-          console.error(`[browser] ❌ Error Browserless: ${e.message}`);
-          if (scraperMode === 'browserless') break; // Si está forzado y falla, salimos
-          continue; // Si es auto, intentamos el siguiente (local)
-        }
-      } else {
-        // MODO LOCAL ("LA TUYA")
         const currentProxy = (attempt === 2) ? getNextProxy() : null;
-        console.log(`[browser] 🏠 Iniciando Navegador Local ${currentProxy ? '(con Proxy)' : '(IP Directa)'}...`);
-        
         browser = await chromium.launch({
-          headless: true, // Cambiar a false si quieres ver qué pasa en local (solo si tienes GUI)
+          headless: true,
           proxy: currentProxy ? { server: currentProxy.startsWith('http') ? currentProxy : `http://${currentProxy}` } : undefined,
           args: [
-            '--no-sandbox', 
-            '--disable-setuid-sandbox', 
+            '--no-sandbox', '--disable-setuid-sandbox', 
             '--disable-blink-features=AutomationControlled',
             '--disable-web-security',
             '--disable-features=IsolateOrigins,site-per-process'
@@ -312,121 +322,143 @@ async function extractWithBrowser(embedUrl) {
         });
       }
 
+      const targetOrigin = new URL(embedUrl).origin;
       const context = await browser.newContext({ 
         userAgent: DESKTOP_UA, 
         viewport: { width: 1280, height: 720 },
         ignoreHTTPSErrors: true,
         extraHTTPHeaders: {
-          'Referer': 'https://vidsrc.to/',
-          'Origin': 'https://vidsrc.to/',
-          'Accept-Language': 'en-US,en;q=0.9,es;q=0.8'
+          'Referer': 'https://google.com/',
+          'Origin': targetOrigin,
+          'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Upgrade-Insecure-Requests': '1'
         }
       });
+
+      const page = await context.newPage();
       
-      context.on('request', request => {
+      const takeScreenshot = async (name) => {
+        try {
+          const safeUrl = embedUrl.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
+          const filePath = path.join(screenshotsDir, `At${attempt}_${name}_${safeUrl}.png`);
+          await page.screenshot({ path: filePath });
+          console.log(`[browser] 📸 Captura: ${name}`);
+        } catch (e) {
+          console.warn(`[browser] ⚠️ No se pudo tomar captura: ${e.message}`);
+        }
+      };
+
+      // Sniffer bridge
+      await page.exposeFunction('onStreamFound', (url) => {
+        if (isDirectStreamUrl(url) && !found.includes(url)) {
+          console.log(`[browser] 💉 Sniffer: ${url.substring(0, 60)}...`);
+          found.push(url);
+        }
+      });
+
+      // Network monitoring
+      page.on('request', request => {
         const u = request.url();
         if (isDirectStreamUrl(u) && !found.includes(u)) {
-          console.log(`[browser] 🎯 Red: ${u.substring(0, 50)}...`);
+          console.log(`[browser] 🎯 Red: ${u.substring(0, 60)}...`);
           found.push(u);
         }
       });
 
-      const scrapePage = async (url, level = 'L1') => {
-        const page = await context.newPage();
-        const screenshotsDir = path.join(__dirname, '../screenshots');
-        if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
+      // Bloqueo de publicidad agresivo
+      await page.route('**/*', (route) => {
+        const url = route.request().url();
+        if (isAdOrNoiseUrl(url)) return route.abort();
+        const type = route.request().resourceType();
+        if (['image', 'font'].includes(type) && !isDirectStreamUrl(url)) return route.abort();
+        route.continue();
+      });
 
-        await page.route('**/*', (route) => {
-          const type = route.request().resourceType();
-          if (['image', 'font'].includes(type) && !isDirectStreamUrl(route.request().url())) return route.abort();
-          if (AD_HOST_HINTS.some(h => route.request().url().includes(h))) return route.abort();
-          route.continue();
-        });
+      // Navegación optimizada (esperamos a domcontentloaded para evitar timeouts por trackers lentos)
+      console.log(`[browser] → Navegando a ${embedUrl}`);
+      await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
+      await page.waitForTimeout(3000); // Espera manual mínima post-DOM
 
+      const setupPage = async (p) => {
         try {
-          console.log(`[browser] → ${level} Navegando: ${url}`);
-          const navigationTimeout = attempt === 1 ? 35000 : 55000;
-          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: navigationTimeout });
-
-          // 5. INTENTAR ACTIVAR EL REPRODUCTOR (Simular Clic Humano Aleatorio)
-          console.log(`[browser] 🖱 Intentando activar reproductor con clic aleatorio...`);
-          try {
-            await page.waitForTimeout(Math.floor(Math.random() * 3000) + 3000); 
-            
-            // Clic aleatorio cerca del centro (640, 360) +/- 50px
-            const randomX = 640 + (Math.floor(Math.random() * 100) - 50);
-            const randomY = 360 + (Math.floor(Math.random() * 100) - 50);
-            
-            await page.mouse.move(randomX, randomY, { steps: 10 });
-            await page.mouse.click(randomX, randomY);
-            
-            await page.waitForTimeout(1500);
-            
-            // Intentar presionar 'k' o 'Space' (atajos comunes de play)
-            await page.keyboard.press('k').catch(() => {});
-          } catch (e) {}
-
-          console.log(`[browser] ⏳ Esperando captura de red (12s)...`);
-          await page.waitForTimeout(12000); 
-
-          const safeName = url.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
-          await page.screenshot({ path: path.join(screenshotsDir, `${level}_At${attempt}_${safeName}.png`) }).catch(() => {});
-
-          const content = await page.content();
-          if (content.includes('Sorry, you have been blocked') || content.includes('Verify you are human') || content.includes('Cloudflare')) {
-            if (content.includes('Ray ID') || content.includes('challenge')) {
-               console.warn(`[browser] 🛡 Bloqueo en ${level}`);
-               await page.close();
-               return { blocked: true, iframes: [] };
-            }
-          }
-          
-          await page.waitForTimeout(3500);
-          await interactWithPlayer(page);
-          await waitForStreamOrTimeout(found, 15000);
-
-          const domUrls = await extractFromDOM(page, url);
-          if (domUrls.length > 0) found.push(...domUrls);
-
-          const iframes = await page.$$eval('iframe', el => el.map(i => i.src)).catch(() => []);
-          await page.close();
-          return { blocked: false, iframes: iframes.filter(s => s && s.startsWith('http') && !IFRAME_NOISE.some(n => s.includes(n))) };
-        } catch (e) {
-          console.error(`[browser] Error en ${level}: ${e.message}`);
-          await page.close().catch(() => {});
-          // Si el error es un timeout, marcamos como bloqueado para intentar otro proxy
-          if (e.message.includes('timeout') || e.message.includes('net::ERR')) {
-            return { blocked: true, iframes: [] };
-          }
-          return { blocked: false, iframes: [] };
-        }
+          await p.addInitScript(SNIFFER_SCRIPT);
+          await p.evaluate(() => {
+            if (window.onStreamFound) return;
+            window.addEventListener('stream_found', (e) => {
+               if (typeof window.onStreamFound === 'function') {
+                 window.onStreamFound(e.detail);
+               }
+            });
+          }).catch(() => {});
+        } catch (_) {}
       };
 
-      const l1 = await scrapePage(embedUrl, 'L1');
-      if (l1.blocked && attempt < 3) {
-        console.log('[browser] 🔄 Reintentando con IP diferente...');
-        await browser.close();
-        continue;
-      }
+      context.on('frameattached', async (frame) => {
+        await setupPage(frame);
+      });
 
-      for (const l2Url of l1.iframes.slice(0, 5)) {
+      await setupPage(page);
+      await takeScreenshot('L1_Initial');
+
+      // Ciclo de inspección profunda
+      for (let layer = 1; layer <= 3; layer++) {
         if (found.length > 0) break;
-        const l2 = await scrapePage(l2Url, 'L2');
-        if (l2.blocked) break;
-        for (const l3Url of l2.iframes.slice(0, 3)) {
-           if (found.length > 0) break;
-           await scrapePage(l3Url, 'L3');
+        
+        console.log(`[browser] 📂 Capa ${layer}: Analizando y activando...`);
+        
+        // Detección de errores comunes en el DOM
+        const statusText = await page.evaluate(() => {
+          const body = document.body.innerText.toLowerCase();
+          if (body.includes('media is unavailable') || body.includes('not found') || body.includes('removed')) return 'unavailable';
+          if (body.includes('blocked') || body.includes('verify you are human')) return 'blocked';
+          return 'ok';
+        }).catch(() => 'error');
+
+        if (statusText === 'unavailable') {
+          console.warn(`[browser] ❌ Contenido marcado como no disponible por el proveedor.`);
+          await takeScreenshot(`L${layer}_Unavailable`);
+          return { error: 'unavailable', urls: [] }; // Retornamos error específico
         }
+
+        if (statusText === 'blocked') {
+          console.warn(`[browser] 🛡️ Bloqueo/Captcha detectado.`);
+          await takeScreenshot(`L${layer}_Blocked`);
+          if (attempt < 3) break; // Intentar con otro proxy
+        }
+
+        await interactWithPlayer(page);
+        await page.waitForTimeout(4000);
+        await takeScreenshot(`L${layer}_AfterInteract`);
+
+        const domUrls = await extractFromDOM(page, page.url());
+        if (domUrls.length > 0) {
+          found.push(...domUrls);
+          break;
+        }
+
+        const frames = page.frames();
+        for (const frame of frames) {
+            if (frame === page.mainFrame()) continue;
+            try {
+              await setupPage(frame).catch(() => {});
+              const frameUrls = await extractFromDOM(frame, frame.url()).catch(() => []);
+              if (frameUrls.length > 0) found.push(...frameUrls);
+            } catch (_) {}
+        }
+
+        if (found.length > 0) break;
+        await page.waitForTimeout(2000);
       }
 
       await browser.close();
-      if (found.length > 0 || attempt === 3) break;
+      if (found.length > 0) break;
+
     } catch (err) {
       console.error(`[browser] Intento ${attempt} fallido: ${err.message}`);
       if (browser) await browser.close().catch(() => {});
-      if (attempt === 3) break;
     }
   }
+
   return { urls: unique(found).filter(isDirectStreamUrl), error: null };
 }
 
@@ -460,27 +492,28 @@ class VideoScraper {
     const tvPath = `tv/${tmdbId}/${season}/${episode}`;
     const moviePath = `movie/${tmdbId}`;
 
+    // Priorizamos proveedores que suelen tener mayor disponibilidad
     if (isTV) {
       return [
         `https://vidsrc.to/embed/${tvPath}`,
+        `https://vidsrc.pro/embed/${tvPath}`,
         `https://vidsrc.me/embed/${tvPath}`,
+        `https://embed.su/embed/${tvPath}`,
         `https://vsembed.ru/embed/${tvPath}/`,
-        `https://player.vidsrc.co/embed/${tvPath}`,
         `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`,
         `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${season}&e=${episode}`,
-        // vidsrc.xyz eliminado — no resuelve DNS en Render
         `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}&season=${season}&episode=${episode}`
       ];
     }
 
     return [
       `https://vidsrc.to/embed/${moviePath}`,
+      `https://vidsrc.pro/embed/${moviePath}`,
       `https://vidsrc.me/embed/${moviePath}`,
+      `https://embed.su/embed/${moviePath}`,
       `https://vsembed.ru/embed/${moviePath}/`,
-      `https://player.vidsrc.co/embed/${moviePath}`,
       `https://www.2embed.cc/embed/${tmdbId}`,
       `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`,
-      // vidsrc.xyz eliminado — no resuelve DNS en Render
       `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}`
     ];
   }
@@ -490,7 +523,7 @@ class VideoScraper {
     const result = await extractWithBrowser(embedUrl);
     debug.streamsFound = result.urls.length;
     if (result.error) debug.errors.push(result.error);
-    return { urls: unique(result.urls).filter(isDirectStreamUrl), debug };
+    return { urls: unique(result.urls).filter(isDirectStreamUrl), error: result.error, debug };
   }
 
   static async createPayload(source) {
@@ -529,12 +562,17 @@ class VideoScraper {
 
     for (const [i, embedUrl] of embeds.entries()) {
       if (candidates.length >= 1) break;
-      if (i >= browserLimit) break;
+      // Si un proveedor falla por "unavailable", no cuenta contra el límite de navegadores
+      // para darnos más oportunidades de encontrar uno que sí funcione.
+      if (i >= browserLimit && !debugList.some(d => d.errors.includes('unavailable'))) break;
 
-      console.log(`[scraper] Provider ${i + 1}/${Math.min(embeds.length, browserLimit)}: ${embedUrl}`);
+      console.log(`[scraper] Provider ${i + 1}/${Math.min(embeds.length, browserLimit + 2)}: ${embedUrl}`);
       const result = await this.extractFromEmbed(embedUrl);
       debugList.push(result.debug);
       candidates.push(...result.urls);
+
+      // Si encontramos algo, salimos
+      if (candidates.length > 0) break;
     }
 
     const streamCandidates = unique(candidates).filter(isDirectStreamUrl);
