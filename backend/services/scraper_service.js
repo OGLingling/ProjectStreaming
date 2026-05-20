@@ -88,6 +88,11 @@ const isDirectStreamUrl = (url) => {
 
 const SNIFFER_SCRIPT = `
 (function() {
+    // Evitar detección simple de automatización en subframes
+    try {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    } catch(e) {}
+    
     const originalOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(method, url) {
         if (url.includes('.m3u8') || url.includes('.mp4') || url.includes('videoplayback')) {
@@ -161,11 +166,43 @@ async function waitForStreamOrTimeout(found, maxMs = 20000, intervalMs = 300) {
   return found.some(isDirectStreamUrl);
 }
 
+// Simular comportamiento humano de deslizamiento del mouse antes del clic
+async function humanClick(page, x, y) {
+  try {
+    // Mover a una posición inicial aleatoria
+    await page.mouse.move(Math.random() * 200, Math.random() * 200).catch(() => {});
+    // Deslizar con trayectoria curvada simulada (steps)
+    await page.mouse.move(x / 2 + Math.random() * 50, y / 2 + Math.random() * 50, { steps: 5 }).catch(() => {});
+    await page.mouse.move(x, y, { steps: 8 }).catch(() => {});
+    // Pausa de reacción humana
+    await page.waitForTimeout(100 + Math.random() * 150);
+    // Realizar clic
+    await page.mouse.click(x, y).catch(() => {});
+  } catch (e) {}
+}
+
 // ─── INTERACCIÓN CON PLAYER ──────────────────────────────────────────────────
 async function interactWithPlayer(page) {
   try {
+    // 1. Clic nativo humano en el centro de la pantalla principal (isTrusted: true)
+    await humanClick(page, 640, 360);
+    console.log('[browser] 🖱 Clic nativo humano en el centro de la pantalla principal');
+
+    // 2. Clic nativo humano en el centro de todos los iframes visibles
+    const iframeElements = await page.$$('iframe');
+    for (const iframeEl of iframeElements) {
+      try {
+        const box = await iframeEl.boundingBox();
+        if (box && box.width > 100 && box.height > 100) {
+          await humanClick(page, box.x + box.width / 2, box.y + box.height / 2);
+          console.log(`[browser] 🖱 Clic nativo humano en centro de iframe: x=${Math.round(box.x + box.width / 2)}, y=${Math.round(box.y + box.height / 2)}`);
+        }
+      } catch (e) {}
+    }
+
+    // 3. Respaldo de clics programáticos (mantener compatibilidad)
     const frames = page.frames();
-    console.log(`[browser] � Interactuando con ${frames.length} frames...`);
+    console.log(`[browser] 📂 Interactuando con ${frames.length} frames...`);
 
     for (const frame of frames) {
       try {
@@ -176,7 +213,7 @@ async function interactWithPlayer(page) {
 
         if (!isVisible) continue;
 
-        // 1. Simular clics en el centro del frame
+        // Simular clics en el centro del frame
         await frame.evaluate(() => {
           const width = window.innerWidth;
           const height = window.innerHeight;
@@ -196,7 +233,7 @@ async function interactWithPlayer(page) {
           });
         }).catch(() => { });
 
-        // 2. Buscar botones de Play y activarlos
+        // Buscar botones de Play y activarlos
         await frame.evaluate(() => {
           const playSelectors = [
             'video', 'button', 'a', '.play', '#play', '[class*="play" i]', '[id*="play" i]',
@@ -301,6 +338,16 @@ async function extractWithBrowser(embedUrl) {
 
   console.log(`[browser] 🛠 Modo: ${scraperMode} | Objetivo: ${embedUrl}`);
 
+  // Validar si hay proxies reales configurados (ignorar placeholders y GitHub IPs)
+  const validProxies = PROXIES.filter(p => {
+    const trimmed = p.trim();
+    if (!trimmed || trimmed.includes('user:pass@') || trimmed.includes('proxy3.com')) return false;
+    // GitHub Pages IPs no son proxies HTTP
+    const githubIps = ['185.199.', '140.82.'];
+    if (githubIps.some(ip => trimmed.startsWith(ip))) return false;
+    return true;
+  });
+
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       if (scraperMode === 'browserless' && browserlessToken) {
@@ -309,34 +356,71 @@ async function extractWithBrowser(embedUrl) {
           timeout: 40000
         });
       } else {
-        const currentProxy = (attempt === 2) ? getNextProxy() : null;
+        // Solo usar proxy en intento 2 si hay proxies válidos disponibles
+        const useProxy = (attempt === 2) && validProxies.length > 0;
+        const proxyUrl = useProxy ? validProxies[proxyIndex++ % validProxies.length].trim() : null;
+        const isHeadless = process.env.SCRAPER_HEADLESS !== 'false';
+
+        // Si no hay proxies válidos, saltar directamente de intento 1 a 3
+        if (attempt === 2 && validProxies.length === 0) {
+          console.log(`[browser] ⚠ Sin proxies válidos, saltando intento 2`);
+          continue;
+        }
+
         browser = await chromium.launch({
-          headless: true,
-          proxy: currentProxy ? { server: currentProxy.startsWith('http') ? currentProxy : `http://${currentProxy}` } : undefined,
+          headless: isHeadless,
+          channel: isHeadless ? undefined : 'chrome',
+          proxy: proxyUrl ? { server: proxyUrl.startsWith('http') ? proxyUrl : `http://${proxyUrl}` } : undefined,
           args: [
-            '--no-sandbox', '--disable-setuid-sandbox', 
+            '--no-sandbox', '--disable-setuid-sandbox',
             '--disable-blink-features=AutomationControlled',
             '--disable-web-security',
-            '--disable-features=IsolateOrigins,site-per-process'
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--autoplay-policy=no-user-gesture-required'
           ]
         });
       }
 
       const targetOrigin = new URL(embedUrl).origin;
-      const context = await browser.newContext({ 
-        userAgent: DESKTOP_UA, 
+      const context = await browser.newContext({
+        userAgent: DESKTOP_UA,
         viewport: { width: 1280, height: 720 },
         ignoreHTTPSErrors: true,
         extraHTTPHeaders: {
-          'Referer': 'https://google.com/',
+          'Referer': targetOrigin + '/',
           'Origin': targetOrigin,
           'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
           'Upgrade-Insecure-Requests': '1'
         }
       });
 
+      // Inyección profunda de sigilo a nivel de contexto
+      await context.addInitScript(() => {
+        try { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); } catch (_) {}
+        try { window.chrome = { runtime: {} }; } catch (_) {}
+        try {
+          const getParameter = WebGLRenderingContext.prototype.getParameter;
+          WebGLRenderingContext.prototype.getParameter = function(parameter) {
+            if (parameter === 37445) return 'Google Inc. (NVIDIA)';
+            if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU/Direct3D11, vs_5_0 ps_5_0)';
+            return getParameter.apply(this, arguments);
+          };
+        } catch (_) {}
+        try {
+          Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en-US', 'en'] });
+          Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        } catch (_) {}
+        try {
+          const originalQuery = navigator.permissions.query;
+          navigator.permissions.query = (parameters) =>
+            parameters.name === 'notifications'
+              ? Promise.resolve({ state: Notification.permission })
+              : originalQuery(parameters);
+        } catch (_) {}
+      });
+
       const page = await context.newPage();
-      
+
       const takeScreenshot = async (name) => {
         try {
           const safeUrl = embedUrl.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
@@ -348,24 +432,62 @@ async function extractWithBrowser(embedUrl) {
         }
       };
 
-      // Sniffer bridge
+      // Sniffer bridge para XHR/fetch dentro de la página
       await page.exposeFunction('onStreamFound', (url) => {
         if (isDirectStreamUrl(url) && !found.includes(url)) {
-          console.log(`[browser] 💉 Sniffer: ${url.substring(0, 60)}...`);
+          console.log(`[browser] 💉 Sniffer XHR: ${url.substring(0, 80)}`);
           found.push(url);
         }
       });
 
-      // Network monitoring
+      // ─── MONITOREO DE RED: REQUESTS ──────────────────────────────────────────
       page.on('request', request => {
         const u = request.url();
         if (isDirectStreamUrl(u) && !found.includes(u)) {
-          console.log(`[browser] 🎯 Red: ${u.substring(0, 60)}...`);
+          console.log(`[browser] 🎯 Request: ${u.substring(0, 80)}`);
           found.push(u);
         }
       });
 
-      // Bloqueo de publicidad agresivo
+      // ─── MONITOREO DE RED: RESPONSE BODIES ───────────────────────────────────
+      // Esta es la pieza clave: muchos players devuelven la URL m3u8 dentro de
+      // una respuesta JSON/JS, no como una request directa al archivo.
+      page.on('response', async (response) => {
+        try {
+          const u = response.url();
+          const status = response.status();
+          if (status < 200 || status >= 400) return;
+          if (isAdOrNoiseUrl(u)) return;
+
+          // Primero: la URL de respuesta misma puede ser un stream
+          if (isDirectStreamUrl(u) && !found.includes(u)) {
+            console.log(`[browser] 🎯 Response URL: ${u.substring(0, 80)}`);
+            found.push(u);
+          }
+
+          // Segundo: leer el cuerpo para encontrar URLs embebidas
+          const ct = (response.headers()['content-type'] || '').toLowerCase();
+          const isTextContent = ct.includes('json') || ct.includes('javascript') ||
+                                ct.includes('text/plain') || ct.includes('text/html');
+          if (!isTextContent) return;
+
+          const body = await response.text().catch(() => '');
+          if (!body || body.length < 10) return;
+
+          // Solo procesar si el cuerpo contiene algo relevante
+          if (!body.includes('.m3u8') && !body.includes('.mp4') && !body.includes('videoplayback')) return;
+
+          const matches = extractStreamUrlsFromText(body, u);
+          for (const match of matches) {
+            if (!found.includes(match)) {
+              console.log(`[browser] 📡 Body(${u.substring(0,40)}): ${match.substring(0, 80)}`);
+              found.push(match);
+            }
+          }
+        } catch (_) {}
+      });
+
+      // Bloqueo de publicidad (sin bloquear streams)
       await page.route('**/*', (route) => {
         const url = route.request().url();
         if (isAdOrNoiseUrl(url)) return route.abort();
@@ -374,10 +496,13 @@ async function extractWithBrowser(embedUrl) {
         route.continue();
       });
 
-      // Navegación optimizada (esperamos a domcontentloaded para evitar timeouts por trackers lentos)
+      // Navegación con timeout
+      const gotoTimeout = 35000;
       console.log(`[browser] → Navegando a ${embedUrl}`);
-      await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
-      await page.waitForTimeout(3000); // Espera manual mínima post-DOM
+      await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: gotoTimeout });
+
+      // Espera inicial más larga para Cloudflare y carga de scripts del player
+      await page.waitForTimeout(4000);
 
       const setupPage = async (p) => {
         try {
@@ -385,9 +510,9 @@ async function extractWithBrowser(embedUrl) {
           await p.evaluate(() => {
             if (window.onStreamFound) return;
             window.addEventListener('stream_found', (e) => {
-               if (typeof window.onStreamFound === 'function') {
-                 window.onStreamFound(e.detail);
-               }
+              if (typeof window.onStreamFound === 'function') {
+                window.onStreamFound(e.detail);
+              }
             });
           }).catch(() => {});
         } catch (_) {}
@@ -400,35 +525,52 @@ async function extractWithBrowser(embedUrl) {
       await setupPage(page);
       await takeScreenshot('L1_Initial');
 
-      // Ciclo de inspección profunda
+      // ─── CICLO DE INSPECCIÓN ──────────────────────────────────────────────────
       for (let layer = 1; layer <= 3; layer++) {
         if (found.length > 0) break;
-        
+
         console.log(`[browser] 📂 Capa ${layer}: Analizando y activando...`);
-        
+
         // Detección de errores comunes en el DOM
-        const statusText = await page.evaluate(() => {
-          const body = document.body.innerText.toLowerCase();
-          if (body.includes('media is unavailable') || body.includes('not found') || body.includes('removed')) return 'unavailable';
-          if (body.includes('blocked') || body.includes('verify you are human')) return 'blocked';
+        const pageStatus = await page.evaluate(() => {
+          const bodyText = (document.body?.innerText || '').toLowerCase();
+          const bodyLen = bodyText.trim().length;
+
+          if (bodyText.includes('media is unavailable') || bodyText.includes('not found') ||
+              bodyText.includes('removed') || bodyText.includes('no longer available')) return 'unavailable';
+          if (bodyText.includes('blocked') || bodyText.includes('verify you are human') ||
+              bodyText.includes('captcha')) return 'blocked';
+          // Página en blanco o casi vacía (posible challenge sin resolver)
+          if (bodyLen < 50) return 'blank';
           return 'ok';
         }).catch(() => 'error');
 
-        if (statusText === 'unavailable') {
-          console.warn(`[browser] ❌ Contenido marcado como no disponible por el proveedor.`);
+        if (pageStatus === 'unavailable') {
+          console.warn(`[browser] ❌ Contenido no disponible en el proveedor.`);
           await takeScreenshot(`L${layer}_Unavailable`);
-          return { error: 'unavailable', urls: [] }; // Retornamos error específico
+          await browser.close().catch(() => {});
+          return { error: 'unavailable', urls: [] };
         }
 
-        if (statusText === 'blocked') {
+        if (pageStatus === 'blank') {
+          console.warn(`[browser] ⬜ Página en blanco/challenge sin resolver en capa ${layer}.`);
+          await takeScreenshot(`L${layer}_Blank`);
+          // Dar más tiempo y continuar — puede ser Cloudflare resolviendo
+          await page.waitForTimeout(3000);
+        }
+
+        if (pageStatus === 'blocked') {
           console.warn(`[browser] 🛡️ Bloqueo/Captcha detectado.`);
           await takeScreenshot(`L${layer}_Blocked`);
-          if (attempt < 3) break; // Intentar con otro proxy
+          if (attempt < 3) break;
         }
 
         await interactWithPlayer(page);
-        await page.waitForTimeout(4000);
+        await page.waitForTimeout(5000); // Más tiempo para que el player haga sus llamadas XHR
         await takeScreenshot(`L${layer}_AfterInteract`);
+
+        // Chequeo inmediato: el listener de response puede haber capturado URLs ya
+        if (found.length > 0) break;
 
         const domUrls = await extractFromDOM(page, page.url());
         if (domUrls.length > 0) {
@@ -492,29 +634,58 @@ class VideoScraper {
     const tvPath = `tv/${tmdbId}/${season}/${episode}`;
     const moviePath = `movie/${tmdbId}`;
 
-    // Priorizamos proveedores que suelen tener mayor disponibilidad
     if (isTV) {
       return [
-        `https://vidsrc.to/embed/${tvPath}`,
-        `https://vidsrc.pro/embed/${tvPath}`,
-        `https://vidsrc.me/embed/${tvPath}`,
-        `https://embed.su/embed/${tvPath}`,
-        `https://vsembed.ru/embed/${tvPath}/`,
-        `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`,
+        // Proveedores de alta tasa de éxito primero (con interacción mejorada)
+        `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
         `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${season}&e=${episode}`,
-        `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}&season=${season}&episode=${episode}`
+        
+        // Espejos VidSrc.to
+        `https://vidsrc.to/embed/${tvPath}`,
+        `https://vidsrc.net/embed/${tvPath}`,
+        `https://vidsrc.cc/embed/${tvPath}`,
+        
+        // Espejos VidSrc.me / vsembed
+        `https://vidsrc.me/embed/${tvPath}`,
+        `https://vidsrcme.ru/embed/${tvPath}`,
+        `https://vidsrcme.su/embed/${tvPath}`,
+        `https://vidsrc-me.ru/embed/${tvPath}`,
+        `https://vsembed.ru/embed/${tvPath}/`,
+        
+        // Espejos VidSrc.pro
+        `https://vidsrc.pro/embed/${tvPath}`,
+        
+        // Otros proveedores
+        `https://embedsu.cc/embed/${tvPath}`,
+        `https://embed.su/embed/${tvPath}`,
+        `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`
       ];
     }
 
     return [
-      `https://vidsrc.to/embed/${moviePath}`,
-      `https://vidsrc.pro/embed/${moviePath}`,
-      `https://vidsrc.me/embed/${moviePath}`,
-      `https://embed.su/embed/${moviePath}`,
-      `https://vsembed.ru/embed/${moviePath}/`,
-      `https://www.2embed.cc/embed/${tmdbId}`,
+      // Proveedores de alta tasa de éxito primero (con interacción mejorada)
+      `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}`,
       `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`,
-      `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}`
+      
+      // Espejos VidSrc.to
+      `https://vidsrc.to/embed/${moviePath}`,
+      `https://vidsrc.net/embed/${moviePath}`,
+      `https://vidsrc.cc/embed/${moviePath}`,
+      
+      // Espejos VidSrc.me / vsembed
+      `https://vidsrc.me/embed/${moviePath}`,
+      `https://vidsrcme.ru/embed/${moviePath}`,
+      `https://vidsrcme.su/embed/${moviePath}`,
+      `https://vidsrc-me.ru/embed/${moviePath}`,
+      `https://vsembed.ru/embed/${moviePath}/`,
+      
+      // Espejos VidSrc.pro
+      `https://vidsrc.pro/embed/${moviePath}`,
+      
+      // Otros proveedores
+      `https://embedsu.cc/embed/${moviePath}`,
+      `https://embed.su/embed/${moviePath}`,
+      `https://www.2embed.cc/embed/${tmdbId}`
     ];
   }
 
