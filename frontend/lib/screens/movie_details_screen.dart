@@ -26,6 +26,44 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
 
   bool _isProcessing = false;
 
+  Map<String, int>? _firstPlayableEpisode() {
+    final seasons = widget.movie.seasons ?? [];
+
+    for (final season in seasons) {
+      final episodes = season.episodes ?? [];
+      if (season.seasonNumber > 0 && episodes.isNotEmpty) {
+        return {
+          'season': season.seasonNumber,
+          'episode': episodes.first.episodeNumber,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  void _playPrimaryContent() {
+    if (widget.movie.type == 'tv') {
+      final firstEpisode = _firstPlayableEpisode();
+
+      if (firstEpisode == null) {
+        _showSnackBar(
+          "No hay episodios disponibles para esta serie.",
+          Colors.orangeAccent,
+        );
+        return;
+      }
+
+      _navigateToPlayer(
+        season: firstEpisode['season']!,
+        episode: firstEpisode['episode']!,
+      );
+      return;
+    }
+
+    _navigateToPlayer();
+  }
+
   // --- LÓGICA DE NAVEGACIÓN ---
 
   // Esta función conecta los datos de la DB con el Reproductor Scraper
@@ -305,7 +343,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
     return Column(
       children: [
         _buildLargeButton(
-          onTap: () => _navigateToPlayer(), // Inicia la reproducción
+          onTap: _playPrimaryContent, // Inicia la reproducción
 
           icon: Icons.play_arrow,
 
@@ -481,8 +519,6 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
             season: widget.movie.seasons![_selectedSeasonIndex].seasonNumber,
 
             episode: ep.episodeNumber,
-
-            directUrl: ep.videoUrl,
           ),
 
           child: Row(

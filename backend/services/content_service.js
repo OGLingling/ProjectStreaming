@@ -2,6 +2,49 @@ const { PrismaClient } = require('@prisma/client');
 const TMDBApi = require('./tmdb_api_service');
 const prisma = new PrismaClient();
 
+async function syncSeasonEpisodes(seasonId, episodes) {
+  const validEpisodeNumbers = episodes
+    .map((episode) => Number(episode.episodeNumber))
+    .filter((episodeNumber) => Number.isInteger(episodeNumber) && episodeNumber > 0);
+
+  for (const episode of episodes) {
+    const episodeNumber = Number(episode.episodeNumber);
+    if (!Number.isInteger(episodeNumber) || episodeNumber <= 0) continue;
+
+    const existing = await prisma.episode.findFirst({
+      where: { seasonId, episodeNumber },
+      select: { id: true },
+    });
+
+    const data = {
+      episodeNumber,
+      title: episode.title,
+      description: episode.description,
+      stillPath: episode.stillPath,
+      duration: episode.duration,
+      seasonId,
+    };
+
+    if (existing) {
+      await prisma.episode.update({
+        where: { id: existing.id },
+        data,
+      });
+    } else {
+      await prisma.episode.create({ data });
+    }
+  }
+
+  if (validEpisodeNumbers.length > 0) {
+    await prisma.episode.deleteMany({
+      where: {
+        seasonId,
+        episodeNumber: { notIn: validEpisodeNumbers },
+      },
+    });
+  }
+}
+
 class ContentService {
   /**
    * Importa o actualiza contenido desde TMDB a la base de datos
@@ -61,11 +104,16 @@ class ContentService {
         console.log(`[content-service] 📂 Importando ${raw.seasons.length} temporadas...`);
         for (const s of raw.seasons) {
           try {
-            await prisma.season.upsert({
+            if (s.season_number === 0 && !s.episode_count) {
+              continue;
+            }
+
+            const season = await prisma.season.upsert({
               where: { tmdbId: String(s.id) },
               update: { 
                 seasonNumber: s.season_number, 
-                title: s.name 
+                title: s.name,
+                contentId: content.id
               },
               create: {
                 tmdbId: String(s.id),
@@ -74,6 +122,14 @@ class ContentService {
                 contentId: content.id
               }
             });
+
+            const seasonResult = await TMDBApi.getSeasonDetails(tmdbId, s.season_number);
+            if (!seasonResult.success) {
+              console.warn(`[content-service] No se pudieron importar episodios de temporada ${s.season_number}: ${seasonResult.error}`);
+              continue;
+            }
+
+            await syncSeasonEpisodes(season.id, seasonResult.data.episodes);
           } catch (seasonErr) {
             console.warn(`[content-service] ⚠ No se pudo importar temporada ${s.season_number}:`, seasonErr.message);
           }

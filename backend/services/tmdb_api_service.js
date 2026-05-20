@@ -68,6 +68,46 @@ class TMDBApiService {
     }
   }
 
+  async getSeasonDetails(tmdbId, seasonNumber) {
+    try {
+      const authParam = this.apiKeyV3 ? `api_key=${this.apiKeyV3}&` : '';
+      const url = `${this.baseUrl}/tv/${tmdbId}/season/${seasonNumber}?${authParam}language=es-ES`;
+
+      console.log(`[tmdb-api] Consultando temporada: tv/${tmdbId}/season/${seasonNumber}`);
+
+      const config = { headers: { ...this.headers } };
+      if (this.apiKeyV3) delete config.headers.Authorization;
+
+      const response = await axios.get(url, config);
+      const data = response.data;
+
+      if (!data.id || !Array.isArray(data.episodes)) {
+        return { success: false, error: 'Respuesta de temporada invÃ¡lida desde TMDB' };
+      }
+
+      return {
+        success: true,
+        data: {
+          tmdbId: String(data.id),
+          title: data.name,
+          seasonNumber: data.season_number,
+          episodes: data.episodes.map((episode) => ({
+            episodeNumber: episode.episode_number,
+            title: episode.name || `Episodio ${episode.episode_number}`,
+            description: episode.overview || null,
+            stillPath: episode.still_path ? `${this.imgBaseUrl}${episode.still_path}` : null,
+            duration: episode.runtime ? `${episode.runtime}m` : null,
+          })),
+        },
+        raw: data,
+      };
+    } catch (error) {
+      const msg = error.response?.data?.status_message || error.message;
+      console.error(`[tmdb-api] Error temporada ${tmdbId}/S${seasonNumber}: ${msg}`);
+      return { success: false, error: msg };
+    }
+  }
+
   /**
    * Busca contenido por título y devuelve el primer resultado
    * @param {string} query Título a buscar
