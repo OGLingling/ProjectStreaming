@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/tmdb_service.dart';
-import 'movie_details_screen.dart';
+
+import 'video_player_screen.dart';
 import 'watchlist_providers.dart';
 
 class MyListScreen extends StatelessWidget {
@@ -10,8 +10,60 @@ class MyListScreen extends StatelessWidget {
 
   const MyListScreen({super.key, required this.userId, this.user});
 
-  // NOTA: Hemos eliminado _fetchFullMovieData de aquí porque ahora
-  // usamos TmdbService.getMovieDetails para mantener el código limpio.
+  String? _readTmdbId(Map<String, dynamic> item) {
+    final raw = item['tmdb_id'] ?? item['tmdbId'] ?? item['tmdbID'];
+    final value = raw?.toString().trim();
+    if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
+      return null;
+    }
+    return value;
+  }
+
+  int _readContentId(Map<String, dynamic> item) {
+    final raw = item['id'] ?? item['contentId'] ?? item['content_id'];
+    return int.tryParse(raw?.toString() ?? '') ?? 0;
+  }
+
+  String _readType(Map<String, dynamic> item) {
+    final type = (item['type'] ?? 'movie').toString().toLowerCase();
+    return type.contains('tv') || type.contains('serie') ? 'tv' : 'movie';
+  }
+
+  String _readTitle(Map<String, dynamic> item) {
+    final title = item['title']?.toString().trim();
+    return title == null || title.isEmpty ? 'Contenido' : title;
+  }
+
+  String _readImage(Map<String, dynamic> item) {
+    final raw = (item['image'] ?? item['imageUrl'] ?? item['posterPath'] ?? '')
+        .toString()
+        .trim();
+    if (raw.isEmpty || raw.toLowerCase() == 'null') return '';
+    if (raw.startsWith('http')) return raw;
+    if (raw.startsWith('/')) return 'https://image.tmdb.org/t/p/w500$raw';
+    return raw;
+  }
+
+  void _openPlayer(BuildContext context, Map<String, dynamic> item) {
+    final tmdbId = _readTmdbId(item);
+    if (tmdbId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("No se encontró el ID de TMDB.")),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VideoPlayerScreen(
+          tmdbId: tmdbId,
+          title: _readTitle(item),
+          type: _readType(item),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +91,7 @@ class MyListScreen extends StatelessWidget {
             )
           : LayoutBuilder(
               builder: (context, constraints) {
-                int crossAxisCount = constraints.maxWidth > 1200 ? 7 : 3;
+                final crossAxisCount = constraints.maxWidth > 1200 ? 7 : 3;
 
                 return GridView.builder(
                   padding: const EdgeInsets.all(12),
@@ -52,89 +104,41 @@ class MyListScreen extends StatelessWidget {
                   itemCount: watchlist.length,
                   itemBuilder: (context, index) {
                     final item = watchlist[index];
-
-                    // --- LÓGICA DE IDs SINCRONIZADA CON TU BACKEND ---
-                    // 1. tmdb_id: Para la API de TMDB (Evita el error 'null')
-                    final dynamic tmdbIdForApi = item['tmdb_id'];
-
-                    // 2. id: El contentId interno de Neon (Para poder eliminar)
-                    final dynamic internalDbId = item['id'];
-
-                    final String type = item['type'] ?? 'movie';
+                    final contentId = _readContentId(item);
+                    final title = _readTitle(item);
+                    final image = _readImage(item);
+                    final tmdbId = _readTmdbId(item);
+                    final type = _readType(item);
 
                     return InkWell(
-                      onTap: () async {
-                        if (tmdbIdForApi == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("Error: ID de TMDB no encontrado"),
-                            ),
-                          );
-                          return;
-                        }
-
-                        showDialog(
-                          context: context,
-                          barrierDismissible: false,
-                          builder: (context) => const Center(
-                            child: CircularProgressIndicator(color: Colors.red),
-                          ),
-                        );
-
-                        // 2. USAMOS EL SERVICIO CENTRALIZADO
-                        final movie = await TmdbService.getMovieDetails(
-                          tmdbIdForApi,
-                          type,
-                        );
-
-                        if (context.mounted) {
-                          Navigator.pop(context); // Cierra el loading
-                          if (movie != null) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => MovieDetailsScreen(
-                                  movie: movie,
-                                  user: user,
-                                ),
-                              ),
-                            );
-                          }
-                        }
-                      },
+                      onTap: () => _openPlayer(context, item),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
-                            Image.network(
-                              item['image']?.toString().startsWith('http') ==
-                                      true
-                                  ? item['image']
-                                  : 'https://image.tmdb.org/t/p/w500${item['image']}',
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                    color: Colors.grey[900],
-                                    child: const Icon(
-                                      Icons.movie,
-                                      color: Colors.white24,
-                                    ),
-                                  ),
-                            ),
-                            // BOTÓN PARA ELIMINAR CORREGIDO
+                            if (image.isNotEmpty)
+                              Image.network(
+                                image,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    _buildPosterFallback(),
+                              )
+                            else
+                              _buildPosterFallback(),
                             Positioned(
                               top: 4,
                               right: 4,
                               child: GestureDetector(
                                 onTap: () {
-                                  // Enviamos el internalDbId (el 36 de tu DB)
-                                  // para que el backend sepa qué fila borrar
+                                  if (contentId == 0) return;
                                   provider.toggleWatchlist(
                                     userId,
-                                    internalDbId,
-                                    item['title'] ?? '',
-                                    item['image'] ?? '',
+                                    contentId,
+                                    title,
+                                    image,
+                                    tmdbId: tmdbId,
+                                    type: type,
                                   );
                                 },
                                 child: Container(
@@ -159,6 +163,13 @@ class MyListScreen extends StatelessWidget {
                 );
               },
             ),
+    );
+  }
+
+  Widget _buildPosterFallback() {
+    return Container(
+      color: Colors.grey[900],
+      child: const Icon(Icons.movie, color: Colors.white24),
     );
   }
 }

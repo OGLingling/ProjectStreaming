@@ -52,13 +52,19 @@ class WatchlistProvider with ChangeNotifier {
       if (response.statusCode == 200 || response.statusCode == 201) {
         // Buscamos si ya existe usando el internal ID (ej: 36)
         if (isInWatchlist(contentId)) {
-          _watchlist.removeWhere((item) => item['id'] == contentId);
+          _watchlist.removeWhere(
+            (item) =>
+                item['id'] == contentId ||
+                item['contentId'] == contentId ||
+                item['content_id'] == contentId,
+          );
         } else {
           // Al agregar, guardamos todos los datos necesarios para que
           // el frontend no dé error al intentar abrir la serie recién agregada
           _watchlist.add({
             'id': contentId,
             'tmdb_id': tmdbId, // Fundamental para evitar el error 'null'
+            'tmdbId': tmdbId,
             'title': title,
             'image': image,
             'type': type ?? 'movie',
@@ -74,6 +80,11 @@ class WatchlistProvider with ChangeNotifier {
 
   // Verificar si un ID ya está en la lista (Usa el ID de la DB interna)
   bool isInWatchlist(int contentId) {
-    return _watchlist.any((item) => item['id'] == contentId);
+    return _watchlist.any(
+      (item) =>
+          item['id'] == contentId ||
+          item['contentId'] == contentId ||
+          item['content_id'] == contentId,
+    );
   }
 }

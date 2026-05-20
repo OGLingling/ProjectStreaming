@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'manage_profiles_screen.dart';
 
+const Color _profileBackground = Color(0xFF07110F);
+const Color _profileSurface = Color(0xFF101817);
+const Color _profileAccent = Color(0xFF00D46A);
+const Color _profileCyan = Color(0xFF22D3EE);
+
 class ProfilesScreen extends StatefulWidget {
   final Map<String, dynamic>? user;
 
@@ -29,7 +34,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     }
   }
 
-  // Navegación directa al main
   void _navigateToMovies(
     BuildContext context,
     Map<String, String> profile,
@@ -51,15 +55,12 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
   @override
   Widget build(BuildContext context) {
     final Map<String, dynamic> userData = _localUserData ?? {};
-
     final String plan = (userData['plan'] ?? 'basico').toString().toLowerCase();
-
     final String realName =
         (userData['name'] ??
                 userData['userName'] ??
                 (userData['email']?.toString().split('@')[0] ?? "Usuario"))
             .toString();
-
     final String realProfilePic = _normalizeImagePath(userData['profilePic']);
 
     int maxProfiles;
@@ -84,7 +85,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     final visibleProfiles = dynamicProfiles.take(maxProfiles).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF141414),
+      backgroundColor: _profileBackground,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -92,7 +93,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         title: Text(
           "MOVIEWIND",
           style: GoogleFonts.montserrat(
-            color: const Color(0xFFE50914),
+            color: _profileAccent,
             fontWeight: FontWeight.w900,
             fontSize: 22,
           ),
@@ -100,13 +101,15 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
       ),
       body: Center(
         child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
                 "¿Quién está viendo ahora?",
+                textAlign: TextAlign.center,
                 style: GoogleFonts.geologica(
-                  color: Colors.white,
+                  color: Colors.white.withValues(alpha: 0.94),
                   fontSize: 20,
                   fontWeight: FontWeight.w400,
                 ),
@@ -134,7 +137,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     ),
                   );
 
-                  // Si recibimos datos actualizados de ManageProfilesScreen, recargamos UI global
                   if (result != null && result is Map) {
                     setState(() {
                       userData['name'] = result['name'];
@@ -144,12 +146,22 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  side: const BorderSide(color: Colors.white24),
+                  backgroundColor: _profileSurface,
+                  foregroundColor: Colors.white,
+                  side: BorderSide(
+                    color: _profileAccent.withValues(alpha: 0.38),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
                 ),
-                child: const Text(
+                child: Text(
                   "Administrar perfiles",
-                  style: TextStyle(color: Colors.grey),
+                  style: GoogleFonts.geologica(color: Colors.white70),
                 ),
               ),
               const SizedBox(height: 60),
@@ -159,13 +171,16 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white24),
+                  color: _profileSurface,
+                  border: Border.all(
+                    color: _profileCyan.withValues(alpha: 0.34),
+                  ),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   "PLAN ${plan.toUpperCase()}",
                   style: GoogleFonts.geologica(
-                    color: Colors.grey,
+                    color: _profileCyan,
                     fontSize: 12,
                     letterSpacing: 1.5,
                   ),
@@ -187,7 +202,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
   }
 }
 
-// --- COMPONENTE CON EFECTO HOVER ---
 class ProfileItem extends StatefulWidget {
   final Map<String, String> profile;
   final VoidCallback onTap;
@@ -200,6 +214,14 @@ class ProfileItem extends StatefulWidget {
 
 class _ProfileItemState extends State<ProfileItem> {
   bool _isHovered = false;
+  bool _isPressed = false;
+
+  Future<void> _handleTap() async {
+    setState(() => _isPressed = true);
+    await Future<void>.delayed(const Duration(milliseconds: 160));
+    if (!mounted) return;
+    widget.onTap();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -217,12 +239,17 @@ class _ProfileItemState extends State<ProfileItem> {
           : const AssetImage("assets/avatars/usuario5.webp");
     }
 
+    final isActive = _isHovered || _isPressed;
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTapCancel: () => setState(() => _isPressed = false),
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) => setState(() => _isPressed = false),
+        onTap: _handleTap,
         child: Column(
           children: [
             AnimatedContainer(
@@ -231,28 +258,34 @@ class _ProfileItemState extends State<ProfileItem> {
               height: 100,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
-                color: Colors.grey[900],
-                // Borde blanco en hover
+                color: _profileSurface,
                 border: Border.all(
-                  color: _isHovered ? Colors.white : Colors.transparent,
+                  color: isActive ? Colors.white : Colors.transparent,
                   width: 3,
                 ),
+                boxShadow: isActive
+                    ? [
+                        BoxShadow(
+                          color: Colors.white.withValues(alpha: 0.32),
+                          blurRadius: 18,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : const [],
                 image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
               ),
-              // Efecto de agrandado suave (Scale)
-              transform: _isHovered
-                  ? (Matrix4.identity()..scale(1.08))
+              transform: isActive
+                  ? Matrix4.diagonal3Values(1.08, 1.08, 1)
                   : Matrix4.identity(),
               transformAlignment: Alignment.center,
             ),
             const SizedBox(height: 12),
-            // Cambio de color del texto en hover
             AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
               style: GoogleFonts.geologica(
-                color: _isHovered ? Colors.white : Colors.grey.shade400,
+                color: isActive ? Colors.white : Colors.grey.shade400,
                 fontSize: 14,
-                fontWeight: _isHovered ? FontWeight.bold : FontWeight.normal,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
               ),
               child: Text(widget.profile['name']!),
             ),

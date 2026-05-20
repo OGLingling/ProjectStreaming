@@ -90,6 +90,10 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
         widget.movie.title,
 
         widget.movie.imageUrl ?? '',
+
+        tmdbId: widget.movie.tmdbId,
+
+        type: widget.movie.type,
       );
 
       final bool isInList = provider.isInWatchlist(widget.movie.id ?? 0);
@@ -467,7 +471,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
 
       itemCount: episodes.length,
 
-      separatorBuilder: (_, __) => const SizedBox(height: 15),
+      separatorBuilder: (context, index) => const SizedBox(height: 15),
 
       itemBuilder: (context, index) {
         final ep = episodes[index];
@@ -495,7 +499,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
 
                   fit: BoxFit.cover,
 
-                  errorBuilder: (_, __, ___) =>
+                  errorBuilder: (context, error, stackTrace) =>
                       Container(width: 120, height: 70, color: Colors.white10),
                 ),
               ),

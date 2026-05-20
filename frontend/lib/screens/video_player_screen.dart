@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -32,7 +34,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   InAppWebViewController? _webViewController;
   EmbedProvider _provider = EmbedProvider.embed;
   bool _isLoading = true;
+  bool _showControls = true;
   String? _loadError;
+  Timer? _controlsTimer;
 
   static const String _desktopUserAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -111,10 +115,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void initState() {
     super.initState();
     _enterPlaybackMode();
+    _scheduleControlsHide();
   }
 
   @override
   void dispose() {
+    _controlsTimer?.cancel();
     _exitPlaybackMode();
     super.dispose();
   }
@@ -139,6 +145,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _reloadProvider(EmbedProvider provider) async {
     if (_provider == provider) return;
+    _revealControls();
     setState(() {
       _provider = provider;
       _isLoading = true;
@@ -154,11 +161,47 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _reloadCurrent() async {
+    _revealControls();
     setState(() {
       _isLoading = true;
       _loadError = null;
     });
     await _webViewController?.reload();
+  }
+
+  void _scheduleControlsHide() {
+    _controlsTimer?.cancel();
+    _controlsTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted || _loadError != null) return;
+      setState(() => _showControls = false);
+    });
+  }
+
+  void _revealControls() {
+    final wasHidden = !_showControls;
+    if (!_showControls && mounted) {
+      setState(() => _showControls = true);
+    }
+    if (wasHidden) {
+      unawaited(_pauseVisibleVideo());
+    }
+    _scheduleControlsHide();
+  }
+
+  Future<void> _pauseVisibleVideo() async {
+    try {
+      await _webViewController?.evaluateJavascript(
+        source: '''
+          (() => {
+            const videos = Array.from(document.querySelectorAll('video'));
+            videos.forEach((video) => video.pause());
+            return videos.length;
+          })();
+        ''',
+      );
+    } catch (_) {
+      // Some providers isolate the player in a cross-origin iframe.
+    }
   }
 
   Widget _buildProviderButton(EmbedProvider provider) {
@@ -186,161 +229,194 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       child: Scaffold(
         backgroundColor: Colors.black,
         body: SafeArea(
-          child: Stack(
-            children: [
-              if (embedUrl.isNotEmpty)
-                InAppWebView(
-                  key: ValueKey(embedUrl),
-                  initialUrlRequest: URLRequest(
-                    url: WebUri(embedUrl),
-                    headers: _mobileHeaders,
-                  ),
-                  initialSettings: InAppWebViewSettings(
-                    javaScriptEnabled: true,
-                    javaScriptCanOpenWindowsAutomatically: true,
-                    mediaPlaybackRequiresUserGesture: false,
-                    allowsInlineMediaPlayback: true,
-                    iframeAllowFullscreen: true,
-                    supportZoom: false,
-                    transparentBackground: false,
-                    useShouldOverrideUrlLoading: true,
-                    supportMultipleWindows: true,
-                    mixedContentMode:
-                        MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-                    thirdPartyCookiesEnabled: true,
-                    domStorageEnabled: true,
-                    userAgent: _desktopUserAgent,
-                  ),
-                  onWebViewCreated: (controller) {
-                    _webViewController = controller;
-                  },
-                  onLoadStart: (controller, url) {
-                    if (!mounted) return;
-                    setState(() {
-                      _isLoading = true;
-                      _loadError = null;
-                    });
-                  },
-                  onLoadStop: (controller, url) {
-                    if (!mounted) return;
-                    setState(() => _isLoading = false);
-                  },
-                  onReceivedError: (_, request, error) {
-                    if (request.isForMainFrame != true || !mounted) return;
-                    setState(() {
-                      _isLoading = false;
-                      _loadError = error.description;
-                    });
-                  },
-                  onReceivedHttpError: (_, request, response) {
-                    if (request.isForMainFrame != true || !mounted) return;
-                    setState(() {
-                      _isLoading = false;
-                      _loadError = 'HTTP ${response.statusCode}';
-                    });
-                  },
-                  onPermissionRequest: (controller, request) async {
-                    return PermissionResponse(
-                      resources: request.resources,
-                      action: PermissionResponseAction.GRANT,
-                    );
-                  },
-                  onCreateWindow: (controller, request) async {
-                    return false;
-                  },
-                  shouldOverrideUrlLoading: (controller, action) async {
-                    final url = action.request.url?.toString() ?? '';
-                    if (_isBlockedNavigation(url)) {
-                      return NavigationActionPolicy.CANCEL;
-                    }
-                    return NavigationActionPolicy.ALLOW;
-                  },
-                )
-              else
-                const Center(
-                  child: Text(
-                    'Contenido no disponible',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              Positioned(
-                top: 10,
-                left: 10,
-                right: 10,
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.black54,
-                      ),
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (_) => _revealControls(),
+            child: Stack(
+              children: [
+                if (embedUrl.isNotEmpty)
+                  InAppWebView(
+                    key: ValueKey(embedUrl),
+                    initialUrlRequest: URLRequest(
+                      url: WebUri(embedUrl),
+                      headers: _mobileHeaders,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '${widget.title} - $_providerName',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
+                    initialSettings: InAppWebViewSettings(
+                      javaScriptEnabled: true,
+                      javaScriptCanOpenWindowsAutomatically: true,
+                      mediaPlaybackRequiresUserGesture: false,
+                      allowsInlineMediaPlayback: true,
+                      iframeAllowFullscreen: true,
+                      supportZoom: false,
+                      transparentBackground: false,
+                      useShouldOverrideUrlLoading: true,
+                      supportMultipleWindows: true,
+                      mixedContentMode:
+                          MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+                      thirdPartyCookiesEnabled: true,
+                      domStorageEnabled: true,
+                      userAgent: _desktopUserAgent,
+                    ),
+                    onWebViewCreated: (controller) {
+                      _webViewController = controller;
+                    },
+                    onLoadStart: (controller, url) {
+                      if (!mounted) return;
+                      setState(() {
+                        _showControls = true;
+                        _isLoading = true;
+                        _loadError = null;
+                      });
+                      _scheduleControlsHide();
+                    },
+                    onLoadStop: (controller, url) {
+                      if (!mounted) return;
+                      setState(() => _isLoading = false);
+                      _scheduleControlsHide();
+                    },
+                    onReceivedError: (_, request, error) {
+                      if (request.isForMainFrame != true || !mounted) return;
+                      setState(() {
+                        _isLoading = false;
+                        _loadError = error.description;
+                      });
+                    },
+                    onReceivedHttpError: (_, request, response) {
+                      if (request.isForMainFrame != true || !mounted) return;
+                      setState(() {
+                        _isLoading = false;
+                        _loadError = 'HTTP ${response.statusCode}';
+                      });
+                    },
+                    onPermissionRequest: (controller, request) async {
+                      return PermissionResponse(
+                        resources: request.resources,
+                        action: PermissionResponseAction.GRANT,
+                      );
+                    },
+                    onCreateWindow: (controller, request) async {
+                      return false;
+                    },
+                    shouldOverrideUrlLoading: (controller, action) async {
+                      final url = action.request.url?.toString() ?? '';
+                      if (_isBlockedNavigation(url)) {
+                        return NavigationActionPolicy.CANCEL;
+                      }
+                      return NavigationActionPolicy.ALLOW;
+                    },
+                  )
+                else
+                  const Center(
+                    child: Text(
+                      'Contenido no disponible',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                Positioned(
+                  top: 10,
+                  left: 10,
+                  right: 10,
+                  child: AnimatedOpacity(
+                    opacity: _showControls ? 1 : 0,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
+                    child: IgnorePointer(
+                      ignoring: !_showControls,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.68),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 4,
+                          ),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                onPressed: () => Navigator.pop(context),
+                                icon: const Icon(
+                                  Icons.arrow_back,
+                                  color: Colors.white,
+                                ),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.black54,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${widget.title} - $_providerName',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              _buildProviderButton(EmbedProvider.embed),
+                              const SizedBox(width: 8),
+                              _buildProviderButton(EmbedProvider.vidSrcVip),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                onPressed: _reloadCurrent,
+                                icon: const Icon(
+                                  Icons.refresh,
+                                  color: Colors.white,
+                                ),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.black54,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    _buildProviderButton(EmbedProvider.embed),
-                    const SizedBox(width: 8),
-                    _buildProviderButton(EmbedProvider.vidSrcVip),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: _reloadCurrent,
-                      icon: const Icon(Icons.refresh, color: Colors.white),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.black54,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (_isLoading)
-                const Center(
-                  child: CircularProgressIndicator(color: Color(0xFF00D46A)),
-                ),
-              if (_loadError != null)
-                Center(
-                  child: Container(
-                    margin: const EdgeInsets.all(24),
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1B1F22),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.redAccent),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          color: Colors.redAccent,
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          _loadError!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
-                          onPressed: _reloadCurrent,
-                          child: const Text('Reintentar'),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
-            ],
+                if (_isLoading)
+                  const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF00D46A)),
+                  ),
+                if (_loadError != null)
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1B1F22),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.redAccent),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.redAccent,
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            _loadError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: _reloadCurrent,
+                            child: const Text('Reintentar'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
