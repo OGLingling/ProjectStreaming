@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-enum EmbedProvider { multiEmbed, smashyStream }
+enum EmbedProvider { embed, vidSrcVip }
 
 class VideoPlayerScreen extends StatefulWidget {
   final String? tmdbId;
@@ -30,7 +30,7 @@ class VideoPlayerScreen extends StatefulWidget {
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   InAppWebViewController? _webViewController;
-  EmbedProvider _provider = EmbedProvider.multiEmbed;
+  EmbedProvider _provider = EmbedProvider.embed;
   bool _isLoading = true;
   String? _loadError;
 
@@ -58,7 +58,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Map<String, String> get _mobileHeaders {
     final uri = Uri.tryParse(_currentEmbedUrl);
-    final origin = uri?.origin ?? 'https://multiembed.mov';
+    final origin = uri?.origin ?? 'https://embed.streammafia.to';
 
     return {
       'User-Agent': _desktopUserAgent,
@@ -76,34 +76,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     final isTv = _normalizedMediaType == 'tv';
     switch (_provider) {
-      case EmbedProvider.multiEmbed:
-        final params = {
-          'video_id': tmdbId,
-          'tmdb': '1',
-          if (isTv) 's': widget.season.toString(),
-          if (isTv) 'e': widget.episode.toString(),
-        };
-        return Uri.https('multiembed.mov', '/', params).toString();
-      case EmbedProvider.smashyStream:
-        final params = {
-          'tmdb': tmdbId,
-          if (isTv) 'season': widget.season.toString(),
-          if (isTv) 'episode': widget.episode.toString(),
-        };
-        return Uri.https(
-          'embed.smashystream.com',
-          '/playere.php',
-          params,
-        ).toString();
+      case EmbedProvider.embed:
+        final path = isTv
+            ? '/embed/tv/$tmdbId/${widget.season}/${widget.episode}'
+            : '/embed/movie/$tmdbId';
+        return Uri.https('embed.streammafia.to', path).toString();
+      case EmbedProvider.vidSrcVip:
+        final path = isTv
+            ? '/embed/tv/$tmdbId/${widget.season}/${widget.episode}'
+            : '/embed/movie/$tmdbId';
+        return Uri.https('vidrock.net', path, {
+          'autoplay': '1',
+          'color': '00d46a',
+        }).toString();
     }
   }
 
   String get _providerName {
     switch (_provider) {
-      case EmbedProvider.multiEmbed:
-        return 'MultiEmbed';
-      case EmbedProvider.smashyStream:
-        return 'SmashyStream';
+      case EmbedProvider.embed:
+        return 'Embed';
+      case EmbedProvider.vidSrcVip:
+        return 'VidSrc VIP';
     }
   }
 
@@ -169,9 +163,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Widget _buildProviderButton(EmbedProvider provider) {
     final selected = _provider == provider;
-    final label = provider == EmbedProvider.multiEmbed
-        ? 'MultiEmbed'
-        : 'SmashyStream';
+    final label = provider == EmbedProvider.embed ? 'Embed' : 'VidSrc VIP';
 
     return TextButton(
       onPressed: () => _reloadProvider(provider),
@@ -298,9 +290,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _buildProviderButton(EmbedProvider.multiEmbed),
+                    _buildProviderButton(EmbedProvider.embed),
                     const SizedBox(width: 8),
-                    _buildProviderButton(EmbedProvider.smashyStream),
+                    _buildProviderButton(EmbedProvider.vidSrcVip),
                     const SizedBox(width: 8),
                     IconButton(
                       onPressed: _reloadCurrent,
