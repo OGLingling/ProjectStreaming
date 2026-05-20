@@ -1,47 +1,26 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-import 'package:provider/provider.dart';
-
-import 'package:video_player/video_player.dart';
-
-import 'package:chewie/chewie.dart';
-
-import '../providers/settings_provider.dart';
-
-import '../services/api_service.dart';
+enum EmbedProvider { multiEmbed, smashyStream }
 
 class VideoPlayerScreen extends StatefulWidget {
   final String? tmdbId;
-
   final String? imdbId;
-
   final String? directUrl;
-
   final String title;
-
   final String type;
-
   final int season;
-
   final int episode;
 
   const VideoPlayerScreen({
     super.key,
-
     this.tmdbId,
-
     this.imdbId,
-
     this.directUrl,
-
     required this.title,
-
     required this.type,
-
     this.season = 1,
-
     this.episode = 1,
   });
 
@@ -50,363 +29,307 @@ class VideoPlayerScreen extends StatefulWidget {
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+  InAppWebViewController? _webViewController;
+  EmbedProvider _provider = EmbedProvider.multiEmbed;
   bool _isLoading = true;
-
-  bool _isSettingUpPlayer = false;
-
-  String? _targetEmbedUrl;
-
-  List<String> _candidateUrls = [];
-
-  int _currentCandidateIndex = 0;
-
-  Timer? _candidateTimer;
-
-  VideoPlayerController? _videoPlayerController;
-
-  ChewieController? _chewieController;
+  String? _loadError;
 
   String get _normalizedMediaType {
     final type = widget.type.toLowerCase();
-
     return type.contains('serie') || type.contains('tv') ? 'tv' : 'movie';
   }
 
-  Map<String, String> get _streamHeaders {
-    final embedOrigin =
-        Uri.tryParse(_targetEmbedUrl ?? '')?.origin ?? 'https://moviewind.app';
+  Map<String, String> get _mobileHeaders {
+    final uri = Uri.tryParse(_currentEmbedUrl);
+    final origin = uri?.origin ?? 'https://multiembed.mov';
 
     return {
       'User-Agent':
           'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-
-      'Referer': '$embedOrigin/',
-
-      'Origin': embedOrigin,
-
+      'Referer': '$origin/',
+      'Origin': origin,
       'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
     };
   }
 
-  bool _isDirectStreamUrl(String url) {
-    final lower = url.toLowerCase();
-    return lower.contains('.m3u8') ||
-        lower.contains('.mp4') ||
-        lower.contains('googlevideo.com/videoplayback');
+  String get _currentEmbedUrl {
+    final tmdbId = widget.tmdbId?.trim();
+    if (tmdbId == null || tmdbId.isEmpty) {
+      return widget.directUrl?.trim() ?? '';
+    }
+
+    final isTv = _normalizedMediaType == 'tv';
+    switch (_provider) {
+      case EmbedProvider.multiEmbed:
+        final params = {
+          'video_id': tmdbId,
+          'tmdb': '1',
+          if (isTv) 's': widget.season.toString(),
+          if (isTv) 'e': widget.episode.toString(),
+        };
+        return Uri.https('multiembed.mov', '/', params).toString();
+      case EmbedProvider.smashyStream:
+        final params = {
+          'tmdb': tmdbId,
+          if (isTv) 'season': widget.season.toString(),
+          if (isTv) 'episode': widget.episode.toString(),
+        };
+        return Uri.https(
+          'embed.smashystream.com',
+          '/playere.php',
+          params,
+        ).toString();
+    }
+  }
+
+  String get _providerName {
+    switch (_provider) {
+      case EmbedProvider.multiEmbed:
+        return 'MultiEmbed';
+      case EmbedProvider.smashyStream:
+        return 'SmashyStream';
+    }
   }
 
   @override
   void initState() {
     super.initState();
-
-    _startVideoDiscovery();
+    _enterPlaybackMode();
   }
 
   @override
   void dispose() {
-    _candidateTimer?.cancel();
-
-    _disposeControllers();
-
+    _exitPlaybackMode();
     super.dispose();
   }
 
-  Future<void> _disposeControllers() async {
-    _chewieController?.dispose();
-
-    if (_videoPlayerController != null) {
-      await _videoPlayerController!.dispose();
-    }
-
-    _videoPlayerController = null;
-
-    _chewieController = null;
+  Future<void> _enterPlaybackMode() async {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
   }
 
-  Future<void> _startVideoDiscovery() async {
-    if (!mounted) return;
+  Future<void> _exitPlaybackMode() async {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
 
-    _candidateTimer?.cancel();
-
-    await _disposeControllers();
-
+  Future<void> _reloadProvider(EmbedProvider provider) async {
+    if (_provider == provider) return;
     setState(() {
+      _provider = provider;
       _isLoading = true;
-
-      _isSettingUpPlayer = false;
-
-      _targetEmbedUrl = null;
-
-      _candidateUrls = [];
-
-      _currentCandidateIndex = 0;
+      _loadError = null;
     });
 
-    try {
-      final tmdbId = widget.tmdbId?.trim() ?? '';
-
-      final directUrl = widget.directUrl?.trim();
-
-      final candidates = <String>[
-        if (directUrl != null && directUrl.isNotEmpty) directUrl,
-      ];
-
-      candidates.addAll(
-        await ApiService.getExtractionCandidates(
-          tmdbId: tmdbId,
-
-          url: tmdbId.isEmpty ? directUrl : null,
-
-          type: _normalizedMediaType,
-
-          season: widget.season,
-
-          episode: widget.episode,
-        ),
+    final url = _currentEmbedUrl;
+    if (url.isNotEmpty) {
+      await _webViewController?.loadUrl(
+        urlRequest: URLRequest(url: WebUri(url), headers: _mobileHeaders),
       );
-
-      _candidateUrls = candidates
-          .where(_isDirectStreamUrl)
-          .where((url) => !url.contains('/embed/'))
-          .toSet()
-          .toList();
-
-      if (_candidateUrls.isEmpty) {
-        _handleError(
-          "No hay un stream directo disponible para este contenido. El backend debe entregar una URL .m3u8 o .mp4, no un embed del proveedor.",
-        );
-        return;
-      }
-
-      _tryCandidate(0);
-    } catch (e) {
-      _handleError("Fallo al conectar con el motor: $e");
     }
   }
 
-  Future<void> _setupRealPlayer(String realUrl) async {
-    if (_videoPlayerController != null || _isSettingUpPlayer) return;
-
-    _candidateTimer?.cancel();
-
-    _isSettingUpPlayer = true;
-
-    try {
-      final proxiedUrl = await ApiService.createStreamSession(
-        url: realUrl,
-        sourceUrl: _targetEmbedUrl ?? realUrl,
-        headers: _streamHeaders,
-      );
-
-      final playbackUrl = proxiedUrl ?? realUrl;
-
-      _videoPlayerController = VideoPlayerController.networkUrl(
-        Uri.parse(playbackUrl),
-
-        httpHeaders: proxiedUrl == null ? _streamHeaders : const {},
-      );
-
-      await _videoPlayerController!.initialize().timeout(
-        const Duration(seconds: 15),
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        final colorScheme = Theme.of(context).colorScheme;
-
-        _chewieController = ChewieController(
-          videoPlayerController: _videoPlayerController!,
-
-          autoPlay: true,
-
-          aspectRatio: _videoPlayerController!.value.aspectRatio,
-
-          showControls: true,
-
-          materialProgressColors: ChewieProgressColors(
-            playedColor: colorScheme.secondary,
-
-            handleColor: colorScheme.secondary,
-
-            backgroundColor: Colors.white24,
-
-            bufferedColor: Colors.white.withValues(alpha: 0.3),
-          ),
-        );
-
-        _isLoading = false;
-      });
-    } catch (e) {
-      _isSettingUpPlayer = false;
-
-      await _disposeControllers();
-
-      _tryNextCandidate("Stream rechazado por el servidor: $e");
-    }
-  }
-
-  void _tryCandidate(int index) {
-    if (!mounted) return;
-
-    if (index >= _candidateUrls.length) {
-      _handleError(
-        "No se pudo sincronizar ningun servidor disponible para este contenido.",
-      );
-
-      return;
-    }
-
-    _candidateTimer?.cancel();
-
-    final candidateUrl = _candidateUrls[index];
-    final isDirectStream = _isDirectStreamUrl(candidateUrl);
-
+  Future<void> _reloadCurrent() async {
     setState(() {
-      _currentCandidateIndex = index;
-
-      _targetEmbedUrl = candidateUrl;
-
       _isLoading = true;
-
-      _isSettingUpPlayer = false;
+      _loadError = null;
     });
-
-    if (isDirectStream) {
-      _setupRealPlayer(candidateUrl);
-      return;
-    }
-
-    _tryNextCandidate("Candidato no es un stream directo: $candidateUrl");
+    await _webViewController?.reload();
   }
 
-  void _tryNextCandidate(String reason) {
-    debugPrint("Servidor descartado: $reason");
+  Widget _buildProviderButton(EmbedProvider provider) {
+    final selected = _provider == provider;
+    final label = provider == EmbedProvider.multiEmbed
+        ? 'MultiEmbed'
+        : 'SmashyStream';
 
-    _candidateTimer?.cancel();
-
-    _tryCandidate(_currentCandidateIndex + 1);
-  }
-
-  void _handleError(String message) {
-    if (mounted) {
-      _candidateTimer?.cancel();
-
-      setState(() {
-        _isLoading = false;
-      });
-
-      _showErrorDialog(message);
-    }
-  }
-
-  void _showErrorDialog(String error) {
-    showDialog(
-      context: context,
-
-      builder: (context) {
-        final colorScheme = Theme.of(context).colorScheme;
-
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1B1F22),
-
-          surfaceTintColor: Colors.transparent,
-
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-
-            side: BorderSide(color: colorScheme.error.withValues(alpha: 0.45)),
-          ),
-
-          title: Row(
-            children: [
-              Icon(Icons.error_outline, color: colorScheme.error),
-
-              const SizedBox(width: 10),
-
-              const Expanded(
-                child: Text(
-                  'Error de Carga',
-
-                  style: TextStyle(
-                    color: Colors.white,
-
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          content: Text(
-            error,
-
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
-          ),
-
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-
-              child: const Text('Cerrar'),
-            ),
-
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-
-                _startVideoDiscovery();
-              },
-
-              child: const Text('Reintentar'),
-            ),
-          ],
-        );
-      },
+    return TextButton(
+      onPressed: () => _reloadProvider(provider),
+      style: TextButton.styleFrom(
+        foregroundColor: selected ? Colors.black : Colors.white,
+        backgroundColor: selected ? const Color(0xFF00D46A) : Colors.white12,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      ),
+      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final embedUrl = _currentEmbedUrl;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-
-      appBar: AppBar(
-        title: Text(widget.title, style: const TextStyle(fontSize: 16)),
-      ),
-
-      body: Consumer<SettingsProvider>(
-        builder: (context, settings, child) {
-          return Stack(
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Stack(
             children: [
-              if (_chewieController != null && !_isLoading)
-                Center(child: Chewie(controller: _chewieController!)),
+              if (embedUrl.isNotEmpty)
+                InAppWebView(
+                  key: ValueKey(embedUrl),
+                  initialUrlRequest: URLRequest(
+                    url: WebUri(embedUrl),
+                    headers: _mobileHeaders,
+                  ),
+                  initialSettings: InAppWebViewSettings(
+                    javaScriptEnabled: true,
+                    mediaPlaybackRequiresUserGesture: false,
+                    allowsInlineMediaPlayback: true,
+                    iframeAllowFullscreen: true,
+                    supportZoom: false,
+                    transparentBackground: false,
+                    useShouldOverrideUrlLoading: true,
+                    mixedContentMode:
+                        MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+                    thirdPartyCookiesEnabled: true,
+                    domStorageEnabled: true,
+                    userAgent: _mobileHeaders['User-Agent'],
+                  ),
+                  onWebViewCreated: (controller) {
+                    _webViewController = controller;
+                  },
+                  onLoadStart: (controller, url) {
+                    if (!mounted) return;
+                    setState(() {
+                      _isLoading = true;
+                      _loadError = null;
+                    });
+                  },
+                  onLoadStop: (controller, url) {
+                    if (!mounted) return;
+                    setState(() => _isLoading = false);
+                  },
+                  onReceivedError: (_, request, error) {
+                    if (request.isForMainFrame != true || !mounted) return;
+                    setState(() {
+                      _isLoading = false;
+                      _loadError = error.description;
+                    });
+                  },
+                  onReceivedHttpError: (_, request, response) {
+                    if (request.isForMainFrame != true || !mounted) return;
+                    setState(() {
+                      _isLoading = false;
+                      _loadError = 'HTTP ${response.statusCode}';
+                    });
+                  },
+                  shouldOverrideUrlLoading: (controller, action) async {
+                    if (action.isForMainFrame == false) {
+                      return NavigationActionPolicy.ALLOW;
+                    }
 
-              if (_isLoading)
-                Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    final url = action.request.url?.toString() ?? '';
+                    final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
+                    final allowedHost = _provider == EmbedProvider.multiEmbed
+                        ? 'multiembed.mov'
+                        : 'embed.smashystream.com';
 
-                    children: [
-                      CircularProgressIndicator(color: colorScheme.secondary),
+                    if (host.isEmpty ||
+                        host == allowedHost ||
+                        host.endsWith('.$allowedHost')) {
+                      return NavigationActionPolicy.ALLOW;
+                    }
 
-                      const SizedBox(height: 20),
-
-                      Text(
-                        _targetEmbedUrl == null
-                            ? "Obteniendo fuentes..."
-                            : "Sincronizando servidor ${_currentCandidateIndex + 1}/${_candidateUrls.length}...",
-
-                        style: const TextStyle(color: Colors.white),
+                    return NavigationActionPolicy.CANCEL;
+                  },
+                )
+              else
+                const Center(
+                  child: Text(
+                    'Contenido no disponible',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              Positioned(
+                top: 10,
+                left: 10,
+                right: 10,
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black54,
                       ),
-                    ],
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${widget.title} - $_providerName',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildProviderButton(EmbedProvider.multiEmbed),
+                    const SizedBox(width: 8),
+                    _buildProviderButton(EmbedProvider.smashyStream),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: _reloadCurrent,
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_isLoading)
+                const Center(
+                  child: CircularProgressIndicator(color: Color(0xFF00D46A)),
+                ),
+              if (_loadError != null)
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1B1F22),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.redAccent),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.redAccent,
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          _loadError!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        const SizedBox(height: 12),
+                        ElevatedButton(
+                          onPressed: _reloadCurrent,
+                          child: const Text('Reintentar'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
             ],
-          );
-        },
+          ),
+        ),
       ),
     );
   }
