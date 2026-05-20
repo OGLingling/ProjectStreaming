@@ -34,6 +34,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isLoading = true;
   String? _loadError;
 
+  static const String _desktopUserAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+  static const List<String> _blockedHostHints = [
+    'doubleclick',
+    'googlesyndication',
+    'google-analytics',
+    'adservice',
+    'adsterra',
+    'popads',
+    'propeller',
+    'taboola',
+    'onclick',
+    'exoclick',
+    'trafficjunky',
+  ];
+
   String get _normalizedMediaType {
     final type = widget.type.toLowerCase();
     return type.contains('serie') || type.contains('tv') ? 'tv' : 'movie';
@@ -44,8 +61,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final origin = uri?.origin ?? 'https://multiembed.mov';
 
     return {
-      'User-Agent':
-          'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+      'User-Agent': _desktopUserAgent,
       'Referer': '$origin/',
       'Origin': origin,
       'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -89,6 +105,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       case EmbedProvider.smashyStream:
         return 'SmashyStream';
     }
+  }
+
+  bool _isBlockedNavigation(String url) {
+    final lower = url.toLowerCase();
+    if (lower == 'about:blank') return true;
+    return _blockedHostHints.any(lower.contains);
   }
 
   @override
@@ -183,17 +205,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   ),
                   initialSettings: InAppWebViewSettings(
                     javaScriptEnabled: true,
+                    javaScriptCanOpenWindowsAutomatically: true,
                     mediaPlaybackRequiresUserGesture: false,
                     allowsInlineMediaPlayback: true,
                     iframeAllowFullscreen: true,
                     supportZoom: false,
                     transparentBackground: false,
                     useShouldOverrideUrlLoading: true,
+                    supportMultipleWindows: true,
                     mixedContentMode:
                         MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
                     thirdPartyCookiesEnabled: true,
                     domStorageEnabled: true,
-                    userAgent: _mobileHeaders['User-Agent'],
+                    userAgent: _desktopUserAgent,
                   ),
                   onWebViewCreated: (controller) {
                     _webViewController = controller;
@@ -223,24 +247,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       _loadError = 'HTTP ${response.statusCode}';
                     });
                   },
+                  onPermissionRequest: (controller, request) async {
+                    return PermissionResponse(
+                      resources: request.resources,
+                      action: PermissionResponseAction.GRANT,
+                    );
+                  },
+                  onCreateWindow: (controller, request) async {
+                    return false;
+                  },
                   shouldOverrideUrlLoading: (controller, action) async {
-                    if (action.isForMainFrame == false) {
-                      return NavigationActionPolicy.ALLOW;
-                    }
-
                     final url = action.request.url?.toString() ?? '';
-                    final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
-                    final allowedHost = _provider == EmbedProvider.multiEmbed
-                        ? 'multiembed.mov'
-                        : 'embed.smashystream.com';
-
-                    if (host.isEmpty ||
-                        host == allowedHost ||
-                        host.endsWith('.$allowedHost')) {
-                      return NavigationActionPolicy.ALLOW;
+                    if (_isBlockedNavigation(url)) {
+                      return NavigationActionPolicy.CANCEL;
                     }
-
-                    return NavigationActionPolicy.CANCEL;
+                    return NavigationActionPolicy.ALLOW;
                   },
                 )
               else
