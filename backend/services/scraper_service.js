@@ -88,30 +88,47 @@ const isDirectStreamUrl = (url) => {
 
 const SNIFFER_SCRIPT = `
 (function() {
-    // Evitar detección simple de automatización en subframes
+    // Evitar detección simple de automatización en subframes y spoofear propiedades críticas
     try {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en'] });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        window.chrome = {
+            runtime: {},
+            loadTimes: function() {},
+            csi: function() {},
+            app: {}
+        };
     } catch(e) {}
     
+    function reportStream(url) {
+        if (typeof window.onStreamFound === 'function') {
+            window.onStreamFound(url);
+        } else {
+            // Respaldar con CustomEvent por si acaso
+            window.dispatchEvent(new CustomEvent('stream_found', { detail: url }));
+        }
+    }
+
     const originalOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(method, url) {
-        if (url.includes('.m3u8') || url.includes('.mp4') || url.includes('videoplayback')) {
-            window.dispatchEvent(new CustomEvent('stream_found', { detail: url }));
+        if (url && (url.includes('.m3u8') || url.includes('.mp4') || url.includes('videoplayback'))) {
+            reportStream(url);
         }
         return originalOpen.apply(this, arguments);
     };
     const originalFetch = window.fetch;
     window.fetch = function() {
-        const url = typeof arguments[0] === 'string' ? arguments[0] : arguments[0].url;
+        const url = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url);
         if (url && (url.includes('.m3u8') || url.includes('.mp4') || url.includes('videoplayback'))) {
-            window.dispatchEvent(new CustomEvent('stream_found', { detail: url }));
+            reportStream(url);
         }
         return originalFetch.apply(this, arguments);
     };
     // Capturar si el player usa postMessage para comunicar el link
     window.addEventListener('message', function(e) {
         if (e.data && typeof e.data === 'string' && (e.data.includes('.m3u8') || e.data.includes('.mp4'))) {
-            window.dispatchEvent(new CustomEvent('stream_found', { detail: e.data }));
+            reportStream(e.data);
         }
     });
 })();
@@ -166,100 +183,149 @@ async function waitForStreamOrTimeout(found, maxMs = 20000, intervalMs = 300) {
   return found.some(isDirectStreamUrl);
 }
 
-// Simular comportamiento humano de deslizamiento del mouse antes del clic
+let lastMouseX = Math.random() * 100;
+let lastMouseY = Math.random() * 100;
+
+// Generar una trayectoria de curva Bézier y deslizar el ratón con micro-retrasos reales
+async function glideMouse(page, targetX, targetY) {
+  try {
+    const startX = lastMouseX;
+    const startY = lastMouseY;
+
+    // Puntos de control aleatorios para la curva Bézier cúbica
+    const controlX1 = startX + (targetX - startX) * 0.25 + (Math.random() * 80 - 40);
+    const controlY1 = startY + (targetY - startY) * 0.25 + (Math.random() * 80 - 40);
+    const controlX2 = startX + (targetX - startX) * 0.75 + (Math.random() * 80 - 40);
+    const controlY2 = startY + (targetY - startY) * 0.75 + (Math.random() * 80 - 40);
+
+    const distance = Math.hypot(targetX - startX, targetY - startY);
+    // Número de pasos dinámico según la distancia (mínimo 10, máximo 30)
+    const steps = Math.min(30, Math.max(10, Math.round(distance / 30)));
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      // Función smoothstep para simular aceleración y desaceleración (Ley de Fitts)
+      const easeT = t * t * (3 - 2 * t);
+
+      const x = Math.round(
+        Math.pow(1 - easeT, 3) * startX +
+        3 * Math.pow(1 - easeT, 2) * easeT * controlX1 +
+        3 * (1 - easeT) * Math.pow(easeT, 2) * controlX2 +
+        Math.pow(easeT, 3) * targetX
+      );
+      const y = Math.round(
+        Math.pow(1 - easeT, 3) * startY +
+        3 * Math.pow(1 - easeT, 2) * easeT * controlY1 +
+        3 * (1 - easeT) * Math.pow(easeT, 2) * controlY2 +
+        Math.pow(easeT, 3) * targetY
+      );
+
+      await page.mouse.move(x, y).catch(() => {});
+      // Micro-pausa física entre pasos (8ms a 18ms)
+      await page.waitForTimeout(8 + Math.random() * 10);
+    }
+
+    lastMouseX = targetX;
+    lastMouseY = targetY;
+  } catch (e) {
+    await page.mouse.move(targetX, targetY).catch(() => {});
+    lastMouseX = targetX;
+    lastMouseY = targetY;
+  }
+}
+
+// Simular comportamiento humano de deslizamiento del mouse antes del clic y presión sostenida
 async function humanClick(page, x, y) {
   try {
-    // Mover a una posición inicial aleatoria
-    await page.mouse.move(Math.random() * 200, Math.random() * 200).catch(() => {});
-    // Deslizar con trayectoria curvada simulada (steps)
-    await page.mouse.move(x / 2 + Math.random() * 50, y / 2 + Math.random() * 50, { steps: 5 }).catch(() => {});
-    await page.mouse.move(x, y, { steps: 8 }).catch(() => {});
-    // Pausa de reacción humana
+    // Deslizar suavemente
+    await glideMouse(page, x, y);
+
+    // Pausa de reacción del cerebro antes del clic (100ms - 250ms)
     await page.waitForTimeout(100 + Math.random() * 150);
-    // Realizar clic
+
+    // Presión física
+    await page.mouse.down().catch(() => {});
+    // Duración de la presión (tiempo de pulsado físico: 60ms - 120ms)
+    await page.waitForTimeout(60 + Math.random() * 60);
+    await page.mouse.up().catch(() => {});
+
+    // Pausa post-clic para asimilar el cambio visual
+    await page.waitForTimeout(150 + Math.random() * 150);
+  } catch (e) {
     await page.mouse.click(x, y).catch(() => {});
-  } catch (e) {}
+  }
 }
 
 // ─── INTERACCIÓN CON PLAYER ──────────────────────────────────────────────────
 async function interactWithPlayer(page) {
   try {
-    // 1. Clic nativo humano en el centro de la pantalla principal (isTrusted: true)
-    await humanClick(page, 640, 360);
-    console.log('[browser] 🖱 Clic nativo humano en el centro de la pantalla principal');
+    // Comprobar si el video ya está activo y reproduciéndose
+    const isAlreadyPlaying = await page.evaluate(() => {
+      const v = document.querySelector('video');
+      return v && !v.paused && v.readyState >= 2;
+    }).catch(() => false);
 
-    // 2. Clic nativo humano en el centro de todos los iframes visibles
+    if (isAlreadyPlaying) {
+      console.log('[browser] 🎥 Video ya detectado en reproducción activa. Omitiendo clics.');
+      return;
+    }
+
+    const playSelectors = [
+      '.jw-display-icon-container', '.vjs-big-play-button', '.plyr__control--overlaid',
+      'video', 'button.play', '.play', '#play', '[class*="play" i]', '[id*="play" i]'
+    ];
+
+    // 1. Buscar elementos de play explícitos en la página principal e iframes,
+    // y hacerles clic físico mediante coordenadas absolutas.
+    const frames = page.frames();
+    for (const frame of frames) {
+      for (const selector of playSelectors) {
+        try {
+          const locator = frame.locator(selector);
+          const count = await locator.count().catch(() => 0);
+          for (let i = 0; i < count; i++) {
+            const el = locator.nth(i);
+            const isVisible = await el.isVisible().catch(() => false);
+            if (isVisible) {
+              const box = await el.boundingBox().catch(() => null);
+              if (box && box.width > 12 && box.height > 12) {
+                console.log(`[browser] 🎯 Botón de play prioritario en x=${Math.round(box.x + box.width/2)}, y=${Math.round(box.y + box.height/2)} (Selector: ${selector})`);
+                await humanClick(page, box.x + box.width/2, box.y + box.height/2);
+                await page.waitForTimeout(2000 + Math.random() * 1000);
+                return; // Salir tras clic exitoso
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 2. Si no hay botones explícitos, clic nativo humano en el centro de la pantalla principal
+    console.log('[browser] 🖱 Clic nativo en el centro de la pantalla principal');
+    await humanClick(page, 640 + (Math.random() * 30 - 15), 360 + (Math.random() * 30 - 15));
+    await page.waitForTimeout(1500 + Math.random() * 1000);
+
+    // 3. Clic nativo en el centro de los iframes grandes (de forma secuencial, máx. 2)
     const iframeElements = await page.$$('iframe');
+    let clickedIframeCount = 0;
     for (const iframeEl of iframeElements) {
+      if (clickedIframeCount >= 2) break;
       try {
         const box = await iframeEl.boundingBox();
-        if (box && box.width > 100 && box.height > 100) {
-          await humanClick(page, box.x + box.width / 2, box.y + box.height / 2);
-          console.log(`[browser] 🖱 Clic nativo humano en centro de iframe: x=${Math.round(box.x + box.width / 2)}, y=${Math.round(box.y + box.height / 2)}`);
+        if (box && box.width > 150 && box.height > 150) {
+          console.log(`[browser] 🖱 Clic nativo en centro de iframe secuencial (${clickedIframeCount + 1})`);
+          await humanClick(page, box.x + box.width / 2 + (Math.random() * 20 - 10), box.y + box.height / 2 + (Math.random() * 20 - 10));
+          await page.waitForTimeout(2000 + Math.random() * 1000);
+          clickedIframeCount++;
         }
       } catch (e) {}
     }
 
-    // 3. Respaldo de clics programáticos (mantener compatibilidad)
-    const frames = page.frames();
-    console.log(`[browser] 📂 Interactuando con ${frames.length} frames...`);
-
-    for (const frame of frames) {
-      try {
-        const isVisible = await frame.evaluate(() => {
-          const el = document.body;
-          return el && el.getBoundingClientRect().width > 0;
-        }).catch(() => false);
-
-        if (!isVisible) continue;
-
-        // Simular clics en el centro del frame
-        await frame.evaluate(() => {
-          const width = window.innerWidth;
-          const height = window.innerHeight;
-          const points = [
-            { x: width / 2, y: height / 2 },
-            { x: width / 2 + 20, y: height / 2 + 20 },
-            { x: width / 2 - 20, y: height / 2 - 20 }
-          ];
-          points.forEach(p => {
-            const el = document.elementFromPoint(p.x, p.y);
-            if (el) {
-              el.click();
-              // Eventos adicionales para engañar a scripts que detectan clics reales
-              el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: p.x, clientY: p.y }));
-              el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: p.x, clientY: p.y }));
-            }
-          });
-        }).catch(() => { });
-
-        // Buscar botones de Play y activarlos
-        await frame.evaluate(() => {
-          const playSelectors = [
-            'video', 'button', 'a', '.play', '#play', '[class*="play" i]', '[id*="play" i]',
-            '.jw-display-icon-container', '.vjs-big-play-button', '.plyr__control--overlaid'
-          ];
-          playSelectors.forEach(sel => {
-            document.querySelectorAll(sel).forEach(el => {
-              try {
-                if (el.tagName === 'VIDEO') {
-                  el.play().catch(() => { });
-                } else {
-                  el.click();
-                }
-              } catch (_) { }
-            });
-          });
-        }).catch(() => { });
-
-      } catch (frameError) {
-        // Ignorar errores de frames individuales (CORS, etc.)
-      }
-    }
-
-    // Atajos globales en la página principal
-    await page.keyboard.press('k').catch(() => { });
-    await page.keyboard.press('Space').catch(() => { });
+    // 4. Teclas globales de reproducción con intervalos naturales
+    await page.keyboard.press('k').catch(() => {});
+    await page.waitForTimeout(300 + Math.random() * 300);
+    await page.keyboard.press('Space').catch(() => {});
+    await page.waitForTimeout(1000 + Math.random() * 500);
 
   } catch (err) {
     console.error(`[browser] Error en interacción: ${err.message}`);
@@ -376,50 +442,54 @@ async function extractWithBrowser(embedUrl) {
             '--disable-blink-features=AutomationControlled',
             '--disable-web-security',
             '--disable-features=IsolateOrigins,site-per-process',
-            '--autoplay-policy=no-user-gesture-required'
+            '--autoplay-policy=no-user-gesture-required',
+            // Evitar que el antivirus (ESET, Avast, etc.) intercepte via extensión del navegador
+            '--disable-extensions',
+            '--disable-plugins',
+            // Bypassear la inspección SSL del antivirus (MitM de ESET)
+            '--ignore-certificate-errors',
+            '--ignore-ssl-errors',
+            '--ignore-certificate-errors-spki-list',
+            // Estabilidad extra
+            '--no-zygote',
+            '--disable-background-networking'
           ]
         });
       }
 
-      const targetOrigin = new URL(embedUrl).origin;
       const context = await browser.newContext({
-        userAgent: DESKTOP_UA,
         viewport: { width: 1280, height: 720 },
         ignoreHTTPSErrors: true,
+        userAgent: DESKTOP_UA,
+        locale: 'es-ES',
         extraHTTPHeaders: {
-          'Referer': targetOrigin + '/',
-          'Origin': targetOrigin,
-          'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Upgrade-Insecure-Requests': '1'
+          'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8,en-US;q=0.7'
         }
       });
 
-      // Inyección profunda de sigilo a nivel de contexto
-      await context.addInitScript(() => {
-        try { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); } catch (_) {}
-        try { window.chrome = { runtime: {} }; } catch (_) {}
-        try {
-          const getParameter = WebGLRenderingContext.prototype.getParameter;
-          WebGLRenderingContext.prototype.getParameter = function(parameter) {
-            if (parameter === 37445) return 'Google Inc. (NVIDIA)';
-            if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU/Direct3D11, vs_5_0 ps_5_0)';
-            return getParameter.apply(this, arguments);
-          };
-        } catch (_) {}
-        try {
-          Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en-US', 'en'] });
-          Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-        } catch (_) {}
-        try {
-          const originalQuery = navigator.permissions.query;
-          navigator.permissions.query = (parameters) =>
-            parameters.name === 'notifications'
-              ? Promise.resolve({ state: Notification.permission })
-              : originalQuery(parameters);
-        } catch (_) {}
+      // Exponer la función para que el sniffer de red pueda reportar streams directamente
+      await context.exposeFunction('onStreamFound', (url) => {
+        if (isDirectStreamUrl(url) && !found.includes(url)) {
+          console.log(`[browser sniffer] 🎯 Stream interceptado por sniffer: ${url.substring(0, 80)}`);
+          found.push(url);
+        }
       });
 
+      // Registrar el script de inicialización del sniffer en la página principal y subframes
+      await context.addInitScript(SNIFFER_SCRIPT);
+
       const page = await context.newPage();
+
+      // Registrar logs de consola del navegador para diagnóstico
+      page.on('console', msg => {
+        const txt = msg.text();
+        if (txt.includes('CORS') || txt.includes('Blocked') || msg.type() === 'error') {
+          console.log(`[browser console] ${msg.type()}: ${txt.substring(0, 100)}`);
+        }
+      });
+      page.on('pageerror', err => {
+        console.error(`[browser pageerror] ${err.message.substring(0, 120)}`);
+      });
 
       const takeScreenshot = async (name) => {
         try {
@@ -432,14 +502,6 @@ async function extractWithBrowser(embedUrl) {
         }
       };
 
-      // Sniffer bridge para XHR/fetch dentro de la página
-      await page.exposeFunction('onStreamFound', (url) => {
-        if (isDirectStreamUrl(url) && !found.includes(url)) {
-          console.log(`[browser] 💉 Sniffer XHR: ${url.substring(0, 80)}`);
-          found.push(url);
-        }
-      });
-
       // ─── MONITOREO DE RED: REQUESTS ──────────────────────────────────────────
       page.on('request', request => {
         const u = request.url();
@@ -450,8 +512,6 @@ async function extractWithBrowser(embedUrl) {
       });
 
       // ─── MONITOREO DE RED: RESPONSE BODIES ───────────────────────────────────
-      // Esta es la pieza clave: muchos players devuelven la URL m3u8 dentro de
-      // una respuesta JSON/JS, no como una request directa al archivo.
       page.on('response', async (response) => {
         try {
           const u = response.url();
@@ -474,7 +534,6 @@ async function extractWithBrowser(embedUrl) {
           const body = await response.text().catch(() => '');
           if (!body || body.length < 10) return;
 
-          // Solo procesar si el cuerpo contiene algo relevante
           if (!body.includes('.m3u8') && !body.includes('.mp4') && !body.includes('videoplayback')) return;
 
           const matches = extractStreamUrlsFromText(body, u);
@@ -487,13 +546,13 @@ async function extractWithBrowser(embedUrl) {
         } catch (_) {}
       });
 
-      // Bloqueo de publicidad (sin bloquear streams)
+      // Bloqueo suave de publicidad (solo aborta dominios de anuncios explícitos, no bloquea imágenes ni fuentes de maquetación)
       await page.route('**/*', (route) => {
         const url = route.request().url();
-        if (isAdOrNoiseUrl(url)) return route.abort();
-        const type = route.request().resourceType();
-        if (['image', 'font'].includes(type) && !isDirectStreamUrl(url)) return route.abort();
-        route.continue();
+        if (isAdOrNoiseUrl(url)) {
+          return route.abort().catch(() => {});
+        }
+        route.continue().catch(() => {});
       });
 
       // Navegación con timeout
@@ -501,28 +560,9 @@ async function extractWithBrowser(embedUrl) {
       console.log(`[browser] → Navegando a ${embedUrl}`);
       await page.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: gotoTimeout });
 
-      // Espera inicial más larga para Cloudflare y carga de scripts del player
-      await page.waitForTimeout(4000);
-
-      const setupPage = async (p) => {
-        try {
-          await p.addInitScript(SNIFFER_SCRIPT);
-          await p.evaluate(() => {
-            if (window.onStreamFound) return;
-            window.addEventListener('stream_found', (e) => {
-              if (typeof window.onStreamFound === 'function') {
-                window.onStreamFound(e.detail);
-              }
-            });
-          }).catch(() => {});
-        } catch (_) {}
-      };
-
-      context.on('frameattached', async (frame) => {
-        await setupPage(frame);
-      });
-
-      await setupPage(page);
+      // Esperar a que la red se calme antes de inspeccionar (importante para Cloudflare y proveedores lentos)
+      await page.waitForLoadState('domcontentloaded').catch(() => {});
+      await page.waitForTimeout(5000);
       await takeScreenshot('L1_Initial');
 
       // ─── CICLO DE INSPECCIÓN ──────────────────────────────────────────────────
@@ -531,19 +571,52 @@ async function extractWithBrowser(embedUrl) {
 
         console.log(`[browser] 📂 Capa ${layer}: Analizando y activando...`);
 
-        // Detección de errores comunes en el DOM
-        const pageStatus = await page.evaluate(() => {
+        // Detección de errores comunes en el DOM + dentro de iframes
+        let pageStatus = await page.evaluate(() => {
           const bodyText = (document.body?.innerText || '').toLowerCase();
-          const bodyLen = bodyText.trim().length;
 
           if (bodyText.includes('media is unavailable') || bodyText.includes('not found') ||
-              bodyText.includes('removed') || bodyText.includes('no longer available')) return 'unavailable';
-          if (bodyText.includes('blocked') || bodyText.includes('verify you are human') ||
-              bodyText.includes('captcha')) return 'blocked';
-          // Página en blanco o casi vacía (posible challenge sin resolver)
-          if (bodyLen < 50) return 'blank';
-          return 'ok';
+              bodyText.includes('removed') || bodyText.includes('no longer available') ||
+              bodyText.includes('this video has been removed')) return 'unavailable';
+
+          if (bodyText.includes('verify you are human') || bodyText.includes('cloudflare') ||
+              bodyText.includes('captcha') || bodyText.includes('turnstile')) return 'blocked';
+
+          // Buscar elementos interactivos en el documento principal e iframes accesibles
+          const hasInteractiveInMain = !!document.querySelector('iframe, video, button, canvas, #player, .player, [class*="play"], [id*="play"]');
+          if (hasInteractiveInMain) return 'ok';
+
+          // Intentar inspeccionar iframes del mismo origen
+          try {
+            const iframes = document.querySelectorAll('iframe');
+            for (const f of iframes) {
+              try {
+                const doc = f.contentDocument;
+                if (doc && doc.querySelector('video, button, canvas, #player, .player')) return 'ok';
+              } catch (_) {}
+            }
+          } catch (_) {}
+
+          return 'blank';
         }).catch(() => 'error');
+
+        // Verificación adicional vía frames de Playwright (cross-origin iframes)
+        if (pageStatus === 'blank') {
+          const allFrames = page.frames();
+          for (const fr of allFrames) {
+            if (fr === page.mainFrame()) continue;
+            try {
+              const hasEl = await fr.evaluate(() =>
+                !!document.querySelector('video, button, canvas, #player, .player, [class*="play"], [id*="play"], iframe')
+              ).catch(() => false);
+              if (hasEl) {
+                pageStatus = 'ok'; // Corrección real: el frame anidado tiene contenido
+                console.log(`[browser] 🔍 Contenido interactivo encontrado en frame anidado → estado: ok`);
+                break;
+              }
+            } catch (_) {}
+          }
+        }
 
         if (pageStatus === 'unavailable') {
           console.warn(`[browser] ❌ Contenido no disponible en el proveedor.`);
@@ -553,9 +626,8 @@ async function extractWithBrowser(embedUrl) {
         }
 
         if (pageStatus === 'blank') {
-          console.warn(`[browser] ⬜ Página en blanco/challenge sin resolver en capa ${layer}.`);
+          console.warn(`[browser] ⬜ Página vacía detectada en capa ${layer}. Esperando...`);
           await takeScreenshot(`L${layer}_Blank`);
-          // Dar más tiempo y continuar — puede ser Cloudflare resolviendo
           await page.waitForTimeout(3000);
         }
 
@@ -566,10 +638,9 @@ async function extractWithBrowser(embedUrl) {
         }
 
         await interactWithPlayer(page);
-        await page.waitForTimeout(5000); // Más tiempo para que el player haga sus llamadas XHR
+        await page.waitForTimeout(5000);
         await takeScreenshot(`L${layer}_AfterInteract`);
 
-        // Chequeo inmediato: el listener de response puede haber capturado URLs ya
         if (found.length > 0) break;
 
         const domUrls = await extractFromDOM(page, page.url());
@@ -580,12 +651,11 @@ async function extractWithBrowser(embedUrl) {
 
         const frames = page.frames();
         for (const frame of frames) {
-            if (frame === page.mainFrame()) continue;
-            try {
-              await setupPage(frame).catch(() => {});
-              const frameUrls = await extractFromDOM(frame, frame.url()).catch(() => []);
-              if (frameUrls.length > 0) found.push(...frameUrls);
-            } catch (_) {}
+          if (frame === page.mainFrame()) continue;
+          try {
+            const frameUrls = await extractFromDOM(frame, frame.url()).catch(() => []);
+            if (frameUrls.length > 0) found.push(...frameUrls);
+          } catch (_) {}
         }
 
         if (found.length > 0) break;
