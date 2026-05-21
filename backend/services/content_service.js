@@ -159,9 +159,9 @@ class ContentService {
       if (!result.success) {
         // Si falló con 'tv', intentamos con 'movie' como fallback (para OVAs/Especiales)
         if (normalizedType === 'tv') {
-            console.log(`[content-service] 🔄 Falló como TV, reintentando como movie...`);
-            const fallback = await TMDBApi.getFullMetadata(tmdbId, 'movie');
-            if (fallback.success) return await this.importFromTMDB(tmdbId, 'movie');
+          console.log(`[content-service] 🔄 Falló como TV, reintentando como movie...`);
+          const fallback = await TMDBApi.getFullMetadata(tmdbId, 'movie');
+          if (fallback.success) return await this.importFromTMDB(tmdbId, 'movie');
         }
         throw new Error(result.error || 'No se pudo obtener información de TMDB');
       }
@@ -253,17 +253,17 @@ class ContentService {
   async autoImportByTitle(title, type = 'movie') {
     const normalizedType = type === 'movie' ? 'movie' : 'tv';
     console.log(`[content-service] 🔍 Buscando "${title}" (${normalizedType})...`);
-    
+
     try {
       const searchResult = await TMDBApi.searchContent(title, normalizedType);
-      
+
       // Fallback: si no encuentra como TV, busca como movie
       if (!searchResult.success && normalizedType === 'tv') {
-          console.log(`[content-service] 🔄 No encontrado como TV, buscando como movie...`);
-          const fallbackSearch = await TMDBApi.searchContent(title, 'movie');
-          if (fallbackSearch.success) {
-              return await this.importFromTMDB(fallbackSearch.data.id, 'movie');
-          }
+        console.log(`[content-service] 🔄 No encontrado como TV, buscando como movie...`);
+        const fallbackSearch = await TMDBApi.searchContent(title, 'movie');
+        if (fallbackSearch.success) {
+          return await this.importFromTMDB(fallbackSearch.data.id, 'movie');
+        }
       }
 
       if (!searchResult.success) {
