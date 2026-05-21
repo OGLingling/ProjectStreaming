@@ -483,7 +483,9 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
             value: index,
 
             child: Text(
-              "Temporada ${widget.movie.seasons![index].seasonNumber}",
+              widget.movie.seasons![index].title?.isNotEmpty == true
+                  ? widget.movie.seasons![index].title!
+                  : "Temporada ${widget.movie.seasons![index].seasonNumber}",
 
               style: const TextStyle(
                 color: Colors.white,

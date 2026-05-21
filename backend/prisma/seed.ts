@@ -16,6 +16,7 @@ const seriesTmdbIds = [
   '85552',  // Euphoria
   '79744',  // The Rookie
   '95479',  // JUJUTSU KAISEN
+  '61374',  // Tokyo Ghoul
 ]
 
 const movieTmdbIds = [
@@ -25,6 +26,27 @@ const movieTmdbIds = [
   '980431',  // Avatar: Aang, The Last Airbender
   '1314481', // The Devil Wears Prada 2
 ]
+
+type SeasonEpisodeOverride = number | {
+  seasonNumber?: number
+  episodeCount: number
+  title?: string
+}
+
+const seriesEpisodeOverrides: Record<string, SeasonEpisodeOverride[]> = {
+  '37854': [1160], // One Piece
+  '65942': [25, 25, 16, 19], // Re:ZERO -Starting Life in Another World-
+  '209867': [28, 10], // Frieren: Beyond Journey's End
+  '79744': [20, 20, 14, 22, 22, 10, 18, 18], // The Rookie
+  '85552': [8, 8, 8, { seasonNumber: 0, episodeCount: 2, title: 'Especiales' }], // Euphoria
+  '61374': [12, 12, 12, 12], // Tokyo Ghoul
+  '95479': [24, 23, 13], // JUJUTSU KAISEN
+  '95557': [8, 8, 6, 8], // Invincible
+}
+
+const seriesSeasonTitleOverrides: Record<string, string[]> = {
+  '37854': ['Episodios'], // One Piece no se muestra dividido por temporadas
+}
 
 type TmdbSeason = {
   id: number
@@ -90,6 +112,64 @@ async function fetchSeasonDetails(tmdbId: string, seasonNumber: number) {
   return tmdbGet<TmdbSeasonDetails>(`/tv/${tmdbId}/season/${seasonNumber}`)
 }
 
+function normalizeSeasonOverride(override: SeasonEpisodeOverride, index: number) {
+  if (typeof override === 'number') {
+    return {
+      seasonNumber: index + 1,
+      episodeCount: override,
+      title: undefined,
+    }
+  }
+
+  return {
+    seasonNumber: override.seasonNumber ?? index + 1,
+    episodeCount: override.episodeCount,
+    title: override.title,
+  }
+}
+
+async function buildOverriddenSeasons(tmdbId: string, seasons: TmdbSeason[], overrides: SeasonEpisodeOverride[]) {
+  const seasonsForCreate = []
+
+  for (const [seasonIndex, override] of overrides.entries()) {
+    const { seasonNumber, episodeCount, title } = normalizeSeasonOverride(override, seasonIndex)
+    const originalSeason = seasons.find((season) => season.season_number === seasonNumber)
+    let seasonDetails: TmdbSeasonDetails | null = null
+
+    if (originalSeason) {
+      try {
+        seasonDetails = await fetchSeasonDetails(tmdbId, seasonNumber)
+      } catch (error) {
+        console.warn(`No se pudo consultar TMDB ${tmdbId} temporada ${seasonNumber}:`, (error as Error).message)
+      }
+    }
+
+    const episodes = Array.from({ length: episodeCount }, (_, episodeIndex) => {
+      const episodeNumber = episodeIndex + 1
+      const tmdbEpisode = seasonDetails?.episodes?.find((episode) => episode.episode_number === episodeNumber)
+
+      return {
+        episodeNumber,
+        title: tmdbEpisode?.name || `Episodio ${episodeNumber}`,
+        description: tmdbEpisode?.overview || null,
+        stillPath: imageUrl(tmdbEpisode?.still_path),
+        duration: tmdbEpisode?.runtime ? `${tmdbEpisode.runtime}m` : null,
+      }
+    })
+
+    seasonsForCreate.push({
+      tmdbId: seasonDetails?.id ? String(seasonDetails.id) : originalSeason?.id ? String(originalSeason.id) : `${tmdbId}-season-${seasonNumber}`,
+      seasonNumber,
+      title: title || seriesSeasonTitleOverrides[tmdbId]?.[seasonIndex] || seasonDetails?.name || originalSeason?.name || `Temporada ${seasonNumber}`,
+      episodes: {
+        create: episodes,
+      },
+    })
+  }
+
+  return seasonsForCreate
+}
+
 async function createMovie(tmdbId: string) {
   const data = await fetchContentDetails(tmdbId, 'movie')
   const trailer = data.videos?.results?.find(
@@ -115,32 +195,35 @@ async function createMovie(tmdbId: string) {
 async function createSeries(tmdbId: string) {
   const data = await fetchContentDetails(tmdbId, 'tv')
   const seasons = data.seasons || []
-  const playableSeasons = seasons.filter(
-    (season) => season.season_number > 0 && (season.episode_count || 0) > 0,
-  )
+  const availableSeasons = seasons.filter((season) => (season.episode_count || 0) > 0)
 
-  const seasonsForCreate = []
+  let seasonsForCreate = []
+  const episodeOverride = seriesEpisodeOverrides[tmdbId]
 
-  for (const season of playableSeasons) {
-    const seasonDetails = await fetchSeasonDetails(tmdbId, season.season_number)
-    const episodes = (seasonDetails.episodes || [])
-      .filter((episode) => episode.episode_number > 0)
-      .map((episode) => ({
-        episodeNumber: episode.episode_number,
-        title: episode.name || `Episodio ${episode.episode_number}`,
-        description: episode.overview || null,
-        stillPath: imageUrl(episode.still_path),
-        duration: episode.runtime ? `${episode.runtime}m` : null,
-      }))
+  if (episodeOverride) {
+    seasonsForCreate = await buildOverriddenSeasons(tmdbId, availableSeasons, episodeOverride)
+  } else {
+    for (const season of availableSeasons.filter((season) => season.season_number > 0)) {
+      const seasonDetails = await fetchSeasonDetails(tmdbId, season.season_number)
+      const episodes = (seasonDetails.episodes || [])
+        .filter((episode) => episode.episode_number > 0)
+        .map((episode) => ({
+          episodeNumber: episode.episode_number,
+          title: episode.name || `Episodio ${episode.episode_number}`,
+          description: episode.overview || null,
+          stillPath: imageUrl(episode.still_path),
+          duration: episode.runtime ? `${episode.runtime}m` : null,
+        }))
 
-    seasonsForCreate.push({
-      tmdbId: String(seasonDetails.id || season.id),
-      seasonNumber: season.season_number,
-      title: seasonDetails.name || season.name || `Temporada ${season.season_number}`,
-      episodes: {
-        create: episodes,
-      },
-    })
+      seasonsForCreate.push({
+        tmdbId: String(seasonDetails.id || season.id),
+        seasonNumber: season.season_number,
+        title: seasonDetails.name || season.name || `Temporada ${season.season_number}`,
+        episodes: {
+          create: episodes,
+        },
+      })
+    }
   }
 
   await prisma.content.create({
