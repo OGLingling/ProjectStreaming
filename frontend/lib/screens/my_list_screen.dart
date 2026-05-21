@@ -69,24 +69,33 @@ class MyListScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = Provider.of<WatchlistProvider>(context);
     final watchlist = provider.watchlist;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: colorScheme.surface,
         elevation: 0,
-        title: const Text(
+        foregroundColor: colorScheme.onSurface,
+        title: Text(
           "Mi lista",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: colorScheme.onSurface,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
       body: provider.isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.red))
+          ? Center(
+              child: CircularProgressIndicator(color: colorScheme.secondary),
+            )
           : watchlist.isEmpty
-          ? const Center(
+          ? Center(
               child: Text(
                 "Tu lista está vacía",
-                style: TextStyle(color: Colors.white60),
+                style: TextStyle(
+                  color: colorScheme.onSurface.withValues(alpha: 0.68),
+                ),
               ),
             )
           : LayoutBuilder(
@@ -143,13 +152,15 @@ class MyListScreen extends StatelessWidget {
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.black87,
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.surface.withValues(
+                                      alpha: 0.86,
+                                    ),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.close,
-                                    color: Colors.white,
+                                    color: colorScheme.onSurface,
                                     size: 16,
                                   ),
                                 ),

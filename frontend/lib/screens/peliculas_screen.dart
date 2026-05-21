@@ -72,17 +72,21 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
 
   void _navigateToDetails(Movie movie) {
     Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (c) => MovieDetailsScreen(movie: movie))
+      context,
+      MaterialPageRoute(builder: (c) => MovieDetailsScreen(movie: movie)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF141414),
+      backgroundColor: colorScheme.surface,
       body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.red))
+          ? Center(
+              child: CircularProgressIndicator(color: colorScheme.secondary),
+            )
           : CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(child: _buildDynamicBanner()),
@@ -97,6 +101,7 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
   Widget _buildDynamicBanner() {
     final size = MediaQuery.of(context).size;
     if (topRatedMovies.isEmpty) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
 
     return SizedBox(
       height: size.height * 0.7,
@@ -115,21 +120,23 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
                 errorBuilder: (c, e, s) => Container(color: Colors.black),
               ),
               Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.black45,
                       Colors.transparent,
-                      Color(0xFF141414)
+                      colorScheme.surface,
                     ],
-                    stops: [0.0, 0.6, 1.0],
+                    stops: const [0.0, 0.6, 1.0],
                   ),
                 ),
               ),
               Positioned(
-                bottom: 60, left: 20, right: 20,
+                bottom: 60,
+                left: 20,
+                right: 20,
                 child: Column(
                   children: [
                     Text(
@@ -145,13 +152,17 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.star, color: Colors.amber, size: 20),
+                        Icon(
+                          Icons.star,
+                          color: colorScheme.secondary,
+                          size: 20,
+                        ),
                         const SizedBox(width: 5),
                         Text(
                           "${movie.rating ?? 0.0} | Tendencia",
-                          style: const TextStyle(
-                            color: Colors.green, 
-                            fontWeight: FontWeight.bold
+                          style: TextStyle(
+                            color: colorScheme.primary,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ],
@@ -186,16 +197,18 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
   }
 
   Widget _buildTitleSection(String title) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.only(left: 20, top: 30, bottom: 15),
         child: Text(
-          title, 
-          style: const TextStyle(
-            color: Colors.white, 
-            fontSize: 22, 
-            fontWeight: FontWeight.bold
-          )
+          title,
+          style: TextStyle(
+            color: colorScheme.onSurface,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );
@@ -244,6 +257,8 @@ class _HoverButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -252,22 +267,28 @@ class _HoverButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
           decoration: BoxDecoration(
-            color: isPrimary ? Colors.white : Colors.white.withOpacity(0.25),
+            color: isPrimary
+                ? colorScheme.primary
+                : colorScheme.surfaceContainerHighest.withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                icon, 
-                color: isPrimary ? Colors.black : Colors.white, 
-                size: 26
+                icon,
+                color: isPrimary
+                    ? colorScheme.onPrimary
+                    : colorScheme.onSurface,
+                size: 26,
               ),
               const SizedBox(width: 8),
               Text(
                 text,
                 style: TextStyle(
-                  color: isPrimary ? Colors.black : Colors.white,
+                  color: isPrimary
+                      ? colorScheme.onPrimary
+                      : colorScheme.onSurface,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),

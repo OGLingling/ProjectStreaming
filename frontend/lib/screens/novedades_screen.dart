@@ -5,12 +5,18 @@ class NovedadesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFF141414),
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      backgroundColor: colorScheme.surface,
       body: Center(
         child: Text(
           "Sección de Novedades",
-          style: TextStyle(color: Colors.white, fontSize: 24),
+          style: TextStyle(
+            color: colorScheme.onSurface,
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );

@@ -102,7 +102,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: _buildAdaptiveAppBar(isMobile, visibleProfiles),
       body: IndexedStack(
         index: _selectedIndex >= screens.length ? 0 : _selectedIndex,
@@ -116,6 +116,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     bool isMobile,
     List<Map<String, String>> visibleProfiles,
   ) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -124,7 +126,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.black.withOpacity(0.8), Colors.transparent],
+            colors: [
+              colorScheme.surface.withValues(alpha: 0.88),
+              Colors.transparent,
+            ],
           ),
         ),
       ),
@@ -133,7 +138,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           Text(
             "MOVIEWIND",
             style: GoogleFonts.montserrat(
-              color: const Color(0xFFE50914),
+              color: colorScheme.primary,
               fontWeight: FontWeight.w900,
               fontSize: isMobile ? 18 : 22,
             ),
@@ -150,7 +155,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.search, color: Colors.white, size: 26),
+          icon: Icon(Icons.search, color: colorScheme.onSurface, size: 26),
           onPressed: () => _onItemTapped(5),
         ),
         const SizedBox(width: 10),
@@ -189,6 +194,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   // --- EL MENÚ MODIFICADO (FOTO 2) ---
   Widget _buildDropdownMenu(List<Map<String, String>> availableProfiles) {
+    final colorScheme = Theme.of(context).colorScheme;
     final String currentActiveName =
         (_currentProfile['selectedName'] ??
                 widget.userData?['name'] ??
@@ -208,11 +214,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         offset: const Offset(-180, 40),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.95),
-            border: Border.all(color: Colors.white12),
+            color: colorScheme.surface.withValues(alpha: 0.96),
+            border: Border.all(
+              color: colorScheme.primary.withValues(alpha: 0.28),
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.5),
+                color: colorScheme.shadow.withValues(alpha: 0.5),
                 blurRadius: 10,
                 spreadRadius: 5,
               ),
@@ -297,6 +305,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     String imagePath,
     VoidCallback onTap,
   ) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -317,7 +327,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             const SizedBox(width: 10),
             Text(
               name,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
+              style: TextStyle(color: colorScheme.onSurface, fontSize: 13),
             ),
           ],
         ),
@@ -332,6 +342,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     bool isBold = false,
     bool isCentered = false,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -342,13 +354,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               : MainAxisAlignment.start,
           children: [
             if (icon != null) ...[
-              Icon(icon, color: Colors.white, size: 22),
+              Icon(icon, color: colorScheme.secondary, size: 22),
               const SizedBox(width: 12),
             ],
             Text(
               text,
               style: TextStyle(
-                color: Colors.white,
+                color: colorScheme.onSurface,
                 fontSize: 13,
                 fontWeight: isBold ? FontWeight.bold : FontWeight.w400,
               ),
@@ -361,6 +373,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Widget _navItem(String title, int index) {
     bool isSelected = _selectedIndex == index;
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: InkWell(
@@ -368,7 +381,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         child: Text(
           title,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.grey.shade400,
+            color: isSelected
+                ? colorScheme.primary
+                : colorScheme.onSurface.withValues(alpha: 0.62),
             fontSize: 14,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.w400,
           ),
@@ -378,13 +393,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   Widget _buildMobileBottomNav() {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return BottomNavigationBar(
       currentIndex: _selectedIndex >= 5 ? 0 : _selectedIndex,
       onTap: _onItemTapped,
-      backgroundColor: Colors.black.withOpacity(0.95),
+      backgroundColor: colorScheme.surface.withValues(alpha: 0.96),
       type: BottomNavigationBarType.fixed,
-      selectedItemColor: Colors.white,
-      unselectedItemColor: Colors.grey,
+      selectedItemColor: colorScheme.primary,
+      unselectedItemColor: colorScheme.onSurface.withValues(alpha: 0.62),
       items: const [
         BottomNavigationBarItem(
           icon: Icon(Icons.home_outlined),

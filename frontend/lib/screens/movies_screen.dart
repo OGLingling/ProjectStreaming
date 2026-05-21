@@ -90,11 +90,14 @@ class _MoviesScreenState extends State<MoviesScreen> {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final bool isMobile = size.width < 600;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF141414),
+      backgroundColor: colorScheme.surface,
       body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.red))
+          ? Center(
+              child: CircularProgressIndicator(color: colorScheme.secondary),
+            )
           : ListView(
               padding: EdgeInsets.zero,
               children: [
@@ -111,6 +114,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
 
   Widget _buildAutoCarousel(Size size, bool isMobile) {
     if (topRatedMovies.isEmpty) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
 
     // Altura ajustada para no dominar todo el scroll en móvil
     final carouselHeight = isMobile ? size.height * 0.65 : size.height * 0.80;
@@ -143,10 +147,10 @@ class _MoviesScreenState extends State<MoviesScreen> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.black.withOpacity(0.2),
+                          Colors.black.withValues(alpha: 0.2),
                           Colors.transparent,
-                          Colors.black.withOpacity(0.8),
-                          const Color(0xFF141414),
+                          Colors.black.withValues(alpha: 0.8),
+                          colorScheme.surface,
                         ],
                         stops: const [0.0, 0.4, 0.8, 1.0],
                       ),
@@ -177,7 +181,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
                           children: [
                             Icon(
                               Icons.stars,
-                              color: Colors.blueAccent,
+                              color: colorScheme.secondary,
                               size: isMobile ? 16 : 22,
                             ),
                             const SizedBox(width: 6),
@@ -201,16 +205,18 @@ class _MoviesScreenState extends State<MoviesScreen> {
                             _netflixButton(
                               Icons.play_arrow,
                               "Ver ahora",
-                              Colors.white,
-                              Colors.black,
+                              colorScheme.primary,
+                              colorScheme.onPrimary,
                               movie,
                               isMobile,
                             ),
                             _netflixButton(
                               Icons.info_outline,
                               "Detalles",
-                              Colors.white.withOpacity(0.2),
-                              Colors.white,
+                              colorScheme.surfaceContainerHighest.withValues(
+                                alpha: 0.82,
+                              ),
+                              colorScheme.onSurface,
                               movie,
                               isMobile,
                             ),
@@ -240,8 +246,8 @@ class _MoviesScreenState extends State<MoviesScreen> {
                   width: _currentPage == index ? 22 : 8,
                   decoration: BoxDecoration(
                     color: _currentPage == index
-                        ? Colors.red
-                        : Colors.grey.withOpacity(0.5),
+                        ? colorScheme.primary
+                        : Colors.grey.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -287,6 +293,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
 
   Widget _buildSection(String title, List<Movie> list, bool isMobile) {
     if (list.isEmpty) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -298,7 +305,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
           child: Text(
             title,
             style: TextStyle(
-              color: Colors.white,
+              color: colorScheme.onSurface,
               fontSize: isMobile ? 20 : 26,
               fontWeight: FontWeight.bold,
             ),
