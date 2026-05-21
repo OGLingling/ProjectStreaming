@@ -131,7 +131,8 @@ function normalizeSeasonOverride(override: SeasonEpisodeOverride, index: number)
 async function buildOverriddenSeasons(tmdbId: string, seasons: TmdbSeason[], overrides: SeasonEpisodeOverride[]) {
   const seasonsForCreate = []
 
-  for (const [seasonIndex, override] of overrides.entries()) {
+  for (let seasonIndex = 0; seasonIndex < overrides.length; seasonIndex++) {
+    const override = overrides[seasonIndex]
     const { seasonNumber, episodeCount, title } = normalizeSeasonOverride(override, seasonIndex)
     const originalSeason = seasons.find((season) => season.season_number === seasonNumber)
     let seasonDetails: TmdbSeasonDetails | null = null
@@ -246,6 +247,7 @@ async function createSeries(tmdbId: string) {
 
 async function main() {
   console.log('--- Iniciando limpieza total ---')
+  await prisma.watchlist.deleteMany()
   await prisma.content.deleteMany()
   console.log('Base de datos limpiada.')
 
