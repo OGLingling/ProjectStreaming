@@ -32,8 +32,9 @@ model Content {
   streamExpiresAt DateTime?          // cuándo vence el token de la URL
   // ─────────────────────────────────────────────────────────────────────────
 
-  seasons   Season[]
-  watchlist Watchlist[]
+  seasons         Season[]
+  watchlist       Watchlist[]
+  viewingProgress ViewingProgress[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -52,6 +53,24 @@ model Watchlist {
   createdAt DateTime @default(now())
 
   @@unique([userId, contentId])
+}
+
+model ViewingProgress {
+  id              Int      @id @default(autoincrement())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contentId       Int
+  content         Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  seasonNumber    Int      @default(1)
+  episodeNumber   Int      @default(1)
+  progressSeconds Int      @default(0)
+  durationSeconds Int?
+  completed       Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, contentId, seasonNumber, episodeNumber])
+  @@index([userId, completed, updatedAt])
 }
 
 model Season {
@@ -110,7 +129,8 @@ model User {
   maturityLevel     String  @default("18+")
   subtitleSize      String  @default("medium")
   autoPlay          Boolean @default(true)
-  myList        Watchlist[]
+  myList          Watchlist[]
+  viewingProgress ViewingProgress[]
 
   createdAt DateTime @default(now())
 }

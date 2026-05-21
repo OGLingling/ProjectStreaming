@@ -6,7 +6,9 @@ import 'movie_details_screen.dart';
 import 'video_player_screen.dart';
 
 class NovedadesScreen extends StatefulWidget {
-  const NovedadesScreen({super.key});
+  final Map<String, dynamic>? user;
+
+  const NovedadesScreen({super.key, this.user});
 
   @override
   State<NovedadesScreen> createState() => _NovedadesScreenState();
@@ -86,7 +88,10 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
   void _openDetails(Movie movie) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => MovieDetailsScreen(movie: movie)),
+      MaterialPageRoute(
+        builder: (context) =>
+            MovieDetailsScreen(movie: movie, user: widget.user),
+      ),
     );
   }
 
@@ -116,6 +121,8 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
       MaterialPageRoute(
         builder: (context) => VideoPlayerScreen(
           tmdbId: tmdbId,
+          contentId: movie.id,
+          userId: widget.user?['id']?.toString(),
           title: movie.title,
           type: movie.type,
           season: season,

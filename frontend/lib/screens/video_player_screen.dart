@@ -1,14 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+
+import '../services/api_service.dart';
 
 enum EmbedProvider { embed, vidSrcVip }
 
 class VideoPlayerScreen extends StatefulWidget {
   final String? tmdbId;
   final String? imdbId;
+  final int? contentId;
+  final String? userId;
   final String? directUrl;
   final String title;
   final String type;
@@ -19,6 +24,8 @@ class VideoPlayerScreen extends StatefulWidget {
     super.key,
     this.tmdbId,
     this.imdbId,
+    this.contentId,
+    this.userId,
     this.directUrl,
     required this.title,
     required this.type,
@@ -37,6 +44,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _showControls = true;
   String? _loadError;
   Timer? _controlsTimer;
+  Timer? _progressTimer;
+  late DateTime _playbackStartedAt;
+  int _lastProgressSeconds = 0;
+  int? _lastDurationSeconds;
 
   static const String _desktopUserAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -114,15 +125,119 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    _playbackStartedAt = DateTime.now();
     _enterPlaybackMode();
     _scheduleControlsHide();
+    _startProgressTracking();
   }
 
   @override
   void dispose() {
     _controlsTimer?.cancel();
+    _progressTimer?.cancel();
+    unawaited(_saveViewingProgress());
     _exitPlaybackMode();
     super.dispose();
+  }
+
+  bool get _canPersistProgress {
+    final userId = widget.userId?.trim();
+    final tmdbId = widget.tmdbId?.trim();
+    return userId != null &&
+        userId.isNotEmpty &&
+        ((widget.contentId != null && widget.contentId! > 0) ||
+            (tmdbId != null && tmdbId.isNotEmpty));
+  }
+
+  void _startProgressTracking() {
+    _progressTimer?.cancel();
+    _progressTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      unawaited(_saveViewingProgress());
+    });
+  }
+
+  Future<Map<String, int?>> _readPlaybackPosition() async {
+    try {
+      final result = await _webViewController?.evaluateJavascript(
+        source: '''
+          (() => {
+            const videos = Array.from(document.querySelectorAll('video'));
+            const video = videos.find((item) => !item.paused) || videos[0];
+            if (!video) return null;
+            const duration = Number.isFinite(video.duration) ? Math.floor(video.duration) : null;
+            return {
+              progressSeconds: Math.floor(video.currentTime || 0),
+              durationSeconds: duration,
+              completed: Boolean(video.ended || (duration && video.currentTime / duration >= 0.92))
+            };
+          })();
+        ''',
+      );
+
+      final parsed = result is String ? jsonDecode(result) : result;
+
+      if (parsed is Map) {
+        return {
+          'progressSeconds': int.tryParse(parsed['progressSeconds'].toString()),
+          'durationSeconds': parsed['durationSeconds'] == null
+              ? null
+              : int.tryParse(parsed['durationSeconds'].toString()),
+          'completed': parsed['completed'] == true ? 1 : 0,
+        };
+      }
+    } catch (_) {
+      // Cross-origin iframes may hide the underlying video element.
+    }
+
+    return {
+      'progressSeconds': DateTime.now()
+          .difference(_playbackStartedAt)
+          .inSeconds,
+      'durationSeconds': _lastDurationSeconds,
+      'completed': 0,
+    };
+  }
+
+  Future<void> _saveViewingProgress({bool completed = false}) async {
+    if (!_canPersistProgress) return;
+
+    final position = await _readPlaybackPosition();
+    final progressSeconds = position['progressSeconds'] ?? _lastProgressSeconds;
+    final durationSeconds = position['durationSeconds'];
+    final ended = completed || position['completed'] == 1;
+
+    if (progressSeconds > _lastProgressSeconds) {
+      _lastProgressSeconds = progressSeconds;
+    }
+    if (durationSeconds != null && durationSeconds > 0) {
+      _lastDurationSeconds = durationSeconds;
+    }
+
+    if (ended) {
+      await ApiService.completeViewingProgress(
+        userId: widget.userId!.trim(),
+        contentId: widget.contentId,
+        tmdbId: widget.tmdbId,
+        seasonNumber: widget.season,
+        episodeNumber: widget.episode,
+      );
+      return;
+    }
+
+    await ApiService.saveViewingProgress(
+      userId: widget.userId!.trim(),
+      contentId: widget.contentId,
+      tmdbId: widget.tmdbId,
+      seasonNumber: widget.season,
+      episodeNumber: widget.episode,
+      progressSeconds: _lastProgressSeconds,
+      durationSeconds: _lastDurationSeconds,
+    );
+  }
+
+  Future<void> _markAsFinished() async {
+    await _saveViewingProgress(completed: true);
+    if (mounted) Navigator.pop(context);
   }
 
   Future<void> _enterPlaybackMode() async {
@@ -362,6 +477,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               const SizedBox(width: 8),
                               _buildProviderButton(EmbedProvider.vidSrcVip),
                               const SizedBox(width: 8),
+                              if (_canPersistProgress) ...[
+                                IconButton(
+                                  tooltip: 'Marcar como visto',
+                                  onPressed: _markAsFinished,
+                                  icon: const Icon(
+                                    Icons.check_circle_outline,
+                                    color: Colors.white,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.black54,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
                               IconButton(
                                 onPressed: _reloadCurrent,
                                 icon: const Icon(

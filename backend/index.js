@@ -10,6 +10,7 @@ const authRoutes = require('./routes/auth_routes');
 const adminRoutes = require('./routes/admin_routes');
 const authController = require('./controllers/auth_controller');
 const watchlistRoutes = require('./routes/watchlist_routes');
+const viewingProgressRoutes = require('./routes/viewing_progress_routes');
 const scraperRoutes = require('./routes/scraper_routes');
 const streamRoutes = require('./routes/stream_routes');
 const { getStreamLink, getStatus, forceRefresh, runWorkerCycle } = require('./controllers/stream_controller');
@@ -61,6 +62,7 @@ app.use('/api/movies', movieRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/watchlist', watchlistRoutes);
+app.use('/api/viewing-progress', viewingProgressRoutes);
 
 // Stream — endpoint principal que usa Flutter
 app.get('/api/stream/link', getStreamLink);

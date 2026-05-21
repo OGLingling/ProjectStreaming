@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'video_player_screen.dart';
+import '../models/movie_model.dart';
+import 'movie_details_screen.dart';
 import 'watchlist_providers.dart';
 
 class MyListScreen extends StatelessWidget {
@@ -44,7 +45,7 @@ class MyListScreen extends StatelessWidget {
     return raw;
   }
 
-  void _openPlayer(BuildContext context, Map<String, dynamic> item) {
+  void _openDetails(BuildContext context, Map<String, dynamic> item) {
     final tmdbId = _readTmdbId(item);
     if (tmdbId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -53,14 +54,22 @@ class MyListScreen extends StatelessWidget {
       return;
     }
 
+    final movie = Movie.fromJson({
+      ...item,
+      'id': _readContentId(item),
+      'tmdbId': tmdbId,
+      'tmdb_id': tmdbId,
+      'title': _readTitle(item),
+      'type': _readType(item),
+      'imageUrl': _readImage(item),
+      'releaseDate': item['releaseDate'] ?? 'Sin fecha de estreno',
+      'rating': item['rating'] ?? 0.0,
+    });
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => VideoPlayerScreen(
-          tmdbId: tmdbId,
-          title: _readTitle(item),
-          type: _readType(item),
-        ),
+        builder: (context) => MovieDetailsScreen(movie: movie, user: user),
       ),
     );
   }
@@ -120,7 +129,7 @@ class MyListScreen extends StatelessWidget {
                     final type = _readType(item);
 
                     return InkWell(
-                      onTap: () => _openPlayer(context, item),
+                      onTap: () => _openDetails(context, item),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: Stack(

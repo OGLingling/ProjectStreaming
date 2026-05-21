@@ -44,6 +44,82 @@ class ApiService {
     return [];
   }
 
+  static Future<List<dynamic>> getViewingProgress(String userId) async {
+    try {
+      final response = await http
+          .get(_apiUri('viewing-progress', {'userId': userId}))
+          .timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
+      }
+    } catch (e) {
+      debugPrint('Error getViewingProgress: $e');
+    }
+    return [];
+  }
+
+  static Future<void> saveViewingProgress({
+    required String userId,
+    int? contentId,
+    String? tmdbId,
+    required int seasonNumber,
+    required int episodeNumber,
+    required int progressSeconds,
+    int? durationSeconds,
+    bool completed = false,
+  }) async {
+    try {
+      await http
+          .post(
+            _apiUri('viewing-progress'),
+            headers: _jsonHeaders,
+            body: jsonEncode({
+              'userId': userId,
+              if (contentId != null && contentId > 0) 'contentId': contentId,
+              if (tmdbId != null && tmdbId.trim().isNotEmpty)
+                'tmdbId': tmdbId.trim(),
+              'seasonNumber': seasonNumber,
+              'episodeNumber': episodeNumber,
+              'progressSeconds': progressSeconds,
+              if (durationSeconds != null && durationSeconds > 0)
+                'durationSeconds': durationSeconds,
+              'completed': completed,
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('Error saveViewingProgress: $e');
+    }
+  }
+
+  static Future<void> completeViewingProgress({
+    required String userId,
+    int? contentId,
+    String? tmdbId,
+    required int seasonNumber,
+    required int episodeNumber,
+  }) async {
+    try {
+      await http
+          .post(
+            _apiUri('viewing-progress/complete'),
+            headers: _jsonHeaders,
+            body: jsonEncode({
+              'userId': userId,
+              if (contentId != null && contentId > 0) 'contentId': contentId,
+              if (tmdbId != null && tmdbId.trim().isNotEmpty)
+                'tmdbId': tmdbId.trim(),
+              'seasonNumber': seasonNumber,
+              'episodeNumber': episodeNumber,
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('Error completeViewingProgress: $e');
+    }
+  }
+
   static Future<Map<String, dynamic>?> getUserDataByEmail(String email) async {
     try {
       final response = await http

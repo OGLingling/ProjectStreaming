@@ -80,6 +80,8 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
         MaterialPageRoute(
           builder: (context) => VideoPlayerScreen(
             tmdbId: tmdbId,
+            contentId: widget.movie.id,
+            userId: widget.user?['id']?.toString(),
 
             directUrl: directUrl,
 

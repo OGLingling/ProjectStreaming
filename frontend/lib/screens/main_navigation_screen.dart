@@ -17,7 +17,7 @@ class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key, this.userData});
 
   @override
-  _MainNavigationScreenState createState() => _MainNavigationScreenState();
+  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
@@ -95,8 +95,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       MoviesScreen(user: _currentProfile),
       SeriesScreen(isActive: _selectedIndex == 1),
       PeliculasScreen(isActive: _selectedIndex == 2),
-      const NovedadesScreen(),
-      MyListScreen(userId: currentUserId),
+      NovedadesScreen(user: _currentProfile),
+      MyListScreen(userId: currentUserId, user: _currentProfile),
       const SearchScreen(),
     ];
 
