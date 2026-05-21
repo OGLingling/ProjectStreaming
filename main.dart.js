@@ -49125,9 +49125,12 @@ return A.ce(A.b([r.Rx(a?B.SG:B.f,s,"Mi lista",q),r.Rw(B.ML,"Calificar",new A.aA8
 Rx(a,b,c,d){var s=null
 return A.f0(s,A.bF(A.b([A.eG(b,a,s,26),B.Cf,A.am(c,s,s,s,B.a17,s,s)],t.p),B.x,B.p,B.q),B.Z,!1,s,s,s,s,s,s,s,s,s,s,s,s,s,s,d,s,s,s,s,s,s)},
 Rw(a,b,c){return this.Rx(B.f,a,b,c)},
-acn(){var s,r,q=this,p=null,o=q.d,n=q.a.c.Q.length,m=t.kZ,l=J.kW(n,m)
-for(s=q.a,r=0;r<n;++r)l[r]=new A.Ci(r,A.am("Temporada "+s.c.Q[r].b,p,p,p,B.nn,p,p),B.eT,p,m)
-return new A.Ch(new A.wb(l,o,new A.aAg(q),B.bq,p,t.CB),p)},
+acn(){var s,r,q,p,o=this,n=null,m=o.d,l=o.a.c.Q.length,k=t.kZ,j=J.kW(l,k)
+for(s=o.a,r=0;r<l;++r){q=s.c.Q[r]
+p=q.c
+if((p==null?n:p.length!==0)===!0){p.toString
+q=p}else q="Temporada "+q.b
+j[r]=new A.Ci(r,A.am(q,n,n,n,B.nn,n,n),B.eT,n,k)}return new A.Ch(new A.wb(j,m,new A.aAg(o),B.bq,n,t.CB),n)},
 ac1(){var s=this.a.c.Q[this.d].e
 if(s==null)s=A.b([],t.hb)
 return A.aPV(null,new A.aAc(this,s),s.length,B.xi,B.a2,new A.aAd(),!0)}}
