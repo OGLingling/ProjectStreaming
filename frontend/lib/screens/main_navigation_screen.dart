@@ -274,7 +274,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 _tooltipController.hide();
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (c) => const AccountScreen()),
+                  MaterialPageRoute(
+                    builder: (c) => AccountScreen(userData: _currentProfile),
+                  ),
                 );
               }),
               _dropdownItem(Icons.help_outline, "Centro de ayuda", () {
