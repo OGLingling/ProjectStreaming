@@ -9,5 +9,6 @@ router.post('/verify-otp', authController.verifyOtp);
 router.post('/register', authController.register);
 router.get('/users', authController.getUserByEmail); // Cambié la ruta a /user para ser más descriptivo
 router.put('/users/:id', authController.updateUser);
+router.delete('/users/:id', authController.deleteUser);
 
 module.exports = router;

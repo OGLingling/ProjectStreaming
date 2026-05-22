@@ -159,3 +159,32 @@ exports.updateUser = async (req, res) => {
         });
     }
 };
+
+exports.deleteUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id || id === "null" || id === "undefined") {
+            return res.status(400).json({ error: "ID de usuario invalido o no proporcionado" });
+        }
+
+        await prisma.$transaction([
+            prisma.watchlist.deleteMany({ where: { userId: id } }),
+            prisma.viewingProgress.deleteMany({ where: { userId: id } }),
+            prisma.user.delete({ where: { id } })
+        ]);
+
+        res.json({ success: true, message: "Cuenta eliminada correctamente" });
+    } catch (error) {
+        console.error("Error eliminando usuario:", error.message);
+
+        if (error.code === 'P2025') {
+            return res.status(404).json({ error: "El usuario no existe en la base de datos" });
+        }
+
+        res.status(500).json({
+            error: "Error interno al eliminar la cuenta",
+            detalle: error.message
+        });
+    }
+};

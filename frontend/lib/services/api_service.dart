@@ -230,6 +230,19 @@ class ApiService {
     }
   }
 
+  static Future<bool> deleteUser(String userId) async {
+    try {
+      final response = await http
+          .delete(_apiUri('auth/users/$userId'), headers: _jsonHeaders)
+          .timeout(const Duration(seconds: 15));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error deleteUser: $e');
+      return false;
+    }
+  }
+
   static Future<List<String>> getExtractionCandidates({
     String? tmdbId,
     String? url,
