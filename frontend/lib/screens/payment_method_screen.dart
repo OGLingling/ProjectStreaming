@@ -1,615 +1,479 @@
-import 'package:flutter/material.dart';
-
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/user_model.dart';
 import '../services/api_service.dart';
-
 import 'profiles_screen.dart';
 
-import '../models/user_model.dart';
-
-
+const Color _paymentBackground = Color(0xFF07110F);
+const Color _paymentSurface = Color(0xFF101817);
+const Color _paymentSurfaceHigh = Color(0xFF17211F);
+const Color _paymentPrimary = Color(0xFF00C853);
+const Color _paymentSecondary = Color(0xFF00D8FF);
 
 class PaymentMethodScreen extends StatefulWidget {
-
   final String userEmail;
-
   final String userName;
-
   final String selectedPlan;
-
   final String password;
 
-
-
   const PaymentMethodScreen({
-
     super.key,
-
     required this.userEmail,
-
     required this.userName,
-
     required this.selectedPlan,
-
     required this.password,
-
   });
 
-
-
   @override
-
   State<PaymentMethodScreen> createState() => _PaymentMethodScreenState();
-
 }
 
-
-
 class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
-
-  // ✅ CAMBIO #1: Variable de estado para controlar el loading
-
-  // Antes no había control de estado. Si el usuario rotaba la pantalla
-
-  // o interactuaba mientras cargaba, podía causar errores de contexto.
-
   bool _isLoading = false;
 
-
-
-  Future<void> _procesarRegistro(BuildContext context) async {
-
-    // ✅ CAMBIO #2: Evitar doble ejecución
-
-    // Sin esta guarda, el usuario podía tocar dos métodos de pago rápido
-
-    // y lanzar dos registros simultáneos, creando usuarios duplicados.
-
+  Future<void> _procesarRegistro() async {
     if (_isLoading) return;
-
-
 
     setState(() => _isLoading = true);
 
-
-
-    // ✅ CAMBIO #3: firebase_auth.UserCredential declarado fuera del try
-
-    // para poder hacer rollback en el catch si falla el paso 2 o 3.
-
     firebase_auth.UserCredential? userCredential;
 
-
-
     try {
-
-      // PASO 1: REGISTRO EN FIREBASE
-
-      // ✅ CAMBIO #4: Se usa widget.password en lugar de "user_access_2026"
-
-      // La contraseña hardcodeada era un riesgo de seguridad crítico:
-
-      // cualquiera podía acceder a la cuenta de otro usuario con solo
-
-      // conocer su email. Ahora cada usuario tiene su propia contraseña.
-
       userCredential = await firebase_auth.FirebaseAuth.instance
-
           .createUserWithEmailAndPassword(
-
             email: widget.userEmail.trim(),
-
             password: widget.password.trim(),
-
           );
-
-
 
       final String firebaseUid = userCredential.user!.uid;
 
-
-
-      // PASO 2: REGISTRO EN BASE DE DATOS (Neon/Prisma)
-
       final userData = await ApiService.registerUser(
-
         email: widget.userEmail.trim(),
-
         name: widget.userName.trim(),
-
         plan: widget.selectedPlan,
-
         password: widget.password.trim(),
-
       );
 
-
-
       if (userData == null) {
-
-        throw Exception("API_ERROR");
-
+        throw Exception('API_ERROR');
       }
-
-
-
-      // ✅ CAMBIO #5: Guardamos el ID de tu BD, no el UID de Firebase
-
-      // Antes se guardaba el UID de Firebase como 'user_id', pero tu
-
-      // backend (Neon/Prisma) genera su propio ID. Usarlo para queries
-
-      // en tu API causaría errores o datos incorrectos.
-
-      // Guardamos AMBOS IDs para tenerlos disponibles cuando se necesiten.
 
       final String dbUserId = userData['id']?.toString() ?? firebaseUid;
 
-
-
-      // PASO 3: ENVÍO DEL CÓDIGO OTP
-
       await ApiService.sendOTP(widget.userEmail.trim());
 
-
-
-      // PASO 4: PERSISTENCIA LOCAL
-
       final prefs = await SharedPreferences.getInstance();
-
-      await prefs.setString('user_id', dbUserId); // ✅ ID de tu BD
-
-      await prefs.setString('firebase_uid', firebaseUid); // UID de Firebase
-
+      await prefs.setString('user_id', dbUserId);
+      await prefs.setString('firebase_uid', firebaseUid);
       await prefs.setBool('is_logged_in', true);
 
-
-
-      // PASO 5: NAVEGACIÓN
-
-      // ✅ CAMBIO #6: Renombrado AppUser para evitar colisión con firebase_auth.User
-
-      // Flutter/Dart no da error de compilación si ambas clases se llaman 'User'
-
-      // porque una tiene alias (firebase_auth), pero es confuso al leer el código
-
-      // y puede causar errores sutiles si alguien quita el alias en el futuro.
-
       final User nuevoUsuario = User(
-
         id: dbUserId,
-
         name: widget.userName,
-
         email: widget.userEmail,
-
         plan: widget.selectedPlan,
-
       );
-
-
 
       if (!mounted) return;
 
-
-
       Navigator.pushAndRemoveUntil(
-
         context,
-
         MaterialPageRoute(
-
           builder: (context) => ProfilesScreen(user: nuevoUsuario.toJson()),
-
         ),
-
         (route) => false,
-
       );
-
     } on firebase_auth.FirebaseAuthException catch (e) {
-
-      // ✅ CAMBIO #7: Rollback de Firebase si falla el paso posterior
-
-      // Antes, si Firebase creaba el usuario pero tu API fallaba,
-
-      // el usuario quedaba "huérfano" en Firebase sin registro en Neon.
-
-      // Ahora lo eliminamos para mantener consistencia entre ambas BDs.
-
       if (userCredential != null) {
-
         await userCredential.user?.delete();
-
       }
 
-
-
-      String errorMsg = "Error al registrar: ${e.code}";
-
-
-
-      // ✅ CAMBIO #8: if-else con llaves siempre
-
-      // Sin llaves, agregar una segunda línea al if en el futuro
-
-      // rompe la lógica silenciosamente sin error de compilación.
+      String errorMsg = 'Error al registrar: ${e.code}';
 
       if (e.code == 'email-already-in-use') {
-
-        errorMsg = "El correo ya está registrado.";
-
+        errorMsg = 'El correo ya esta registrado.';
       } else if (e.code == 'weak-password') {
-
-        errorMsg = "La contraseña es demasiado débil.";
-
+        errorMsg = 'La contrasena es demasiado debil.';
       } else if (e.code == 'invalid-email') {
-
-        errorMsg = "El formato del correo no es válido.";
-
+        errorMsg = 'El formato del correo no es valido.';
       }
 
-
-
-      if (mounted) _showError(context, errorMsg);
-
+      if (mounted) _showError(errorMsg);
     } catch (e) {
-
-      // ✅ CAMBIO #9: Rollback también en errores generales (API, OTP, etc.)
-
-      // Si la API de Neon falla después de crear el usuario en Firebase,
-
-      // lo eliminamos para no dejar datos inconsistentes.
-
       if (userCredential != null) {
-
         await userCredential.user?.delete();
-
       }
 
-
-
-      debugPrint("Error técnico: $e");
-
-
+      debugPrint('Error tecnico: $e');
 
       if (mounted) {
-
-        // ✅ CAMBIO #10: Mensaje de error más específico según el tipo
-
-        final String mensaje = e.toString().contains("API_ERROR")
-
-            ? "No se pudo conectar con el servidor. Intenta de nuevo."
-
-            : "Hubo un error al crear tu cuenta. Intenta de nuevo.";
-
-        _showError(context, mensaje);
-
+        final String mensaje = e.toString().contains('API_ERROR')
+            ? 'No se pudo conectar con el servidor. Intenta de nuevo.'
+            : 'Hubo un error al crear tu cuenta. Intenta de nuevo.';
+        _showError(mensaje);
       }
-
     } finally {
-
-      // ✅ CAMBIO #11: Usamos finally para resetear el estado de loading
-
-      // Antes, el Navigator.pop() para cerrar el loading se repetía en cada
-
-      // catch individualmente, lo cual era propenso a olvidarse en alguno.
-
-      // Con finally, se ejecuta SIEMPRE: haya éxito, error de Firebase o
-
-      // cualquier otra excepción.
-
       if (mounted) {
-
         setState(() => _isLoading = false);
-
       }
-
     }
-
   }
 
-
-
-  void _showError(BuildContext context, String message) {
-
+  void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-
       SnackBar(
-
         content: Text(message),
-
-        backgroundColor: Colors.redAccent,
-
+        backgroundColor: Theme.of(context).colorScheme.error,
         behavior: SnackBarBehavior.floating,
-
       ),
-
     );
-
   }
 
-
+  void _showPaypalPendingMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('PayPal requiere endpoints backend antes de activarlo.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   @override
-
   Widget build(BuildContext context) {
+    final planLabel = widget.selectedPlan.toUpperCase();
+    final planPrice = _planPrice(widget.selectedPlan);
 
     return Scaffold(
-
-      backgroundColor: Colors.white,
-
+      backgroundColor: _paymentBackground,
       appBar: AppBar(
-
-        backgroundColor: Colors.white,
-
+        backgroundColor: _paymentBackground,
+        foregroundColor: Colors.white,
         elevation: 0,
-
-        iconTheme: const IconThemeData(color: Colors.black),
-
-        // ✅ CAMBIO #12: Deshabilitar el botón atrás mientras carga
-
-        // Evita que el usuario navegue atrás a mitad del registro
-
-        // y deje el proceso en un estado inconsistente.
-
         automaticallyImplyLeading: !_isLoading,
-
       ),
-
-      body: Stack(
-
-        children: [
-
-          // ✅ CAMBIO #13: El contenido principal siempre visible
-
-          SingleChildScrollView(
-
-            child: Column(
-
-              children: [
-
-                const SizedBox(height: 20),
-
-                const Icon(
-
-                  Icons.lock_outline,
-
-                  color: Color(0xFFE50914),
-
-                  size: 50,
-
-                ),
-
-                const SizedBox(height: 15),
-
-                const Text(
-
-                  "PASO 3 DE 3",
-
-                  style: TextStyle(
-
-                    fontWeight: FontWeight.bold,
-
-                    color: Colors.black54,
-
-                    fontSize: 12,
-
-                  ),
-
-                ),
-
-                const SizedBox(height: 10),
-
-                const Text(
-
-                  "Configura tu pago",
-
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-
-                ),
-
-                const Padding(
-
-                  padding: EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-
-                  child: Text(
-
-                    "Al seleccionar un método, completarás tu registro y enviaremos un código de acceso a tu correo.",
-
-                    textAlign: TextAlign.center,
-
-                    style: TextStyle(fontSize: 16, color: Colors.black87),
-
-                  ),
-
-                ),
-
-                _buildPaymentOption(
-
-                  title: "Tarjeta de crédito o débito",
-
-                  icons: [Icons.credit_card, Icons.account_balance_wallet],
-
-                  onTap: () => _procesarRegistro(context),
-
-                ),
-
-                _buildPaymentOption(
-
-                  title: "Código de regalo",
-
-                  icons: [Icons.card_giftcard],
-
-                  onTap: () => _procesarRegistro(context),
-
-                ),
-
-                const SizedBox(height: 40),
-
-                const Text(
-
-                  "Seguridad de nivel bancario 🔒",
-
-                  style: TextStyle(color: Colors.black38, fontSize: 13),
-
-                ),
-
-                const SizedBox(height: 20),
-
-              ],
-
-            ),
-
-          ),
-
-
-
-          // ✅ CAMBIO #14: Loading overlay sobre el contenido
-
-          // Reemplaza el Dialog de loading anterior. Este approach es más
-
-          // robusto porque no depende del contexto del Navigator para cerrarse,
-
-          // evitando el bug clásico de "dialog que no se cierra" cuando
-
-          // hay errores de contexto o el widget se desmonta.
-
-          if (_isLoading)
-
-            Container(
-
-              color: Colors.black.withOpacity(0.4),
-
-              child: const Center(
-
-                child: CircularProgressIndicator(color: Color(0xFFE50914)),
-
-              ),
-
-            ),
-
-        ],
-
-      ),
-
-    );
-
-  }
-
-
-
-  Widget _buildPaymentOption({
-
-    required String title,
-
-    required List<IconData> icons,
-
-    required VoidCallback onTap,
-
-  }) {
-
-    return GestureDetector(
-
-      // ✅ CAMBIO #15: Deshabilitar opciones mientras carga
-
-      // Si _isLoading es true, onTap se vuelve null, deshabilitando
-
-      // el GestureDetector de forma nativa sin lógica extra.
-
-      onTap: _isLoading ? null : onTap,
-
-      child: Container(
-
-        margin: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
-
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 22),
-
-        decoration: BoxDecoration(
-
-          // ✅ CAMBIO #16: Feedback visual cuando está deshabilitado
-
-          border: Border.all(
-
-            color: _isLoading ? Colors.grey.shade200 : Colors.grey.shade300,
-
-            width: 1.5,
-
-          ),
-
-          borderRadius: BorderRadius.circular(8),
-
-        ),
-
-        child: Row(
-
+      body: SafeArea(
+        top: false,
+        child: Stack(
           children: [
-
-            Expanded(
-
-              child: Text(
-
-                title,
-
-                style: TextStyle(
-
-                  fontSize: 16,
-
-                  fontWeight: FontWeight.w600,
-
-                  // Color más tenue cuando está deshabilitado
-
-                  color: _isLoading ? Colors.grey.shade400 : Colors.black,
-
+            ListView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+              children: [
+                const _StepPill(label: 'Paso 3 de 3'),
+                const SizedBox(height: 16),
+                Text(
+                  'Configura tu metodo de pago',
+                  style: GoogleFonts.montserrat(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    height: 1.12,
+                  ),
                 ),
-
-              ),
-
-            ),
-
-            ...icons.map(
-
-              (icon) => Padding(
-
-                padding: const EdgeInsets.only(left: 8),
-
-                child: Icon(
-
-                  icon,
-
-                  color: _isLoading ? Colors.grey.shade300 : Colors.blueGrey,
-
-                  size: 28,
-
+                const SizedBox(height: 10),
+                Text(
+                  'Tu cuenta se activara cuando el metodo seleccionado confirme el acceso.',
+                  style: GoogleFonts.geologica(
+                    color: Colors.white.withValues(alpha: 0.64),
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
                 ),
-
+                const SizedBox(height: 22),
+                _PlanSummaryCard(planLabel: planLabel, price: planPrice),
+                const SizedBox(height: 22),
+                _SectionTitle('Metodos disponibles'),
+                _PaymentOptionCard(
+                  title: 'Tarjeta de credito o debito',
+                  subtitle: 'Activa el registro con el flujo actual',
+                  icons: const [
+                    Icons.credit_card_rounded,
+                    Icons.account_balance_wallet_rounded,
+                  ],
+                  accent: _paymentPrimary,
+                  isLoading: _isLoading,
+                  onTap: _procesarRegistro,
+                ),
+                const SizedBox(height: 12),
+                _PaymentOptionCard(
+                  title: 'PayPal',
+                  subtitle:
+                      'Requiere backend seguro para crear y capturar pagos',
+                  icons: const [Icons.payments_rounded],
+                  accent: _paymentSecondary,
+                  isLoading: _isLoading,
+                  onTap: _showPaypalPendingMessage,
+                ),
+                const SizedBox(height: 12),
+                _PaymentOptionCard(
+                  title: 'Codigo de regalo',
+                  subtitle: 'Canje interno de MovieWind',
+                  icons: const [Icons.card_giftcard_rounded],
+                  accent: const Color(0xFFFFC857),
+                  isLoading: _isLoading,
+                  onTap: _procesarRegistro,
+                ),
+                const SizedBox(height: 22),
+                const _SecurityNote(),
+              ],
+            ),
+            if (_isLoading)
+              Container(
+                color: Colors.black.withValues(alpha: 0.58),
+                child: const Center(
+                  child: CircularProgressIndicator(color: _paymentSecondary),
+                ),
               ),
-
-            ),
-
-            const SizedBox(width: 10),
-
-            Icon(
-
-              Icons.arrow_forward_ios,
-
-              size: 18,
-
-              color: _isLoading ? Colors.grey.shade300 : Colors.black45,
-
-            ),
-
           ],
-
         ),
-
       ),
-
     );
-
   }
 
+  String _planPrice(String plan) {
+    switch (plan.toLowerCase()) {
+      case 'premium':
+        return 'S/ 44.90';
+      case 'estandar':
+        return 'S/ 34.90';
+      default:
+        return 'S/ 24.90';
+    }
+  }
+}
+
+class _StepPill extends StatelessWidget {
+  final String label;
+
+  const _StepPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: _paymentPrimary.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: _paymentPrimary.withValues(alpha: 0.35)),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.geologica(
+            color: _paymentPrimary,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanSummaryCard extends StatelessWidget {
+  final String planLabel;
+  final String price;
+
+  const _PlanSummaryCard({required this.planLabel, required this.price});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _paymentSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _paymentPrimary.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: _paymentPrimary.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(7),
+            ),
+            child: const Icon(
+              Icons.workspace_premium_rounded,
+              color: _paymentPrimary,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Plan $planLabel',
+                  style: GoogleFonts.montserrat(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$price al mes',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.64)),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cambiar'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  final String title;
+
+  const _SectionTitle(this.title);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, bottom: 10),
+      child: Text(
+        title,
+        style: GoogleFonts.montserrat(
+          color: Colors.white.withValues(alpha: 0.72),
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentOptionCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final List<IconData> icons;
+  final Color accent;
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  const _PaymentOptionCard({
+    required this.title,
+    required this.subtitle,
+    required this.icons,
+    required this.accent,
+    required this.isLoading,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _paymentSurface,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: isLoading ? null : onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: accent.withValues(alpha: 0.18)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Icon(icons.first, color: accent),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isLoading
+                            ? Colors.white.withValues(alpha: 0.38)
+                            : Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.54),
+                        fontSize: 12,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 16,
+                color: Colors.white.withValues(alpha: 0.42),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SecurityNote extends StatelessWidget {
+  const _SecurityNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _paymentSurfaceHigh,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.lock_outline_rounded,
+            color: _paymentSecondary,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Nunca guardes secretos de pasarela en Flutter. Las llaves privadas de pago deben vivir solo en backend y en Render.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.64),
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

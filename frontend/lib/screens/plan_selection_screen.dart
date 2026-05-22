@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import 'payment_method_screen.dart';
+
+const Color _planBackground = Color(0xFF07110F);
+const Color _planSurface = Color(0xFF101817);
+const Color _planSurfaceHigh = Color(0xFF17211F);
+const Color _planPrimary = Color(0xFF00C853);
+const Color _planSecondary = Color(0xFF00D8FF);
 
 class PlanSelectionScreen extends StatefulWidget {
   final String userEmail;
   final String userName;
-  // ✅ CAMBIO #1: Se agrega el campo 'password' de vuelta.
-  // El archivo original lo había eliminado con el comentario "usas sistema OTP",
-  // pero PaymentMethodScreen lo requiere como parámetro obligatorio (required).
-  // Sin él, la app no compila. Si en tu flujo no hay contraseña, pasa "" desde
-  // la pantalla anterior, pero el campo DEBE existir aquí para ser enviado.
   final String password;
 
   const PlanSelectionScreen({
@@ -24,67 +26,54 @@ class PlanSelectionScreen extends StatefulWidget {
 }
 
 class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
-  int _selectedPlanIndex = 2; // Premium seleccionado por defecto
+  int _selectedPlanIndex = 2;
   bool _isLoading = false;
 
-  // ✅ CAMBIO #2: Datos de los planes actualizados para coincidir con la imagen.
-  // La imagen muestra campos distintos al código original:
-  //   - "Calidad de vídeo y audio" (no solo "Calidad de video")
-  //   - "Resolución" con descripción larga ("720p (HD)", "1080p (Full HD)", "4K (Ultra HD) + HDR")
-  //   - "Audio espacial" (solo en Premium)
-  //   - "Dispositivos compatibles" con lista completa
-  //   - "Dispositivos simultáneos" como número separado
-  //   - "Descargas" como número separado
-  // También se agrega 'popular: true' para el badge "Más populares" del plan Premium.
   final List<Map<String, dynamic>> _plans = [
     {
-      "id": "basico",
-      "name": "Básico",
-      "price": "S/ 24.90",
-      "quality": "Buena",
-      "resolution": "720p (HD)",
-      "spatialAudio": null, // No incluido en plan básico
-      "devices": "Televisor, ordenador, teléfono móvil, tableta",
-      "simultaneousScreens": "1",
-      "downloads": "1",
-      "popular": false,
-      "gradient": [const Color(0xFF4A90E2), const Color(0xFF9013FE)],
+      'id': 'basico',
+      'name': 'Basico',
+      'price': 'S/ 24.90',
+      'quality': 'Buena',
+      'resolution': '720p HD',
+      'screens': '1 pantalla',
+      'downloads': '1 dispositivo',
+      'badge': 'Entrada',
+      'icon': Icons.phone_android_rounded,
+      'accent': const Color(0xFF00D8FF),
     },
     {
-      "id": "estandar",
-      "name": "Estándar",
-      "price": "S/ 34.90",
-      "quality": "Excelente",
-      "resolution": "1080p (Full HD)",
-      "spatialAudio": null,
-      "devices": "Televisor, ordenador, teléfono móvil, tableta",
-      "simultaneousScreens": "2",
-      "downloads": "2",
-      "popular": false,
-      "gradient": [const Color(0xFF1CB5E0), const Color(0xFF000851)],
+      'id': 'estandar',
+      'name': 'Estandar',
+      'price': 'S/ 34.90',
+      'quality': 'Excelente',
+      'resolution': '1080p Full HD',
+      'screens': '2 pantallas',
+      'downloads': '2 dispositivos',
+      'badge': 'Equilibrado',
+      'icon': Icons.live_tv_rounded,
+      'accent': const Color(0xFF00C853),
     },
     {
-      "id": "premium",
-      "name": "Premium",
-      "price": "S/ 44.90",
-      "quality": "Excepcional",
-      "resolution": "4K (Ultra HD) + HDR",
-      "spatialAudio": "Incluido", // Solo Premium
-      "devices": "Televisor, ordenador, teléfono móvil, tableta",
-      "simultaneousScreens": "4",
-      "downloads": "6",
-      "popular": true, // ✅ Badge "Más populares"
-      "gradient": [const Color(0xFFE50914), const Color(0xFF8E060C)],
+      'id': 'premium',
+      'name': 'Premium',
+      'price': 'S/ 44.90',
+      'quality': 'Excepcional',
+      'resolution': '4K Ultra HD + HDR',
+      'screens': '4 pantallas',
+      'downloads': '6 dispositivos',
+      'badge': 'Mas elegido',
+      'icon': Icons.workspace_premium_rounded,
+      'accent': const Color(0xFFFFC857),
     },
   ];
 
   Future<void> _handleNextStep() async {
-    // ✅ CAMBIO #3: Guardia contra doble ejecución (igual que en PaymentMethodScreen)
     if (_isLoading) return;
 
     setState(() => _isLoading = true);
 
-    final String planId = _plans[_selectedPlanIndex]["id"].toString();
+    final String planId = _plans[_selectedPlanIndex]['id'].toString();
 
     await Future.delayed(const Duration(milliseconds: 300));
 
@@ -97,17 +86,11 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
           userEmail: widget.userEmail,
           userName: widget.userName,
           selectedPlan: planId,
-          // ✅ CAMBIO #4: Pasamos widget.password en lugar de ""
-          // Aunque sea vacío, ahora el flujo es explícito y rastreable.
-          // Si decides agregar contraseña más adelante, ya está conectado.
           password: widget.password,
         ),
       ),
     );
 
-    // ✅ CAMBIO #5: setState después de Navigator.push puede causar problemas
-    // si el widget ya no está montado cuando el usuario regresa.
-    // Se verifica con mounted antes de actualizar estado.
     if (mounted) {
       setState(() => _isLoading = false);
     }
@@ -115,279 +98,226 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final selectedPlan = _plans[_selectedPlanIndex];
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: _planBackground,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: _planBackground,
+        foregroundColor: Colors.white,
         elevation: 0,
-        automaticallyImplyLeading: false,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back_rounded),
           onPressed: _isLoading ? null : () => Navigator.pop(context),
         ),
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Encabezado ──────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Paso 2 de 3",
-                  style: GoogleFonts.geologica(
-                    color: Colors.black54,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                children: [
+                  _StepPill(label: 'Paso 2 de 3'),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Elige como quieres ver MovieWind',
+                    style: GoogleFonts.montserrat(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      height: 1.12,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  "Selecciona el plan ideal para ti",
-                  style: GoogleFonts.montserrat(
-                    color: Colors.black,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
+                  const SizedBox(height: 10),
+                  Text(
+                    'Puedes cambiar el plan cuando quieras desde tu cuenta.',
+                    style: GoogleFonts.geologica(
+                      color: Colors.white.withValues(alpha: 0.64),
+                      fontSize: 14,
+                      height: 1.35,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-              ],
-            ),
-          ),
-
-          // ── Carrusel de tarjetas ─────────────────────────────────────
-          // ✅ CAMBIO #6: Se envuelve en Expanded para que las cards
-          // tengan altura fija y consistente. Antes usaba SingleChildScrollView
-          // en el Column principal, lo que hacía que las cards tuvieran
-          // alturas variables según el contenido, causando el "descuadre".
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: List.generate(
-                  _plans.length,
-                  (index) => _buildPlanCard(index),
-                ),
+                  const SizedBox(height: 22),
+                  for (int i = 0; i < _plans.length; i++) ...[
+                    _PlanOptionCard(
+                      plan: _plans[i],
+                      isSelected: _selectedPlanIndex == i,
+                      onTap: () => setState(() => _selectedPlanIndex = i),
+                    ),
+                    if (i != _plans.length - 1) const SizedBox(height: 12),
+                  ],
+                  const SizedBox(height: 18),
+                  _PlanNote(planName: selectedPlan['name'].toString()),
+                ],
               ),
             ),
-          ),
-
-          // ── Disclaimer + Botón ───────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Column(
-              children: [
-                Text(
-                  "La disponibilidad del contenido depende de tu servicio de internet y de las capacidades de tu dispositivo. Al continuar, configuraremos tu acceso mediante un código enviado a tu email.",
-                  style: GoogleFonts.geologica(
-                    color: Colors.black45,
-                    fontSize: 11,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE50914),
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      elevation: 0,
-                    ),
-                    onPressed: _isLoading ? null : _handleNextStep,
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : Text(
-                            "SIGUIENTE",
-                            style: GoogleFonts.geologica(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
+            _BottomActionBar(
+              isLoading: _isLoading,
+              selectedPlan: selectedPlan,
+              onPressed: _handleNextStep,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+}
 
-  Widget _buildPlanCard(int index) {
-    final bool isSelected = _selectedPlanIndex == index;
-    final plan = _plans[index];
-    final bool isPopular = plan["popular"] == true;
+class _StepPill extends StatelessWidget {
+  final String label;
 
-    return GestureDetector(
-      onTap: () => setState(() => _selectedPlanIndex = index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        // ✅ CAMBIO #7: width fijo para todas las cards (igual que la imagen).
-        // Antes las cards también eran de 280, pero al estar dentro de un
-        // SingleChildScrollView sin altura definida, se "estiraban" de forma
-        // irregular. Ahora con Expanded en el padre, la altura es consistente.
-        width: 280,
-        margin: const EdgeInsets.only(right: 15),
+  const _StepPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? const Color(0xFFE50914) : Colors.grey.shade300,
-            width: isSelected ? 2.5 : 1,
-          ),
-          boxShadow: [
-            if (isSelected)
-              BoxShadow(
-                color: Colors.red.withOpacity(0.12),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              )
-            else
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-          ],
+          color: _planPrimary.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: _planPrimary.withValues(alpha: 0.35)),
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(11),
+        child: Text(
+          label,
+          style: GoogleFonts.geologica(
+            color: _planPrimary,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanOptionCard extends StatelessWidget {
+  final Map<String, dynamic> plan;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _PlanOptionCard({
+    required this.plan,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = plan['accent'] as Color;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isSelected ? _planSurfaceHigh : _planSurface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? accent : Colors.white.withValues(alpha: 0.08),
+              width: isSelected ? 1.6 : 1,
+            ),
+            boxShadow: [
+              if (isSelected)
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.18),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+            ],
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
             children: [
-              // ✅ CAMBIO #8: Badge "Más populares" encima de la card (igual a la imagen)
-              // En el código original no existía este badge.
-              if (isPopular)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  color: const Color(0xFFE50914),
-                  alignment: Alignment.center,
-                  child: Text(
-                    "Más populares",
-                    style: GoogleFonts.geologica(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(7),
                     ),
+                    child: Icon(plan['icon'] as IconData, color: accent),
                   ),
-                ),
-
-              // Header con gradiente
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: List<Color>.from(plan["gradient"]),
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            plan["name"],
-                            style: GoogleFonts.montserrat(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          Text(
-                            // ✅ Mostrar resolución corta en el header (ej: "4K+HDR")
-                            plan["resolution"].toString().split(" ").first,
-                            style: GoogleFonts.geologica(
-                              color: Colors.white.withOpacity(0.85),
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // ✅ CAMBIO #9: El checkmark ahora está en el header (esquina superior derecha)
-                    // igual que en la imagen de referencia, no al pie de la card.
-                    if (isSelected)
-                      Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.check,
-                          color: Color(0xFFE50914),
-                          size: 16,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-
-              // ✅ CAMBIO #10: Cuerpo de la card con scroll interno
-              // Si el contenido es mucho (Premium tiene "Audio espacial" extra),
-              // el scroll evita que una card sea más alta que las otras.
-              Flexible(
-                child: SingleChildScrollView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildDetail("Precio mensual", plan["price"]),
-                        _buildDetail(
-                          "Calidad de vídeo y audio",
-                          plan["quality"],
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                plan['name'].toString(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.montserrat(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            if (plan['badge'] != null)
+                              _SmallBadge(
+                                label: plan['badge'].toString(),
+                                color: accent,
+                              ),
+                          ],
                         ),
-                        _buildDetail("Resolución", plan["resolution"]),
-                        // ✅ CAMBIO #11: Campo "Audio espacial" solo si tiene valor
-                        if (plan["spatialAudio"] != null)
-                          _buildDetail(
-                            "Audio espacial (audio envolvente)",
-                            plan["spatialAudio"],
+                        const SizedBox(height: 4),
+                        Text(
+                          '${plan['price']} al mes',
+                          style: GoogleFonts.geologica(
+                            color: Colors.white.withValues(alpha: 0.68),
+                            fontSize: 13,
                           ),
-                        _buildDetail(
-                          "Dispositivos compatibles",
-                          plan["devices"],
-                        ),
-                        _buildDetail(
-                          "Dispositivos de tu hogar en los que puede verse a la vez",
-                          plan["simultaneousScreens"],
-                        ),
-                        _buildDetail(
-                          "Descargas en dispositivos",
-                          plan["downloads"],
-                          isLast: true,
                         ),
                       ],
                     ),
                   ),
-                ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    child: isSelected
+                        ? Icon(
+                            Icons.check_circle_rounded,
+                            key: const ValueKey('selected'),
+                            color: accent,
+                            size: 26,
+                          )
+                        : Icon(
+                            Icons.radio_button_unchecked_rounded,
+                            key: const ValueKey('unselected'),
+                            color: Colors.white.withValues(alpha: 0.28),
+                            size: 26,
+                          ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _FeatureChip(label: plan['resolution'].toString()),
+                  _FeatureChip(label: plan['screens'].toString()),
+                  _FeatureChip(label: plan['downloads'].toString()),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _PlanMetric(
+                label: 'Calidad de video y audio',
+                value: plan['quality'].toString(),
               ),
             ],
           ),
@@ -395,33 +325,206 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
       ),
     );
   }
+}
 
-  // ✅ CAMBIO #12: Helper _buildDetail rediseñado para coincidir con la imagen.
-  // La imagen muestra: label pequeño en gris arriba, valor en negro negrita abajo,
-  // con un divider tenue entre cada ítem. Esto reemplaza al _buildCardDetail anterior.
-  Widget _buildDetail(String label, String value, {bool isLast = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.geologica(color: Colors.black45, fontSize: 11),
+class _SmallBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _SmallBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
         ),
-        const SizedBox(height: 3),
-        Text(
-          value,
-          style: GoogleFonts.geologica(
-            color: Colors.black87,
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
+      ),
+    );
+  }
+}
+
+class _FeatureChip extends StatelessWidget {
+  final String label;
+
+  const _FeatureChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.78),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanMetric extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _PlanMetric({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.54),
+                fontSize: 12,
+              ),
+            ),
           ),
-        ),
-        if (!isLast) ...[
-          const SizedBox(height: 10),
-          Divider(height: 1, color: Colors.grey.shade200),
-          const SizedBox(height: 10),
+          const SizedBox(width: 10),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
-      ],
+      ),
+    );
+  }
+}
+
+class _PlanNote extends StatelessWidget {
+  final String planName;
+
+  const _PlanNote({required this.planName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _planSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _planSecondary.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            color: _planSecondary,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'El plan $planName se activara despues de confirmar el metodo de pago.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.64),
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BottomActionBar extends StatelessWidget {
+  final bool isLoading;
+  final Map<String, dynamic> selectedPlan;
+  final VoidCallback onPressed;
+
+  const _BottomActionBar({
+    required this.isLoading,
+    required this.selectedPlan,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      decoration: BoxDecoration(
+        color: _planBackground,
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  selectedPlan['name'].toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                selectedPlan['price'].toString(),
+                style: const TextStyle(
+                  color: _planPrimary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: isLoading ? null : onPressed,
+              icon: isLoading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.arrow_forward_rounded),
+              label: Text(isLoading ? 'Preparando...' : 'Continuar'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
