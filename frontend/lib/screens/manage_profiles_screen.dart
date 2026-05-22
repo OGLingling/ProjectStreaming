@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
+import 'data_privacy_screen.dart';
 import 'edit_profile.dart';
 import 'settings/configuracion_reproduccion.dart';
 import 'settings/control_parental.dart';
@@ -192,8 +193,15 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
                     title: 'Configuracion de datos y privacidad',
                     subtitle: 'Administra tu informacion personal',
                     accent: _managePrimary,
-                    onTap: () => _showPendingFeature(
-                      'Configuracion de datos y privacidad',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => DataPrivacyScreen(
+                          name: currentName,
+                          email: _email,
+                          phone: widget.profileData['phone']?.toString(),
+                        ),
+                      ),
                     ),
                   ),
                 ],
