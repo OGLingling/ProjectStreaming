@@ -122,6 +122,38 @@ router.get('/users', async (req, res) => {
 });
 
 // --- GESTIÓN DE CONTENIDOS (CRUD) ---
+router.put('/users/:id/admin', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isAdmin } = req.body;
+
+    if (!id || id === 'null' || id === 'undefined') {
+      return res.status(400).json({ error: 'ID de usuario invalido' });
+    }
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: { isAdmin: Boolean(isAdmin) },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        plan: true,
+        isAdmin: true,
+        createdAt: true
+      }
+    });
+
+    res.json(user);
+  } catch (error) {
+    console.error('Error actualizando rol admin:', error);
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    res.status(500).json({ error: 'Error al actualizar rol admin' });
+  }
+});
+
 router.get('/contents', async (req, res) => {
   try {
     const { page = 1, limit = 20, search = '', type } = req.query;

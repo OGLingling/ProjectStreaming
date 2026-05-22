@@ -121,6 +121,7 @@ model User {
   name       String
   profilePic String? @default("assets/avatars/usuario5.webp")
   plan       PlanType @default(basico)
+  isAdmin    Boolean  @default(false)
   isVerified Boolean  @default(false)
   pin          String?
   pinExpiresAt DateTime?

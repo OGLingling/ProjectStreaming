@@ -96,6 +96,9 @@ exports.getUserByEmail = async (req, res) => {
 exports.register = async (req, res) => {
     const { email, name, password, plan } = req.body;
     if (!email) return res.status(400).json({ error: "Email requerido" });
+    if (!password || String(password).trim().length < 8) {
+        return res.status(400).json({ error: "La contrasena debe tener al menos 8 caracteres" });
+    }
 
     const normalizedEmail = email.toLowerCase().trim();
     let planNormalizado = plan ? plan.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : "basico";
