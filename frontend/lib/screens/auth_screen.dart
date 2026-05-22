@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../services/api_service.dart';
-
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/session_service.dart';
 
 import 'plan_selection_screen.dart';
 
@@ -74,9 +73,7 @@ class _AuthScreenState extends State<AuthScreen> {
         } else {
           // ❌ NO EXISTE: Ir a registro
 
-          final prefs = await SharedPreferences.getInstance();
-
-          await prefs.clear();
+          await SessionService.clearStoredSession();
 
           setState(() {
             _currentStep = AuthStep.registerPassword;
@@ -179,17 +176,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _guardarSesionYNavegar(Map<String, dynamic> userData) async {
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setString('user_id', userData['id'].toString());
-
-    await prefs.setString(
-      'user_email',
-
-      userData['email'] ?? _emailController.text.trim(),
-    );
-
-    await prefs.setBool('is_logged_in', true);
+    await SessionService.startSession(userData);
 
     if (!mounted) return;
 

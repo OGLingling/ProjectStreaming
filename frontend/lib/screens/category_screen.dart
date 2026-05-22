@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/session_service.dart';
 import '../screens/movie_details_screen.dart';
 import '../models/movie_model.dart';
 
@@ -112,16 +112,7 @@ class _CategoryMovieCardState extends State<CategoryMovieCard> {
   bool _isHovered = false;
 
   Future<void> _handleNavigation(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
-
-    final String? sessionValue =
-        prefs.getString('user_name') ??
-        prefs.getString('user') ??
-        prefs.getString('auth_token') ??
-        prefs.getString('token');
-
-    if (sessionValue != null && sessionValue.isNotEmpty) {
+    if (SessionService.hasActiveSession) {
       if (!mounted) return;
       Navigator.push(
         context,

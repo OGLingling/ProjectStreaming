@@ -9,6 +9,7 @@ import 'screens/profiles_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/watchlist_providers.dart'; // 2. Importa tu WatchlistProvider
 import 'providers/settings_provider.dart'; // 3. Importa tu SettingsProvider
+import 'services/session_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +28,8 @@ void main() async {
   } catch (e) {
     debugPrint("Firebase ya estaba inicializado o error: $e");
   }
+
+  await SessionService.clearStoredSession(signOutFirebase: true);
 
   // 3. Envolvemos la App con MultiProvider
   runApp(

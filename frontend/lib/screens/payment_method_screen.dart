@@ -1,10 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/user_model.dart';
 import '../services/api_service.dart';
+import '../services/session_service.dart';
 import 'profiles_screen.dart';
 
 const Color _paymentBackground = Color(0xFF07110F);
@@ -65,17 +65,17 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
 
       await ApiService.sendOTP(widget.userEmail.trim());
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('user_id', dbUserId);
-      await prefs.setString('firebase_uid', firebaseUid);
-      await prefs.setBool('is_logged_in', true);
-
       final User nuevoUsuario = User(
         id: dbUserId,
         name: widget.userName,
         email: widget.userEmail,
         plan: widget.selectedPlan,
       );
+
+      await SessionService.startSession({
+        ...nuevoUsuario.toJson(),
+        'firebase_uid': firebaseUid,
+      });
 
       if (!mounted) return;
 

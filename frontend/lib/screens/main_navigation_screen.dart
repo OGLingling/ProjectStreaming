@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../services/session_service.dart';
 import 'movies_screen.dart';
 import 'peliculas_screen.dart';
 import 'series_screen.dart';
@@ -288,8 +289,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               _dropdownItem(
                 null,
                 "Cerrar sesión en MovieWind",
-                () {
-                  Navigator.pushReplacementNamed(context, '/auth');
+                () async {
+                  await SessionService.endSession();
+                  if (!mounted) return;
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/auth',
+                    (route) => false,
+                  );
                 },
                 isBold: true,
                 isCentered: true,
