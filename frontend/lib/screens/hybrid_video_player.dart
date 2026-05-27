@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:http/http.dart' as http;
 
 /// Un reproductor de video híbrido inteligente en Flutter.
 /// Si la URL es de tipo HLS (.m3u8), utiliza video_player y chewie nativo.
@@ -10,6 +11,8 @@ class HybridVideoPlayer extends StatefulWidget {
   final String videoUrl;
   final String title;
   final Map<String, String>? headers;
+  final bool showSubtitles;
+  final Color subtitleColor;
   final void Function(InAppWebViewController)? onWebViewCreated;
   final void Function(InAppWebViewController, WebUri?)? onLoadStart;
   final void Function(InAppWebViewController, WebUri?)? onLoadStop;
@@ -33,6 +36,8 @@ class HybridVideoPlayer extends StatefulWidget {
     required this.videoUrl,
     required this.title,
     this.headers,
+    this.showSubtitles = true,
+    this.subtitleColor = Colors.white,
     this.onWebViewCreated,
     this.onLoadStart,
     this.onLoadStop,
@@ -118,6 +123,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
       _videoPlayerController!.addListener(_handleNativePlaybackState);
 
       await _videoPlayerController!.initialize();
+      await _loadNativeCaptions(uri);
 
       _chewieController = ChewieController(
         videoPlayerController: _videoPlayerController!,
@@ -188,6 +194,89 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
       }
       widget.onNativePlaybackFailed?.call();
     }
+  }
+
+  Future<void> _loadNativeCaptions(Uri videoUri) async {
+    if (!widget.showSubtitles) {
+      await _videoPlayerController?.setClosedCaptionFile(null);
+      return;
+    }
+
+    final subtitleUri = await _findSubtitleUri(videoUri);
+    if (subtitleUri == null) return;
+
+    try {
+      final response = await http
+          .get(subtitleUri, headers: widget.headers ?? {})
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) return;
+
+      final body = response.body;
+      final path = subtitleUri.path.toLowerCase();
+      final ClosedCaptionFile captionFile = path.endsWith('.srt')
+          ? SubRipCaptionFile(body)
+          : WebVTTCaptionFile(body);
+
+      await _videoPlayerController?.setClosedCaptionFile(
+        Future<ClosedCaptionFile>.value(captionFile),
+      );
+    } catch (_) {
+      // Some HLS providers expose subtitle tracks that are not reachable directly.
+    }
+  }
+
+  Future<Uri?> _findSubtitleUri(Uri videoUri) async {
+    try {
+      final response = await http
+          .get(videoUri, headers: widget.headers ?? {})
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+
+      final mediaLines = response.body
+          .split('\n')
+          .map((line) => line.trim())
+          .where(
+            (line) =>
+                line.startsWith('#EXT-X-MEDIA') &&
+                line.toUpperCase().contains('TYPE=SUBTITLES'),
+          )
+          .toList();
+
+      if (mediaLines.isEmpty) return null;
+
+      mediaLines.sort(
+        (a, b) => _subtitleLineScore(b).compareTo(_subtitleLineScore(a)),
+      );
+
+      final uriValue = _readHlsAttribute(mediaLines.first, 'URI');
+      if (uriValue == null || uriValue.isEmpty) return null;
+
+      return videoUri.resolve(uriValue);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int _subtitleLineScore(String line) {
+    final lower = line.toLowerCase();
+    var score = 0;
+    if (lower.contains('default=yes')) score += 4;
+    if (lower.contains('forced=no')) score += 2;
+    if (lower.contains('language="es"') ||
+        lower.contains('language=es') ||
+        lower.contains('spanish') ||
+        lower.contains('espanol') ||
+        lower.contains('español')) {
+      score += 8;
+    }
+    return score;
+  }
+
+  String? _readHlsAttribute(String line, String key) {
+    final match = RegExp('(?:^|,)$key=(?:"([^"]*)"|([^,]*))').firstMatch(line);
+    return match?.group(1) ?? match?.group(2);
   }
 
   void _handleNativePlaybackState() {
@@ -277,7 +366,13 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
         return Center(
           child: AspectRatio(
             aspectRatio: 16 / 9,
-            child: Chewie(controller: _chewieController!),
+            child: Stack(
+              alignment: Alignment.bottomCenter,
+              children: [
+                Chewie(controller: _chewieController!),
+                if (widget.showSubtitles) _buildNativeCaptionOverlay(),
+              ],
+            ),
           ),
         );
       }
@@ -354,5 +449,59 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
         },
       );
     }
+  }
+
+  Widget _buildNativeCaptionOverlay() {
+    final controller = _videoPlayerController;
+    if (controller == null) return const SizedBox.shrink();
+
+    return Positioned(
+      left: 16,
+      right: 16,
+      bottom: 48,
+      child: IgnorePointer(
+        child: ValueListenableBuilder<VideoPlayerValue>(
+          valueListenable: controller,
+          builder: (context, value, child) {
+            final text = value.caption.text.trim();
+            if (text.isEmpty) return const SizedBox.shrink();
+
+            return Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.72),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
+                  child: Text(
+                    text,
+                    textAlign: TextAlign.center,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: widget.subtitleColor,
+                      fontSize: 16,
+                      height: 1.2,
+                      fontWeight: FontWeight.w700,
+                      shadows: const [
+                        Shadow(
+                          blurRadius: 3,
+                          color: Colors.black,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 }

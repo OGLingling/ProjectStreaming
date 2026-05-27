@@ -23,7 +23,7 @@ class SettingsProvider extends ChangeNotifier {
 
   // Helper para enviar a la DB (formato '#FFFFFF')
   String get subtitleColorHex {
-    return '#${_subtitleColor.value.toRadixString(16).substring(2).toUpperCase()}';
+    return '#${_subtitleColor.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
   }
 
   SettingsProvider() {

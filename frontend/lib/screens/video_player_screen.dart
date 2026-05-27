@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
 import 'hybrid_video_player.dart';
 
@@ -101,9 +103,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         final path = isTv
             ? '/embed/tv/$tmdbId/${widget.season}/${widget.episode}'
             : '/embed/movie/$tmdbId';
-        return Uri.https('vidrock.net', path, {
+        return Uri.https('vidsrc.wiki', path, {
           'autoplay': '1',
           'color': '00d46a',
+          'sub': 'es',
         }).toString();
     }
   }
@@ -464,6 +467,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final playbackUrl = _playbackUrl;
+    final settings = context.watch<SettingsProvider>();
 
     return PopScope(
       canPop: true,
@@ -481,6 +485,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     videoUrl: playbackUrl,
                     title: widget.title,
                     headers: _headersForUrl(playbackUrl),
+                    showSubtitles: settings.showSubtitles,
+                    subtitleColor: settings.subtitleColor,
                     onNativePlaybackFailed: _fallbackToEmbeddedPlayer,
                     onNativeUrlFound: _promoteToNativeStream,
                     onWebViewCreated: (controller) {
