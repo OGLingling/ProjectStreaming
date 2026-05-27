@@ -50,7 +50,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   int _lastProgressSeconds = 0;
   int? _lastDurationSeconds;
   String? _nativeStreamUrl;
-  bool _isResolvingNativeStream = true;
+  bool _isResolvingNativeStream = false;
   bool _usingNativeStream = false;
   int _nativeResolveToken = 0;
 
@@ -354,7 +354,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     setState(() {
       _isResolvingNativeStream = true;
-      _isLoading = true;
       _loadError = null;
     });
 
@@ -370,13 +369,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (!mounted || token != _nativeResolveToken) return;
 
       if (streamUrl != null && streamUrl.isNotEmpty) {
-        setState(() {
-          _nativeStreamUrl = streamUrl;
-          _usingNativeStream = true;
-          _isResolvingNativeStream = false;
-          _isLoading = false;
-          _loadError = null;
-        });
+        _promoteToNativeStream(streamUrl);
         return;
       }
     } catch (error) {
@@ -388,7 +381,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _nativeStreamUrl = null;
       _usingNativeStream = false;
       _isResolvingNativeStream = false;
-      _isLoading = _currentEmbedUrl.isNotEmpty;
+      _loadError = null;
+    });
+  }
+
+  void _promoteToNativeStream(String url) {
+    if (!mounted || !_isDirectPlayableUrl(url)) return;
+    if (_usingNativeStream && _nativeStreamUrl == url) return;
+
+    setState(() {
+      _nativeStreamUrl = url;
+      _usingNativeStream = true;
+      _isResolvingNativeStream = false;
+      _isLoading = false;
       _loadError = null;
     });
   }
@@ -470,13 +475,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onPointerDown: (_) => _revealControls(),
             child: Stack(
               children: [
-                if (!_isResolvingNativeStream && playbackUrl.isNotEmpty)
+                if (playbackUrl.isNotEmpty)
                   HybridVideoPlayer(
                     key: ValueKey(playbackUrl),
                     videoUrl: playbackUrl,
                     title: widget.title,
                     headers: _headersForUrl(playbackUrl),
                     onNativePlaybackFailed: _fallbackToEmbeddedPlayer,
+                    onNativeUrlFound: _promoteToNativeStream,
                     onWebViewCreated: (controller) {
                       _webViewController = controller;
                     },
@@ -509,7 +515,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       });
                     },
                   )
-                else if (!_isResolvingNativeStream)
+                else
                   const Center(
                     child: Text(
                       'Contenido no disponible',
@@ -597,7 +603,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     ),
                   ),
                 ),
-                if (_isLoading || _isResolvingNativeStream)
+                if (_isLoading)
                   const Center(
                     child: CircularProgressIndicator(color: Color(0xFF00D46A)),
                   ),

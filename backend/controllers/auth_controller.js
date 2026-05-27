@@ -1,5 +1,12 @@
 const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcrypt');
 const prisma = new PrismaClient();
+
+function withoutPassword(user) {
+    if (!user) return user;
+    const { password, ...safeUser } = user;
+    return safeUser;
+}
 
 // --- FUNCIÓN PRIVADA: ENVÍO DE EMAIL VÍA BREVO ---
 async function sendEmail(to, subject, htmlContent) {
@@ -68,7 +75,7 @@ exports.verifyOtp = async (req, res) => {
                 where: { email: normalizedEmail },
                 data: { pin: null, pinExpiresAt: null, isVerified: true }
             });
-            res.json(updatedUser);
+            res.json(withoutPassword(updatedUser));
         } else {
             res.status(401).json({ error: "Codigo incorrecto o expirado" });
         }
@@ -86,7 +93,7 @@ exports.getUserByEmail = async (req, res) => {
         const user = await prisma.user.findUnique({ 
             where: { email: String(email).toLowerCase().trim() } 
         });
-        res.json(user || null);
+        res.json(withoutPassword(user) || null);
     } catch (error) {
         res.status(500).json({ error: "Error al buscar usuario" });
     }
@@ -104,14 +111,15 @@ exports.register = async (req, res) => {
     let planNormalizado = plan ? plan.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : "basico";
 
     try {
+        const hashedPassword = await bcrypt.hash(String(password).trim(), 10);
         const user = await prisma.user.upsert({
             where: { email: normalizedEmail },
-            update: { name, plan: planNormalizado },
-            create: { email: normalizedEmail, name, password: password || "123456", plan: planNormalizado, isVerified: true }
+            update: { name, password: hashedPassword, plan: planNormalizado },
+            create: { email: normalizedEmail, name, password: hashedPassword, plan: planNormalizado, isVerified: true }
         });
 
         await sendEmail(normalizedEmail, "Bienvenido a MovieWind!", `<h2>Bienvenido, ${name}!</h2>`);
-        res.status(201).json(user);
+        res.status(201).json(withoutPassword(user));
     } catch (error) {
         res.status(500).json({ error: "Error en registro" });
     }
@@ -142,7 +150,7 @@ exports.updateUser = async (req, res) => {
         });
 
         console.log("Usuario actualizado correctamente:", userUpdated.id);
-        res.json(userUpdated);
+        res.json(withoutPassword(userUpdated));
 
     } catch (error) {
         console.error("Error detallado en el servidor:", error.message);

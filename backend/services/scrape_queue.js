@@ -5,6 +5,7 @@
 const { PrismaClient } = require('@prisma/client');
 const VideoScraper = require('./scraper_service');
 const { validateM3u8Url } = require('./stream_validator');
+const ContentService = require('./content_service');
 
 const prisma = new PrismaClient();
 
@@ -177,6 +178,7 @@ async function processJob(job) {
 
         } else {
           // ── Película: guarda en Content.videoUrl ───────────────────────────
+          await ContentService.importFromTMDB(tmdbId, 'movie');
           await prisma.content.update({
             where: { tmdbId },
             data: {

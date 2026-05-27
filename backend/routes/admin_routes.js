@@ -198,6 +198,27 @@ router.post('/contents', async (req, res) => {
 
     if (!tmdbId) return res.status(400).json({ error: 'tmdbId requerido' });
 
+    const imported = await ContentService.importFromTMDB(tmdbId, type || 'movie');
+    if (!imported.success) {
+      return res.status(502).json({ error: imported.error || 'No se pudo consultar TMDB' });
+    }
+
+    const overrides = {};
+    if (title !== undefined) overrides.title = title;
+    if (description !== undefined) overrides.description = description;
+    if (imageUrl !== undefined) overrides.imageUrl = imageUrl;
+    if (backdropUrl !== undefined) overrides.backdropUrl = backdropUrl;
+
+    if (Object.keys(overrides).length > 0) {
+      const content = await prisma.content.update({
+        where: { tmdbId: String(tmdbId) },
+        data: overrides
+      });
+      return res.json(content);
+    }
+
+    return res.json(imported.data);
+
     const content = await prisma.content.upsert({
       where: { tmdbId },
       update: { title, description, imageUrl, backdropUrl },

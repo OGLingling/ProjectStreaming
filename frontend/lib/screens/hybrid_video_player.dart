@@ -26,6 +26,7 @@ class HybridVideoPlayer extends StatefulWidget {
   )?
   onReceivedHttpError;
   final VoidCallback? onNativePlaybackFailed;
+  final ValueChanged<String>? onNativeUrlFound;
 
   const HybridVideoPlayer({
     super.key,
@@ -38,6 +39,7 @@ class HybridVideoPlayer extends StatefulWidget {
     this.onReceivedError,
     this.onReceivedHttpError,
     this.onNativePlaybackFailed,
+    this.onNativeUrlFound,
   });
 
   @override
@@ -51,6 +53,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   bool _isInitializing = true;
   String? _initError;
   bool _nativeErrorReported = false;
+  bool _nativeUrlReported = false;
 
   // Lógica de adblock / hosts bloqueados idéntica a la original
   static const String _desktopUserAgent =
@@ -85,6 +88,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
     _isInitializing = true;
     _initError = null;
     _nativeErrorReported = false;
+    _nativeUrlReported = false;
     _checkUrlAndInitialize();
   }
 
@@ -205,6 +209,20 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
     return _blockedHostHints.any(lower.contains);
   }
 
+  bool _isPlayableUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('.m3u8') ||
+        lower.contains('.mp4') ||
+        lower.contains('googlevideo.com/videoplayback') ||
+        lower.contains('application/x-mpegurl');
+  }
+
+  void _reportNativeUrl(String url) {
+    if (_nativeUrlReported || _isHls || !_isPlayableUrl(url)) return;
+    _nativeUrlReported = true;
+    widget.onNativeUrlFound?.call(url);
+  }
+
   /// Gestión de Memoria: Liberar recursos de los controladores
   @override
   void dispose() {
@@ -297,6 +315,8 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
           supportZoom: false,
           transparentBackground: false,
           useShouldOverrideUrlLoading: true,
+          useShouldInterceptRequest: true,
+          useOnLoadResource: true,
           supportMultipleWindows: true,
           mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
           thirdPartyCookiesEnabled: true,
@@ -306,6 +326,9 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
         onWebViewCreated: widget.onWebViewCreated,
         onLoadStart: widget.onLoadStart,
         onLoadStop: widget.onLoadStop,
+        onLoadResource: (controller, resource) {
+          _reportNativeUrl(resource.url.toString());
+        },
         onReceivedError: widget.onReceivedError,
         onReceivedHttpError: widget.onReceivedHttpError,
         onPermissionRequest: (controller, request) async {
@@ -317,8 +340,13 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
         onCreateWindow: (controller, request) async {
           return false;
         },
+        shouldInterceptRequest: (controller, request) async {
+          _reportNativeUrl(request.url.toString());
+          return null;
+        },
         shouldOverrideUrlLoading: (controller, action) async {
           final url = action.request.url?.toString() ?? '';
+          _reportNativeUrl(url);
           if (_isBlockedNavigation(url)) {
             return NavigationActionPolicy.CANCEL;
           }

@@ -18,13 +18,35 @@ class ApiService {
     'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
   };
 
+  static const Set<String> _invalidStringValues = {
+    'null',
+    'undefined',
+    'none',
+    'nan',
+  };
+
+  static String? _cleanString(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    if (text.isEmpty || _invalidStringValues.contains(text.toLowerCase())) {
+      return null;
+    }
+    return text;
+  }
+
+  static String? _cleanId(dynamic value) {
+    final text = _cleanString(value);
+    if (text == null) return null;
+    return text;
+  }
+
   static Uri _apiUri(String path, [Map<String, String?> query = const {}]) {
     final cleanPath = path.startsWith('/') ? path.substring(1) : path;
     return Uri.parse('$baseUrl/$cleanPath').replace(
       queryParameters: {
         for (final entry in query.entries)
-          if (entry.value != null && entry.value!.trim().isNotEmpty)
-            entry.key: entry.value!.trim(),
+          if (_cleanString(entry.value) != null)
+            entry.key: _cleanString(entry.value)!,
       },
     );
   }
@@ -46,8 +68,11 @@ class ApiService {
 
   static Future<List<dynamic>> getViewingProgress(String userId) async {
     try {
+      final cleanUserId = _cleanId(userId);
+      if (cleanUserId == null) return [];
+
       final response = await http
-          .get(_apiUri('viewing-progress', {'userId': userId}))
+          .get(_apiUri('viewing-progress', {'userId': cleanUserId}))
           .timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 200) {
@@ -70,15 +95,20 @@ class ApiService {
     bool completed = false,
   }) async {
     try {
+      final cleanUserId = _cleanId(userId);
+      final cleanTmdbId = _cleanId(tmdbId);
+      if (cleanUserId == null || (contentId == null && cleanTmdbId == null)) {
+        return;
+      }
+
       await http
           .post(
             _apiUri('viewing-progress'),
             headers: _jsonHeaders,
             body: jsonEncode({
-              'userId': userId,
+              'userId': cleanUserId,
               if (contentId != null && contentId > 0) 'contentId': contentId,
-              if (tmdbId != null && tmdbId.trim().isNotEmpty)
-                'tmdbId': tmdbId.trim(),
+              'tmdbId': ?cleanTmdbId,
               'seasonNumber': seasonNumber,
               'episodeNumber': episodeNumber,
               'progressSeconds': progressSeconds,
@@ -101,15 +131,20 @@ class ApiService {
     required int episodeNumber,
   }) async {
     try {
+      final cleanUserId = _cleanId(userId);
+      final cleanTmdbId = _cleanId(tmdbId);
+      if (cleanUserId == null || (contentId == null && cleanTmdbId == null)) {
+        return;
+      }
+
       await http
           .post(
             _apiUri('viewing-progress/complete'),
             headers: _jsonHeaders,
             body: jsonEncode({
-              'userId': userId,
+              'userId': cleanUserId,
               if (contentId != null && contentId > 0) 'contentId': contentId,
-              if (tmdbId != null && tmdbId.trim().isNotEmpty)
-                'tmdbId': tmdbId.trim(),
+              'tmdbId': ?cleanTmdbId,
               'seasonNumber': seasonNumber,
               'episodeNumber': episodeNumber,
             }),
@@ -215,9 +250,12 @@ class ApiService {
     Map<String, dynamic> data,
   ) async {
     try {
+      final cleanUserId = _cleanId(userId);
+      if (cleanUserId == null) return false;
+
       final response = await http
           .put(
-            _apiUri('auth/users/$userId'),
+            _apiUri('auth/users/$cleanUserId'),
             headers: _jsonHeaders,
             body: jsonEncode(data),
           )
@@ -232,8 +270,11 @@ class ApiService {
 
   static Future<bool> deleteUser(String userId) async {
     try {
+      final cleanUserId = _cleanId(userId);
+      if (cleanUserId == null) return false;
+
       final response = await http
-          .delete(_apiUri('auth/users/$userId'), headers: _jsonHeaders)
+          .delete(_apiUri('auth/users/$cleanUserId'), headers: _jsonHeaders)
           .timeout(const Duration(seconds: 15));
 
       return response.statusCode == 200;
@@ -254,8 +295,8 @@ class ApiService {
       final response = await http
           .get(
             _apiUri('extract', {
-              'tmdbId': tmdbId,
-              'url': url,
+              'tmdbId': _cleanId(tmdbId),
+              'url': _cleanString(url),
               'type': type,
               'season': season?.toString(),
               'episode': episode?.toString(),
