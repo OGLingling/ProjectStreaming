@@ -13,8 +13,8 @@ class HybridVideoPlayer extends StatefulWidget {
   final void Function(InAppWebViewController)? onWebViewCreated;
   final void Function(InAppWebViewController, WebUri?)? onLoadStart;
   final void Function(InAppWebViewController, WebUri?)? onLoadStop;
-  final void Function(InAppWebViewController, URLRequest, WebResourceError)? onReceivedError;
-  final void Function(InAppWebViewController, URLRequest, WebResourceResponse)? onReceivedHttpError;
+  final void Function(InAppWebViewController, WebResourceRequest, WebResourceError)? onReceivedError;
+  final void Function(InAppWebViewController, WebResourceRequest, WebResourceResponse)? onReceivedHttpError;
 
   const HybridVideoPlayer({
     super.key,
