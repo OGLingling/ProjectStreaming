@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../services/api_service.dart';
+import 'hybrid_video_player.dart';
 
 enum EmbedProvider { embed, vidSrcVip }
 
@@ -129,6 +130,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _enterPlaybackMode();
     _scheduleControlsHide();
     _startProgressTracking();
+    
+    // Si la URL es un flujo HLS nativo (.m3u8), no mostramos el spinner inicial del WebView
+    if (_currentEmbedUrl.toLowerCase().contains('.m3u8')) {
+      _isLoading = false;
+    }
   }
 
   @override
@@ -268,6 +274,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
 
     final url = _currentEmbedUrl;
+    if (url.toLowerCase().contains('.m3u8')) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
     if (url.isNotEmpty) {
       await _webViewController?.loadUrl(
         urlRequest: URLRequest(url: WebUri(url), headers: _mobileHeaders),
@@ -350,28 +361,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             child: Stack(
               children: [
                 if (embedUrl.isNotEmpty)
-                  InAppWebView(
-                    key: ValueKey(embedUrl),
-                    initialUrlRequest: URLRequest(
-                      url: WebUri(embedUrl),
-                      headers: _mobileHeaders,
-                    ),
-                    initialSettings: InAppWebViewSettings(
-                      javaScriptEnabled: true,
-                      javaScriptCanOpenWindowsAutomatically: true,
-                      mediaPlaybackRequiresUserGesture: false,
-                      allowsInlineMediaPlayback: true,
-                      iframeAllowFullscreen: true,
-                      supportZoom: false,
-                      transparentBackground: false,
-                      useShouldOverrideUrlLoading: true,
-                      supportMultipleWindows: true,
-                      mixedContentMode:
-                          MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-                      thirdPartyCookiesEnabled: true,
-                      domStorageEnabled: true,
-                      userAgent: _desktopUserAgent,
-                    ),
+                  HybridVideoPlayer(
+                    videoUrl: embedUrl,
+                    title: widget.title,
+                    headers: _mobileHeaders,
                     onWebViewCreated: (controller) {
                       _webViewController = controller;
                     },
@@ -402,22 +395,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         _isLoading = false;
                         _loadError = 'HTTP ${response.statusCode}';
                       });
-                    },
-                    onPermissionRequest: (controller, request) async {
-                      return PermissionResponse(
-                        resources: request.resources,
-                        action: PermissionResponseAction.GRANT,
-                      );
-                    },
-                    onCreateWindow: (controller, request) async {
-                      return false;
-                    },
-                    shouldOverrideUrlLoading: (controller, action) async {
-                      final url = action.request.url?.toString() ?? '';
-                      if (_isBlockedNavigation(url)) {
-                        return NavigationActionPolicy.CANCEL;
-                      }
-                      return NavigationActionPolicy.ALLOW;
                     },
                   )
                 else
