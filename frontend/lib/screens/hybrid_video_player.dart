@@ -13,8 +13,19 @@ class HybridVideoPlayer extends StatefulWidget {
   final void Function(InAppWebViewController)? onWebViewCreated;
   final void Function(InAppWebViewController, WebUri?)? onLoadStart;
   final void Function(InAppWebViewController, WebUri?)? onLoadStop;
-  final void Function(InAppWebViewController, WebResourceRequest, WebResourceError)? onReceivedError;
-  final void Function(InAppWebViewController, WebResourceRequest, WebResourceResponse)? onReceivedHttpError;
+  final void Function(
+    InAppWebViewController,
+    WebResourceRequest,
+    WebResourceError,
+  )?
+  onReceivedError;
+  final void Function(
+    InAppWebViewController,
+    WebResourceRequest,
+    WebResourceResponse,
+  )?
+  onReceivedHttpError;
+  final VoidCallback? onNativePlaybackFailed;
 
   const HybridVideoPlayer({
     super.key,
@@ -26,6 +37,7 @@ class HybridVideoPlayer extends StatefulWidget {
     this.onLoadStop,
     this.onReceivedError,
     this.onReceivedHttpError,
+    this.onNativePlaybackFailed,
   });
 
   @override
@@ -38,6 +50,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   bool _isHls = false;
   bool _isInitializing = true;
   String? _initError;
+  bool _nativeErrorReported = false;
 
   // Lógica de adblock / hosts bloqueados idéntica a la original
   static const String _desktopUserAgent =
@@ -60,6 +73,18 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   @override
   void initState() {
     super.initState();
+    _checkUrlAndInitialize();
+  }
+
+  @override
+  void didUpdateWidget(covariant HybridVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videoUrl == widget.videoUrl) return;
+
+    _disposeNativeControllers();
+    _isInitializing = true;
+    _initError = null;
+    _nativeErrorReported = false;
     _checkUrlAndInitialize();
   }
 
@@ -86,6 +111,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
         uri,
         httpHeaders: widget.headers ?? {},
       );
+      _videoPlayerController!.addListener(_handleNativePlaybackState);
 
       await _videoPlayerController!.initialize();
 
@@ -117,11 +143,19 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.redAccent, size: 42),
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.redAccent,
+                    size: 42,
+                  ),
                   const SizedBox(height: 12),
                   const Text(
                     'Error de Reproducción HLS',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -148,7 +182,20 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
           _isInitializing = false;
         });
       }
+      widget.onNativePlaybackFailed?.call();
     }
+  }
+
+  void _handleNativePlaybackState() {
+    final controller = _videoPlayerController;
+    if (controller == null ||
+        _nativeErrorReported ||
+        !controller.value.hasError) {
+      return;
+    }
+
+    _nativeErrorReported = true;
+    widget.onNativePlaybackFailed?.call();
   }
 
   /// Limpieza de adblock / hosts de navegación
@@ -161,9 +208,16 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   /// Gestión de Memoria: Liberar recursos de los controladores
   @override
   void dispose() {
-    _videoPlayerController?.dispose();
-    _chewieController?.dispose();
+    _disposeNativeControllers();
     super.dispose();
+  }
+
+  void _disposeNativeControllers() {
+    _videoPlayerController?.removeListener(_handleNativePlaybackState);
+    _chewieController?.dispose();
+    _videoPlayerController?.dispose();
+    _chewieController = null;
+    _videoPlayerController = null;
   }
 
   @override
@@ -172,9 +226,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
       // --- RENDERIZACIÓN NATIVA (HLS / .m3u8) ---
       if (_isInitializing) {
         return const Center(
-          child: CircularProgressIndicator(
-            color: Color(0xFF00D46A),
-          ),
+          child: CircularProgressIndicator(color: Color(0xFF00D46A)),
         );
       }
 
@@ -185,7 +237,11 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+                const Icon(
+                  Icons.error_outline,
+                  color: Colors.redAccent,
+                  size: 48,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'No se pudo cargar el stream HLS:\n$_initError',
@@ -198,7 +254,8 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
         );
       }
 
-      if (_chewieController != null && _videoPlayerController!.value.isInitialized) {
+      if (_chewieController != null &&
+          _videoPlayerController!.value.isInitialized) {
         return Center(
           child: AspectRatio(
             aspectRatio: 16 / 9,
@@ -216,12 +273,14 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
     } else {
       // --- RENDERIZACIÓN WEBVIEW DE FALLBACK (TuWidgetActualDeWebView) ---
       final origin = Uri.tryParse(widget.videoUrl)?.origin ?? '';
-      final headers = widget.headers ?? {
-        'User-Agent': _desktopUserAgent,
-        'Referer': '$origin/',
-        'Origin': origin,
-        'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
-      };
+      final headers =
+          widget.headers ??
+          {
+            'User-Agent': _desktopUserAgent,
+            'Referer': '$origin/',
+            'Origin': origin,
+            'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
+          };
 
       return InAppWebView(
         key: ValueKey(widget.videoUrl),

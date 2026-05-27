@@ -49,31 +49,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late DateTime _playbackStartedAt;
   int _lastProgressSeconds = 0;
   int? _lastDurationSeconds;
+  String? _nativeStreamUrl;
+  bool _isResolvingNativeStream = true;
+  bool _usingNativeStream = false;
+  int _nativeResolveToken = 0;
 
   static const String _desktopUserAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-
-  static const List<String> _blockedHostHints = [
-    'doubleclick',
-    'googlesyndication',
-    'google-analytics',
-    'adservice',
-    'adsterra',
-    'popads',
-    'propeller',
-    'taboola',
-    'onclick',
-    'exoclick',
-    'trafficjunky',
-  ];
 
   String get _normalizedMediaType {
     final type = widget.type.toLowerCase();
     return type.contains('serie') || type.contains('tv') ? 'tv' : 'movie';
   }
 
-  Map<String, String> get _mobileHeaders {
-    final uri = Uri.tryParse(_currentEmbedUrl);
+  Map<String, String> _headersForUrl(String url) {
+    final lower = url.toLowerCase();
+    if (_isDirectPlayableUrl(lower)) {
+      return {
+        'User-Agent': _desktopUserAgent,
+        'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
+      };
+    }
+
+    final uri = Uri.tryParse(url);
     final origin = uri?.origin ?? 'https://embed.streammafia.to';
 
     return {
@@ -83,6 +81,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
     };
   }
+
+  Map<String, String> get _mobileHeaders => _headersForUrl(_playbackUrl);
 
   String get _currentEmbedUrl {
     final tmdbId = widget.tmdbId?.trim();
@@ -108,6 +108,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  String get _playbackUrl {
+    final nativeUrl = _nativeStreamUrl;
+    if (_usingNativeStream && nativeUrl != null && nativeUrl.isNotEmpty) {
+      return nativeUrl;
+    }
+    return _currentEmbedUrl;
+  }
+
+  String get _playbackLabel {
+    return _usingNativeStream ? 'Player propio' : _providerName;
+  }
+
   String get _providerName {
     switch (_provider) {
       case EmbedProvider.embed:
@@ -117,10 +129,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  bool _isBlockedNavigation(String url) {
+  bool _isDirectPlayableUrl(String url) {
     final lower = url.toLowerCase();
-    if (lower == 'about:blank') return true;
-    return _blockedHostHints.any(lower.contains);
+    return lower.contains('.m3u8') ||
+        lower.contains('.mp4') ||
+        lower.contains('googlevideo.com/videoplayback');
   }
 
   @override
@@ -130,11 +143,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _enterPlaybackMode();
     _scheduleControlsHide();
     _startProgressTracking();
-    
-    // Si la URL es un flujo HLS nativo (.m3u8), no mostramos el spinner inicial del WebView
-    if (_currentEmbedUrl.toLowerCase().contains('.m3u8')) {
-      _isLoading = false;
-    }
+    unawaited(_resolveNativeStream());
   }
 
   @override
@@ -265,10 +274,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _reloadProvider(EmbedProvider provider) async {
-    if (_provider == provider) return;
+    if (_provider == provider &&
+        !_usingNativeStream &&
+        !_isResolvingNativeStream) {
+      return;
+    }
+    _nativeResolveToken++;
     _revealControls();
     setState(() {
       _provider = provider;
+      _usingNativeStream = false;
+      _isResolvingNativeStream = false;
       _isLoading = true;
       _loadError = null;
     });
@@ -288,11 +304,105 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _reloadCurrent() async {
     _revealControls();
+    if (_usingNativeStream) {
+      _nativeResolveToken++;
+      setState(() {
+        _nativeStreamUrl = null;
+        _usingNativeStream = false;
+        _isLoading = true;
+        _loadError = null;
+      });
+      unawaited(_resolveNativeStream());
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _loadError = null;
     });
     await _webViewController?.reload();
+  }
+
+  Future<void> _resolveNativeStream() async {
+    final token = ++_nativeResolveToken;
+    final directUrl = widget.directUrl?.trim();
+
+    if (directUrl != null &&
+        directUrl.isNotEmpty &&
+        _isDirectPlayableUrl(directUrl)) {
+      if (!mounted || token != _nativeResolveToken) return;
+      setState(() {
+        _nativeStreamUrl = directUrl;
+        _usingNativeStream = true;
+        _isResolvingNativeStream = false;
+        _isLoading = false;
+        _loadError = null;
+      });
+      return;
+    }
+
+    final tmdbId = widget.tmdbId?.trim();
+    if (tmdbId == null || tmdbId.isEmpty) {
+      if (!mounted || token != _nativeResolveToken) return;
+      setState(() {
+        _usingNativeStream = false;
+        _isResolvingNativeStream = false;
+        _isLoading = _currentEmbedUrl.isNotEmpty;
+      });
+      return;
+    }
+
+    setState(() {
+      _isResolvingNativeStream = true;
+      _isLoading = true;
+      _loadError = null;
+    });
+
+    try {
+      final streamUrl = await ApiService.getValidStreamUrl(
+        tmdbId: tmdbId,
+        url: directUrl,
+        type: _normalizedMediaType,
+        season: widget.season,
+        episode: widget.episode,
+      ).timeout(const Duration(seconds: 35));
+
+      if (!mounted || token != _nativeResolveToken) return;
+
+      if (streamUrl != null && streamUrl.isNotEmpty) {
+        setState(() {
+          _nativeStreamUrl = streamUrl;
+          _usingNativeStream = true;
+          _isResolvingNativeStream = false;
+          _isLoading = false;
+          _loadError = null;
+        });
+        return;
+      }
+    } catch (error) {
+      debugPrint('Native stream resolution failed: $error');
+    }
+
+    if (!mounted || token != _nativeResolveToken) return;
+    setState(() {
+      _nativeStreamUrl = null;
+      _usingNativeStream = false;
+      _isResolvingNativeStream = false;
+      _isLoading = _currentEmbedUrl.isNotEmpty;
+      _loadError = null;
+    });
+  }
+
+  void _fallbackToEmbeddedPlayer() {
+    if (!_usingNativeStream || !mounted) return;
+    _nativeResolveToken++;
+    setState(() {
+      _nativeStreamUrl = null;
+      _usingNativeStream = false;
+      _isResolvingNativeStream = false;
+      _isLoading = _currentEmbedUrl.isNotEmpty;
+      _loadError = null;
+    });
   }
 
   void _scheduleControlsHide() {
@@ -348,7 +458,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final embedUrl = _currentEmbedUrl;
+    final playbackUrl = _playbackUrl;
 
     return PopScope(
       canPop: true,
@@ -360,11 +470,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onPointerDown: (_) => _revealControls(),
             child: Stack(
               children: [
-                if (embedUrl.isNotEmpty)
+                if (!_isResolvingNativeStream && playbackUrl.isNotEmpty)
                   HybridVideoPlayer(
-                    videoUrl: embedUrl,
+                    key: ValueKey(playbackUrl),
+                    videoUrl: playbackUrl,
                     title: widget.title,
-                    headers: _mobileHeaders,
+                    headers: _headersForUrl(playbackUrl),
+                    onNativePlaybackFailed: _fallbackToEmbeddedPlayer,
                     onWebViewCreated: (controller) {
                       _webViewController = controller;
                     },
@@ -397,7 +509,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       });
                     },
                   )
-                else
+                else if (!_isResolvingNativeStream)
                   const Center(
                     child: Text(
                       'Contenido no disponible',
@@ -439,7 +551,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  '${widget.title} - $_providerName',
+                                  '${widget.title} - $_playbackLabel',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
@@ -485,7 +597,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     ),
                   ),
                 ),
-                if (_isLoading)
+                if (_isLoading || _isResolvingNativeStream)
                   const Center(
                     child: CircularProgressIndicator(color: Color(0xFF00D46A)),
                   ),
