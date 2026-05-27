@@ -676,6 +676,24 @@ async function extractWithBrowser(embedUrl) {
 
 // ─── CLASE PRINCIPAL ──────────────────────────────────────────────────────────
 class VideoScraper {
+  static clearCache(source) {
+    try {
+      const n = this.normalizeRequest(source);
+      if (n.scenario === 'invalid') return;
+      
+      const cacheKey = n.scenario === 'url'
+        ? `stream-url-${n.url}`
+        : `stream-${n.type}-${n.tmdbId}-${n.season}-${n.episode}`;
+        
+      if (cache.has(cacheKey)) {
+        cache.delete(cacheKey);
+        console.log(`[scraper] 🧹 Cache del scraper limpiado para la clave: ${cacheKey}`);
+      }
+    } catch (e) {
+      console.error(`[scraper] Error al intentar limpiar el caché: ${e.message}`);
+    }
+  }
+
   static normalizeMediaType(value) {
     const raw = String(value || '').toLowerCase();
     return raw.includes('tv') || raw.includes('serie') ? 'tv' : 'movie';
