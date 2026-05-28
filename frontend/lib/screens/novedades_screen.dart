@@ -134,6 +134,7 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
             ? (firstEpisode?['subtitleLabel'] as String?)
             : movie.subtitleLabel) ??
         'Espanol Latino';
+    final contentType = isTv ? movie.type : 'movie';
 
     Navigator.push(
       context,
@@ -143,7 +144,7 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
           contentId: movie.id,
           userId: widget.user?['id']?.toString(),
           title: movie.title,
-          type: movie.type,
+          type: contentType,
           season: season,
           episode: episode,
           subtitleUrl: subtitleUrl,
