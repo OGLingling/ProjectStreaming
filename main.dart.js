@@ -8597,14 +8597,15 @@ this.c=c},
 aJR:function aJR(a){this.a=a},
 aJS:function aJS(a,b){this.a=a
 this.b=b},
-aJT:function aJT(a,b,c,d,e,f,g){var _=this
+aJT:function aJT(a,b,c,d,e,f,g,h){var _=this
 _.a=a
 _.b=b
 _.c=c
 _.d=d
 _.e=e
 _.f=f
-_.r=g},
+_.r=g
+_.w=h},
 aJG:function aJG(a){this.a=a},
 aJH:function aJH(a,b){this.a=a
 this.b=b},
@@ -53052,30 +53053,31 @@ ZJ(a){var s,r=this.c
 r.toString
 s=A.e5(new A.aJS(this,a),null,t.z)
 A.bA(r,!1).dl(s)},
-a_9(a){var s,r,q,p,o,n=this,m=null,l={},k=a.b,j=k==null?m:B.c.aS(k)
-if(j==null||j.length===0){n.ZK("ID de TMDB no disponible para reproducir.")
-return}s=n.Z0(a)
-l.a=l.b=1
-if(s){r=n.at9(a)
-if(r==null){n.ZK(u.x)
-return}k=r.h(0,"season")
-k.toString
-l.b=A.cL(k)
-k=r.h(0,"episode")
-k.toString
-l.a=A.cL(k)}else r=m
-if(s)q=A.aA(r==null?m:r.h(0,"subtitleUrl"))
+a_9(a){var s,r,q,p,o,n,m=this,l=null,k={},j=a.b,i=j==null?l:B.c.aS(j)
+if(i==null||i.length===0){m.ZK("ID de TMDB no disponible para reproducir.")
+return}s=m.Z0(a)
+k.a=k.b=1
+if(s){r=m.at9(a)
+if(r==null){m.ZK(u.x)
+return}j=r.h(0,"season")
+j.toString
+k.b=A.cL(j)
+j=r.h(0,"episode")
+j.toString
+k.a=A.cL(j)}else r=l
+if(s)q=A.aA(r==null?l:r.h(0,"subtitleUrl"))
 else q=a.Q
-if(s){k=A.aA(r==null?m:r.h(0,"subtitleLanguage"))
-p=k}else{k=a.as
-p=k}if(p==null)p="es-419"
-if(s){k=A.aA(r==null?m:r.h(0,"subtitleLabel"))
-o=k}else{k=a.at
-o=k}if(o==null)o="Espanol Latino"
-k=n.c
-k.toString
-l=A.e5(new A.aJT(l,n,j,a,q,p,o),m,t.z)
-A.bA(k,!1).dl(l)},
+if(s){j=A.aA(r==null?l:r.h(0,"subtitleLanguage"))
+p=j}else{j=a.as
+p=j}if(p==null)p="es-419"
+if(s){j=A.aA(r==null?l:r.h(0,"subtitleLabel"))
+o=j}else{j=a.at
+o=j}if(o==null)o="Espanol Latino"
+n=s?a.z:"movie"
+j=m.c
+j.toString
+k=A.e5(new A.aJT(k,m,i,a,n,q,p,o),l,t.z)
+A.bA(j,!1).dl(k)},
 Z0(a){var s=a.z.toLowerCase()
 return B.c.n(s,"tv")||B.c.n(s,"serie")},
 ZK(a){var s,r,q,p=null,o=this.c
@@ -53165,7 +53167,7 @@ $1(a){var s,r,q=this,p=q.d,o=q.b.a.c.h(0,"id")
 o=o==null?null:J.aP(o)
 s=q.a
 r=s.b
-return A.aVg(p.a,null,s.a,r,q.r,q.f,q.e,p.c,q.c,p.z,o)},
+return A.aVg(p.a,null,s.a,r,q.w,q.r,q.f,p.c,q.c,q.e,o)},
 $S:120}
 A.aJG.prototype={
 $3(a,b,c){var s=this.a,r=s.RG
