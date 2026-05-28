@@ -52,8 +52,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   int _lastProgressSeconds = 0;
   int? _lastDurationSeconds;
   String? _nativeStreamUrl;
-  bool _isResolvingNativeStream = false;
+  bool _isResolvingNativeStream = true;
   bool _usingNativeStream = false;
+  bool _nativeModeRequested = true;
   int _nativeResolveToken = 0;
 
   static const String _desktopUserAgent =
@@ -116,11 +117,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (_usingNativeStream && nativeUrl != null && nativeUrl.isNotEmpty) {
       return nativeUrl;
     }
+    if (_nativeModeRequested && _isResolvingNativeStream) {
+      return '';
+    }
     return _currentEmbedUrl;
   }
 
   String get _playbackLabel {
-    return _usingNativeStream ? 'Player propio' : _providerName;
+    return _usingNativeStream || _nativeModeRequested
+        ? 'Nativo'
+        : _providerName;
   }
 
   String get _providerName {
@@ -287,6 +293,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() {
       _provider = provider;
       _usingNativeStream = false;
+      _nativeModeRequested = false;
       _isResolvingNativeStream = false;
       _isLoading = true;
       _loadError = null;
@@ -308,14 +315,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _reloadCurrent() async {
     _revealControls();
     if (_usingNativeStream) {
-      _nativeResolveToken++;
-      setState(() {
-        _nativeStreamUrl = null;
-        _usingNativeStream = false;
-        _isLoading = true;
-        _loadError = null;
-      });
-      unawaited(_resolveNativeStream());
+      _reloadNativePlayer();
       return;
     }
 
@@ -324,6 +324,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _loadError = null;
     });
     await _webViewController?.reload();
+  }
+
+  void _reloadNativePlayer() {
+    _nativeResolveToken++;
+    _revealControls();
+    setState(() {
+      _nativeStreamUrl = null;
+      _usingNativeStream = false;
+      _nativeModeRequested = true;
+      _isResolvingNativeStream = true;
+      _isLoading = true;
+      _loadError = null;
+    });
+    unawaited(_resolveNativeStream());
   }
 
   Future<void> _resolveNativeStream() async {
@@ -337,6 +351,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       setState(() {
         _nativeStreamUrl = directUrl;
         _usingNativeStream = true;
+        _nativeModeRequested = true;
         _isResolvingNativeStream = false;
         _isLoading = false;
         _loadError = null;
@@ -348,6 +363,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (tmdbId == null || tmdbId.isEmpty) {
       if (!mounted || token != _nativeResolveToken) return;
       setState(() {
+        _nativeModeRequested = false;
         _usingNativeStream = false;
         _isResolvingNativeStream = false;
         _isLoading = _currentEmbedUrl.isNotEmpty;
@@ -356,7 +372,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     setState(() {
+      _nativeModeRequested = true;
       _isResolvingNativeStream = true;
+      _isLoading = true;
       _loadError = null;
     });
 
@@ -383,7 +401,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() {
       _nativeStreamUrl = null;
       _usingNativeStream = false;
+      _nativeModeRequested = false;
       _isResolvingNativeStream = false;
+      _isLoading = _currentEmbedUrl.isNotEmpty;
       _loadError = null;
     });
   }
@@ -395,6 +415,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() {
       _nativeStreamUrl = url;
       _usingNativeStream = true;
+      _nativeModeRequested = true;
       _isResolvingNativeStream = false;
       _isLoading = false;
       _loadError = null;
@@ -407,6 +428,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() {
       _nativeStreamUrl = null;
       _usingNativeStream = false;
+      _nativeModeRequested = false;
       _isResolvingNativeStream = false;
       _isLoading = _currentEmbedUrl.isNotEmpty;
       _loadError = null;
@@ -448,8 +470,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  Widget _buildNativeButton() {
+    final selected = _nativeModeRequested || _usingNativeStream;
+
+    return TextButton(
+      onPressed: _reloadNativePlayer,
+      style: TextButton.styleFrom(
+        foregroundColor: selected ? Colors.black : Colors.white,
+        backgroundColor: selected ? const Color(0xFF00D46A) : Colors.white12,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      ),
+      child: const Text(
+        'Nativo',
+        style: TextStyle(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+
   Widget _buildProviderButton(EmbedProvider provider) {
-    final selected = _provider == provider;
+    final selected = !_nativeModeRequested && _provider == provider;
     final label = provider == EmbedProvider.embed ? 'Embed' : 'VidSrc VIP';
 
     return TextButton(
@@ -522,11 +562,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     },
                   )
                 else
-                  const Center(
-                    child: Text(
-                      'Contenido no disponible',
-                      style: TextStyle(color: Colors.white),
-                    ),
+                  Center(
+                    child: _isResolvingNativeStream
+                        ? const CircularProgressIndicator(
+                            color: Color(0xFF00D46A),
+                          )
+                        : const Text(
+                            'Contenido no disponible',
+                            style: TextStyle(color: Colors.white),
+                          ),
                   ),
                 Positioned(
                   top: 10,
@@ -573,6 +617,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                   ),
                                 ),
                               ),
+                              const SizedBox(width: 8),
+                              _buildNativeButton(),
                               const SizedBox(width: 8),
                               _buildProviderButton(EmbedProvider.embed),
                               const SizedBox(width: 8),

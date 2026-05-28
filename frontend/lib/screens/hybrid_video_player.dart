@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
@@ -5,7 +7,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:http/http.dart' as http;
 
 /// Un reproductor de video híbrido inteligente en Flutter.
-/// Si la URL es de tipo HLS (.m3u8), utiliza video_player y chewie nativo.
+/// Si la URL es un stream directo, utiliza video_player y chewie nativo.
 /// Si no, actúa como fallback y renderiza la lógica del WebView embebido actual.
 class HybridVideoPlayer extends StatefulWidget {
   final String videoUrl;
@@ -54,7 +56,7 @@ class HybridVideoPlayer extends StatefulWidget {
 class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
-  bool _isHls = false;
+  bool _usesNativePlayer = false;
   bool _isInitializing = true;
   String? _initError;
   bool _nativeErrorReported = false;
@@ -87,7 +89,14 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   @override
   void didUpdateWidget(covariant HybridVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.videoUrl == widget.videoUrl) return;
+    if (oldWidget.videoUrl == widget.videoUrl) {
+      if (_usesNativePlayer &&
+          _videoPlayerController?.value.isInitialized == true &&
+          oldWidget.showSubtitles != widget.showSubtitles) {
+        _loadNativeCaptions(Uri.parse(widget.videoUrl.trim()));
+      }
+      return;
+    }
 
     _disposeNativeControllers();
     _isInitializing = true;
@@ -98,13 +107,13 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   }
 
   /// Fase de decisión (Smart Router):
-  /// Evalúa si la URL es un archivo .m3u8 (HLS).
+  /// Evalúa si la URL es un stream directo reproducible.
   void _checkUrlAndInitialize() {
     final lowerUrl = widget.videoUrl.toLowerCase();
-    _isHls = lowerUrl.contains('.m3u8');
+    _usesNativePlayer = _isNativePlayableUrl(lowerUrl);
 
-    if (_isHls) {
-      _initializeNativo();
+    if (_usesNativePlayer) {
+      _initializeNative();
     } else {
       setState(() {
         _isInitializing = false;
@@ -113,7 +122,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   }
 
   /// Inicialización del reproductor nativo (video_player + chewie)
-  Future<void> _initializeNativo() async {
+  Future<void> _initializeNative() async {
     try {
       final uri = Uri.parse(widget.videoUrl.trim());
       _videoPlayerController = VideoPlayerController.networkUrl(
@@ -160,7 +169,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'Error de Reproducción HLS',
+                    'Error de Reproducción Nativa',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -199,6 +208,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   Future<void> _loadNativeCaptions(Uri videoUri) async {
     if (!widget.showSubtitles) {
       await _videoPlayerController?.setClosedCaptionFile(null);
+      if (mounted) setState(() {});
       return;
     }
 
@@ -212,7 +222,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
 
       if (response.statusCode < 200 || response.statusCode >= 300) return;
 
-      final body = response.body;
+      final body = utf8.decode(response.bodyBytes, allowMalformed: true);
       final path = subtitleUri.path.toLowerCase();
       final ClosedCaptionFile captionFile = path.endsWith('.srt')
           ? SubRipCaptionFile(body)
@@ -221,6 +231,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
       await _videoPlayerController?.setClosedCaptionFile(
         Future<ClosedCaptionFile>.value(captionFile),
       );
+      if (mounted) setState(() {});
     } catch (_) {
       // Some HLS providers expose subtitle tracks that are not reachable directly.
     }
@@ -234,7 +245,8 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
 
       if (response.statusCode < 200 || response.statusCode >= 300) return null;
 
-      final mediaLines = response.body
+      final manifest = utf8.decode(response.bodyBytes, allowMalformed: true);
+      final mediaLines = manifest
           .split('\n')
           .map((line) => line.trim())
           .where(
@@ -266,7 +278,15 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
     if (lower.contains('forced=no')) score += 2;
     if (lower.contains('language="es"') ||
         lower.contains('language=es') ||
+        lower.contains('language="spa"') ||
+        lower.contains('language=spa') ||
+        lower.contains('language="es-es"') ||
+        lower.contains('language=es-es') ||
+        lower.contains('language="es-419"') ||
+        lower.contains('language=es-419') ||
         lower.contains('spanish') ||
+        lower.contains('castellano') ||
+        lower.contains('latino') ||
         lower.contains('espanol') ||
         lower.contains('español')) {
       score += 8;
@@ -299,6 +319,10 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   }
 
   bool _isPlayableUrl(String url) {
+    return _isNativePlayableUrl(url);
+  }
+
+  bool _isNativePlayableUrl(String url) {
     final lower = url.toLowerCase();
     return lower.contains('.m3u8') ||
         lower.contains('.mp4') ||
@@ -307,7 +331,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   }
 
   void _reportNativeUrl(String url) {
-    if (_nativeUrlReported || _isHls || !_isPlayableUrl(url)) return;
+    if (_nativeUrlReported || _usesNativePlayer || !_isPlayableUrl(url)) return;
     _nativeUrlReported = true;
     widget.onNativeUrlFound?.call(url);
   }
@@ -329,8 +353,8 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isHls) {
-      // --- RENDERIZACIÓN NATIVA (HLS / .m3u8) ---
+    if (_usesNativePlayer) {
+      // --- RENDERIZACIÓN NATIVA (HLS / MP4 / streams directos) ---
       if (_isInitializing) {
         return const Center(
           child: CircularProgressIndicator(color: Color(0xFF00D46A)),
@@ -351,7 +375,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'No se pudo cargar el stream HLS:\n$_initError',
+                  'No se pudo cargar el stream nativo:\n$_initError',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
