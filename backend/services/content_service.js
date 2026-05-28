@@ -1,6 +1,11 @@
 const { PrismaClient } = require('@prisma/client');
+const fs = require('fs');
+const path = require('path');
 const TMDBApi = require('./tmdb_api_service');
 const prisma = new PrismaClient();
+
+const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
+const TMDB_DATASET_DIR = process.env.TMDB_DATASET_DIR || 'C:\\Users\\Usuario\\Desktop\\tmdb_dataset';
 
 const SERIES_EPISODE_OVERRIDES = {
   '37854': [1160], // One Piece
@@ -16,6 +21,116 @@ const SERIES_EPISODE_OVERRIDES = {
 const SERIES_SEASON_TITLE_OVERRIDES = {
   '37854': ['Episodios'], // One Piece no se muestra dividido por temporadas
 };
+
+function readJsonFile(filePath) {
+  if (!fs.existsSync(filePath)) return [];
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn(`[content-service] No se pudo leer dataset ${filePath}:`, error.message);
+    return [];
+  }
+}
+
+function parseJsonArray(value) {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function imageUrl(imagePath) {
+  return imagePath ? `${TMDB_IMAGE_BASE_URL}${imagePath}` : null;
+}
+
+function loadDatasetMovies() {
+  const moviesPath = path.join(TMDB_DATASET_DIR, 'movies.json');
+  const creditsPath = path.join(TMDB_DATASET_DIR, 'credits.json');
+  const movies = readJsonFile(moviesPath);
+  const credits = readJsonFile(creditsPath);
+  const creditsByMovieId = new Map(
+    credits
+      .filter((credit) => credit.movie_id != null)
+      .map((credit) => [String(credit.movie_id), credit])
+  );
+
+  return movies
+    .filter((movie) => movie.id != null)
+    .map((movie) => ({
+      ...movie,
+      credits: creditsByMovieId.get(String(movie.id)) || null,
+    }));
+}
+
+function datasetMovieData(movie) {
+  const category = parseJsonArray(movie.genres)
+    .map((genre) => genre?.name)
+    .filter(Boolean)
+    .join(', ');
+
+  return {
+    tmdbId: String(movie.id),
+    title: movie.title || movie.original_title || 'Sin titulo',
+    description: movie.overview || null,
+    releaseDate: movie.release_date || null,
+    imageUrl: imageUrl(movie.poster_path),
+    backdropUrl: imageUrl(movie.backdrop_path),
+    trailerUrl: null,
+    type: 'movie',
+    category: category || null,
+    rating: Number(movie.vote_average) || 0,
+  };
+}
+
+function datasetMovieUpdateData(movie) {
+  const data = datasetMovieData(movie);
+
+  return {
+    title: data.title,
+    description: data.description,
+    releaseDate: data.releaseDate,
+    type: data.type,
+    category: data.category,
+    rating: data.rating,
+    ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
+    ...(data.backdropUrl ? { backdropUrl: data.backdropUrl } : {}),
+  };
+}
+
+function hasMissingImages(content) {
+  return !content.imageUrl || !content.backdropUrl;
+}
+
+function imageUpdatePayload(metadata) {
+  const payload = {};
+  if (metadata?.imageUrl) payload.imageUrl = metadata.imageUrl;
+  if (metadata?.backdropUrl) payload.backdropUrl = metadata.backdropUrl;
+  return payload;
+}
+
+async function fetchImageMetadata(tmdbId, type = 'movie') {
+  const normalizedType = type === 'tv' ? 'tv' : 'movie';
+
+  try {
+    const apiResult = await TMDBApi.getFullMetadata(tmdbId, normalizedType);
+    if (apiResult.success && (apiResult.data?.imageUrl || apiResult.data?.backdropUrl)) {
+      return {
+        imageUrl: apiResult.data.imageUrl || null,
+        backdropUrl: apiResult.data.backdropUrl || null,
+      };
+    }
+  } catch (error) {
+    console.warn(`[content-service] TMDB API no devolvio imagenes para ${normalizedType}/${tmdbId}:`, error.message);
+  }
+
+  return null;
+}
 
 async function syncSeasonEpisodes(seasonId, episodes) {
   const validEpisodeNumbers = episodes
@@ -275,6 +390,97 @@ class ContentService {
     } catch (error) {
       return { success: false, error: error.message };
     }
+  }
+
+  async importMoviesFromDataset({ limit } = {}) {
+    const datasetMovies = loadDatasetMovies();
+    const moviesToImport = Number.isInteger(limit) && limit > 0
+      ? datasetMovies.slice(0, limit)
+      : datasetMovies;
+    let imported = 0;
+
+    for (const movie of moviesToImport) {
+      const data = datasetMovieData(movie);
+
+      if (!data.imageUrl || !data.backdropUrl) {
+        const metadata = await fetchImageMetadata(data.tmdbId, 'movie');
+        const imagePayload = imageUpdatePayload(metadata);
+        data.imageUrl = data.imageUrl || imagePayload.imageUrl || null;
+        data.backdropUrl = data.backdropUrl || imagePayload.backdropUrl || null;
+      }
+
+      await prisma.content.upsert({
+        where: { tmdbId: data.tmdbId },
+        update: {
+          ...datasetMovieUpdateData(movie),
+          ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
+          ...(data.backdropUrl ? { backdropUrl: data.backdropUrl } : {}),
+        },
+        create: data,
+      });
+
+      imported++;
+    }
+
+    console.log(`[content-service] Dataset de peliculas sincronizado: ${imported}/${datasetMovies.length}`);
+    return { success: true, imported, total: datasetMovies.length };
+  }
+
+  async enrichMissingImages({ limit, type } = {}) {
+    const normalizedType = type === 'tv' ? 'tv' : type === 'movie' ? 'movie' : undefined;
+    const where = {
+      tmdbId: { not: null },
+      OR: [
+        { imageUrl: null },
+        { imageUrl: '' },
+        { backdropUrl: null },
+        { backdropUrl: '' },
+      ],
+      ...(normalizedType ? { type: normalizedType } : {}),
+    };
+
+    const contents = await prisma.content.findMany({
+      where,
+      take: Number.isInteger(limit) && limit > 0 ? limit : undefined,
+      orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        tmdbId: true,
+        type: true,
+        title: true,
+        imageUrl: true,
+        backdropUrl: true,
+      },
+    });
+    let updated = 0;
+    let skipped = 0;
+
+    for (const content of contents) {
+      if (!hasMissingImages(content)) {
+        skipped++;
+        continue;
+      }
+
+      const metadata = await fetchImageMetadata(content.tmdbId, content.type);
+      const payload = imageUpdatePayload(metadata);
+
+      if (Object.keys(payload).length === 0) {
+        skipped++;
+        continue;
+      }
+
+      await prisma.content.update({
+        where: { id: content.id },
+        data: {
+          ...(!content.imageUrl && payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+          ...(!content.backdropUrl && payload.backdropUrl ? { backdropUrl: payload.backdropUrl } : {}),
+        },
+      });
+      updated++;
+      console.log(`[content-service] Imagenes actualizadas: ${content.title} (${content.type}/${content.tmdbId})`);
+    }
+
+    return { success: true, scanned: contents.length, updated, skipped };
   }
 
   async getAllContent() {

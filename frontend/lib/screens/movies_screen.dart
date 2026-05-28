@@ -39,7 +39,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
   Future<void> _loadData() async {
     try {
       final userId = widget.user?['id']?.toString();
-      final response = await http.get(Uri.parse(apiBaseUrl));
+      final response = await http.get(Uri.parse('$apiBaseUrl?limit=260'));
       final progressFuture = userId == null || userId.isEmpty
           ? Future<List<dynamic>>.value([])
           : ApiService.getViewingProgress(userId);
@@ -58,7 +58,9 @@ class _MoviesScreenState extends State<MoviesScreen> {
               series = allContent.sublist(allContent.length ~/ 2);
             }
 
-            topRatedMovies = List.from(allContent);
+            topRatedMovies = allContent
+                .where((m) => (m.backdropUrl ?? m.imageUrl ?? '').isNotEmpty)
+                .toList();
             topRatedMovies.sort((a, b) => b.rating.compareTo(a.rating));
             topRatedMovies = topRatedMovies.take(5).toList();
             continueWatching = progressData
@@ -147,8 +149,14 @@ class _MoviesScreenState extends State<MoviesScreen> {
                   Image.network(
                     isMobile
                         ? (movie.imageUrl ?? '')
-                        : (movie.backdropUrl ?? ''),
+                        : (movie.backdropUrl ?? movie.imageUrl ?? ''),
                     fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      color: Colors.black,
+                      child: const Center(
+                        child: Icon(Icons.movie, color: Colors.white24),
+                      ),
+                    ),
                   ),
 
                   // Gradiente dinámico
@@ -626,6 +634,12 @@ class _MovieCardState extends State<MovieCard> {
                     ),
                   );
                 },
+                errorBuilder: (context, error, stackTrace) => Container(
+                  color: Colors.white10,
+                  child: const Center(
+                    child: Icon(Icons.movie, color: Colors.white24),
+                  ),
+                ),
               ),
             ),
           ),

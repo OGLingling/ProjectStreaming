@@ -45,10 +45,10 @@ class _SeriesScreenState extends State<SeriesScreen> {
               )
               .toList();
 
-          topRatedSeries = List.from(seriesList);
-          topRatedSeries.sort(
-            (a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0),
-          );
+          topRatedSeries = seriesList
+              .where((m) => (m.backdropUrl ?? m.imageUrl ?? '').isNotEmpty)
+              .toList();
+          topRatedSeries.sort((a, b) => b.rating.compareTo(a.rating));
           topRatedSeries = topRatedSeries.take(5).toList();
 
           isLoading = false;
@@ -162,7 +162,7 @@ class _SeriesScreenState extends State<SeriesScreen> {
                   Icon(Icons.stars, color: colorScheme.secondary, size: 20),
                   const SizedBox(width: 5),
                   Text(
-                    "${series.rating ?? 0.0} | Top Serie",
+                    "${series.rating} | Top Serie",
                     style: const TextStyle(
                       color: Colors.white70,
                       fontWeight: FontWeight.w600,

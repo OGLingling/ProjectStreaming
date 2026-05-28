@@ -1,4 +1,6 @@
 import axios from 'axios'
+import * as fs from 'fs'
+import * as path from 'path'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
@@ -6,6 +8,7 @@ const prisma = new PrismaClient()
 const TMDB_API_KEY = process.env.TMDB_API_KEY || 'd8a00b94f5c00821e497b569fec9a61f'
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3'
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original'
+const TMDB_DATASET_DIR = process.env.TMDB_DATASET_DIR || 'C:\\Users\\Usuario\\Desktop\\tmdb_dataset'
 
 const seriesTmdbIds = [
   '209867', // Frieren: Beyond Journey's End
@@ -86,8 +89,114 @@ type TmdbSeasonDetails = {
   episodes?: TmdbEpisode[]
 }
 
+type DatasetMovie = {
+  id?: string | number
+  title?: string
+  original_title?: string
+  overview?: string
+  release_date?: string
+  genres?: string
+  vote_average?: string | number
+  poster_path?: string | null
+  backdrop_path?: string | null
+}
+
+type DatasetCredit = {
+  movie_id?: string | number
+  cast?: string
+}
+
 function imageUrl(path?: string | null) {
   return path ? `${TMDB_IMAGE_BASE_URL}${path}` : null
+}
+
+function readJsonFile<T>(filePath: string): T[] {
+  if (!fs.existsSync(filePath)) return []
+
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8')
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch (error) {
+    console.warn(`No se pudo leer dataset ${filePath}:`, (error as Error).message)
+    return []
+  }
+}
+
+function parseJsonArray(value?: string) {
+  if (!value) return []
+
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch (_) {
+    return []
+  }
+}
+
+function loadDatasetMovies() {
+  const moviesPath = path.join(TMDB_DATASET_DIR, 'movies.json')
+  const creditsPath = path.join(TMDB_DATASET_DIR, 'credits.json')
+  const movies = readJsonFile<DatasetMovie>(moviesPath)
+  const credits = readJsonFile<DatasetCredit>(creditsPath)
+  const creditsByMovieId = new Map(
+    credits
+      .filter((credit) => credit.movie_id != null)
+      .map((credit) => [String(credit.movie_id), credit]),
+  )
+
+  return movies
+    .filter((movie) => movie.id != null)
+    .map((movie) => ({
+      ...movie,
+      credits: creditsByMovieId.get(String(movie.id)) || null,
+    }))
+}
+
+function datasetMovieData(movie: DatasetMovie & { credits?: DatasetCredit | null }) {
+  const genres = parseJsonArray(movie.genres)
+    .map((genre) => genre?.name)
+    .filter(Boolean)
+    .join(', ')
+
+  return {
+    tmdbId: String(movie.id),
+    title: movie.title || movie.original_title || 'Sin titulo',
+    description: movie.overview || null,
+    releaseDate: movie.release_date || null,
+    imageUrl: imageUrl(movie.poster_path),
+    backdropUrl: imageUrl(movie.backdrop_path),
+    trailerUrl: null,
+    type: 'movie',
+    category: genres || null,
+    rating: Number(movie.vote_average) || 0,
+  }
+}
+
+function datasetMovieUpdateData(movie: DatasetMovie & { credits?: DatasetCredit | null }) {
+  const data = datasetMovieData(movie)
+
+  return {
+    title: data.title,
+    description: data.description,
+    releaseDate: data.releaseDate,
+    type: data.type,
+    category: data.category,
+    rating: data.rating,
+    ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
+    ...(data.backdropUrl ? { backdropUrl: data.backdropUrl } : {}),
+  }
+}
+
+function mergeImageData<T extends { imageUrl?: string | null; backdropUrl?: string | null }>(
+  data: T,
+  metadata: TmdbDetails | null,
+) {
+  return {
+    ...data,
+    imageUrl: data.imageUrl || imageUrl(metadata?.poster_path),
+    backdropUrl: data.backdropUrl || imageUrl(metadata?.backdrop_path),
+  }
 }
 
 async function tmdbGet<T>(path: string, params: Record<string, string> = {}) {
@@ -106,6 +215,15 @@ async function fetchContentDetails(tmdbId: string, type: 'movie' | 'tv') {
   return tmdbGet<TmdbDetails>(`/${type}/${tmdbId}`, {
     append_to_response: 'videos',
   })
+}
+
+async function fetchContentImages(tmdbId: string, type: 'movie' | 'tv') {
+  try {
+    return await tmdbGet<TmdbDetails>(`/${type}/${tmdbId}`)
+  } catch (error) {
+    console.warn(`No se pudieron consultar imagenes TMDB ${type}/${tmdbId}:`, (error as Error).message)
+    return null
+  }
 }
 
 async function fetchSeasonDetails(tmdbId: string, seasonNumber: number) {
@@ -177,8 +295,20 @@ async function createMovie(tmdbId: string) {
     (video) => video.site === 'YouTube' && video.type === 'Trailer',
   ) || data.videos?.results?.find((video) => video.site === 'YouTube')
 
-  await prisma.content.create({
-    data: {
+  await prisma.content.upsert({
+    where: { tmdbId: String(data.id) },
+    update: {
+      title: data.title || data.name || data.original_name || 'Sin titulo',
+      description: data.overview || null,
+      releaseDate: data.release_date || data.first_air_date || null,
+      imageUrl: imageUrl(data.poster_path),
+      backdropUrl: imageUrl(data.backdrop_path),
+      trailerUrl: trailer?.key ? `https://www.youtube.com/watch?v=${trailer.key}` : null,
+      type: 'movie',
+      category: data.genres?.map((genre) => genre.name).join(', ') || null,
+      rating: data.vote_average || 0,
+    },
+    create: {
       tmdbId: String(data.id),
       title: data.title || data.name || data.original_name || 'Sin titulo',
       description: data.overview || null,
@@ -194,6 +324,16 @@ async function createMovie(tmdbId: string) {
 }
 
 async function createSeries(tmdbId: string) {
+  const existing = await prisma.content.findUnique({
+    where: { tmdbId },
+    select: { id: true, title: true },
+  })
+
+  if (existing) {
+    console.log(`Serie TMDB ${tmdbId} ya existe (${existing.title}); se conserva.`)
+    return
+  }
+
   const data = await fetchContentDetails(tmdbId, 'tv')
   const seasons = data.seasons || []
   const availableSeasons = seasons.filter((season) => (season.episode_count || 0) > 0)
@@ -245,11 +385,36 @@ async function createSeries(tmdbId: string) {
   })
 }
 
+async function createDatasetMovies() {
+  const datasetMovies = loadDatasetMovies()
+  let imported = 0
+
+  for (const movie of datasetMovies) {
+    const localData = datasetMovieData(movie)
+    const tmdbImages = (!localData.imageUrl || !localData.backdropUrl)
+      ? await fetchContentImages(localData.tmdbId, 'movie')
+      : null
+    const data = mergeImageData(localData, tmdbImages)
+
+    await prisma.content.upsert({
+      where: { tmdbId: data.tmdbId },
+      update: {
+        ...datasetMovieUpdateData(movie),
+        ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
+        ...(data.backdropUrl ? { backdropUrl: data.backdropUrl } : {}),
+      },
+      create: data,
+    })
+
+    imported++
+  }
+
+  console.log(`Peliculas del dataset sincronizadas: ${imported}.`)
+}
+
 async function main() {
-  console.log('--- Iniciando limpieza total ---')
-  await prisma.watchlist.deleteMany()
-  await prisma.content.deleteMany()
-  console.log('Base de datos limpiada.')
+  console.log('--- Iniciando seed incremental ---')
+  console.log('No se eliminaran contenidos existentes.')
 
   console.log('--- Insertando series desde TMDB ---')
   for (const tmdbId of seriesTmdbIds) {
@@ -262,6 +427,9 @@ async function main() {
     await createMovie(tmdbId)
     console.log(`Pelicula TMDB ${tmdbId} sincronizada.`)
   }
+
+  console.log('--- Insertando peliculas desde dataset local ---')
+  await createDatasetMovies()
 
   console.log('--- SEED FINALIZADO CON EXITO ---')
 }

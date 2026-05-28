@@ -40,10 +40,10 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
               .where((m) => m.type.toLowerCase() == 'movie')
               .toList();
 
-          topRatedMovies = List.from(moviesList);
-          topRatedMovies.sort(
-            (a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0),
-          );
+          topRatedMovies = moviesList
+              .where((m) => (m.backdropUrl ?? m.imageUrl ?? '').isNotEmpty)
+              .toList();
+          topRatedMovies.sort((a, b) => b.rating.compareTo(a.rating));
           topRatedMovies = topRatedMovies.take(5).toList();
 
           isLoading = false;
@@ -159,7 +159,7 @@ class _PeliculasScreenState extends State<PeliculasScreen> {
                         ),
                         const SizedBox(width: 5),
                         Text(
-                          "${movie.rating ?? 0.0} | Tendencia",
+                          "${movie.rating} | Tendencia",
                           style: TextStyle(
                             color: colorScheme.primary,
                             fontWeight: FontWeight.bold,

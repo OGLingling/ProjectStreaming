@@ -64,6 +64,10 @@ class TMDBCrawler {
         // Extraer Poster
         const posterImg = document.querySelector('.poster .image_content img') || document.querySelector('.poster img');
         const posterPath = posterImg?.src || posterImg?.getAttribute('data-src');
+        const header = document.querySelector('section.header');
+        const backdropStyle = header?.style?.backgroundImage || header?.getAttribute('style') || '';
+        const backdropMatch = backdropStyle.match(/url\(["']?([^"')]+)["']?\)/);
+        const backdropPath = backdropMatch?.[1] || null;
 
         return {
           title: getText('h2 a') || getText('h2') || document.title.split(' — ')[0],
@@ -72,6 +76,7 @@ class TMDBCrawler {
           rating: rating,
           genres: genres,
           imageUrl: posterPath,
+          backdropUrl: backdropPath,
           type: type
         };
       }, type);
@@ -80,6 +85,10 @@ class TMDBCrawler {
       if (metadata.imageUrl && metadata.imageUrl.includes('t/p/')) {
         metadata.imageUrl = metadata.imageUrl.replace(/\/w\d+_and_h\d+_bestv2\//, '/original/')
                                             .replace(/\/w\d+\//, '/original/');
+      }
+      if (metadata.backdropUrl && metadata.backdropUrl.includes('t/p/')) {
+        metadata.backdropUrl = metadata.backdropUrl.replace(/\/w\d+_and_h\d+_bestv2\//, '/original/')
+                                                  .replace(/\/w\d+\//, '/original/');
       }
 
       await browser.close();

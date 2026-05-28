@@ -54,7 +54,7 @@ class ApiService {
   static Future<List<dynamic>> getMoviesByType(String type) async {
     try {
       final response = await http
-          .get(_apiUri('movies', {'type': type}))
+          .get(_apiUri('movies', {'type': type, 'limit': '300'}))
           .timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 200) {

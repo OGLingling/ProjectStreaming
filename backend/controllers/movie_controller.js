@@ -8,40 +8,74 @@ const prisma = new PrismaClient();
  */
 exports.getMovies = async (req, res) => {
   const { type } = req.query;
+  const requestedLimit = parseInt(req.query.limit, 10);
+  const limit = Number.isInteger(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 500)
+    : 260;
 
-  try {
-    let whereCondition = {};
-
-    if (type) {
-      const normalizedType = type.toLowerCase().trim().replace('s', '');
-      whereCondition = {
-        type: {
-          contains: normalizedType,
-          mode: 'insensitive',
-        },
-      };
-    }
-
-    const contents = await prisma.content.findMany({
-      where: whereCondition,
+  const contentInclude = {
+    seasons: {
       include: {
-        seasons: {
-          include: {
-            episodes: {
-              orderBy: {
-                episodeNumber: 'asc',
-              },
-            },
-          },
+        episodes: {
           orderBy: {
-            seasonNumber: 'asc',
+            episodeNumber: 'asc',
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
-    });
+      orderBy: {
+        seasonNumber: 'asc',
+      },
+    },
+  };
 
-    res.json(contents);
+  const sortForCatalog = (items) => items.sort((a, b) => {
+    const aHasImage = Boolean(a.imageUrl || a.backdropUrl);
+    const bHasImage = Boolean(b.imageUrl || b.backdropUrl);
+    if (aHasImage !== bHasImage) return aHasImage ? -1 : 1;
+    return (b.rating || 0) - (a.rating || 0);
+  });
+
+  try {
+    if (type) {
+      const normalizedType = type.toLowerCase().trim().replace('s', '');
+      const contents = await prisma.content.findMany({
+        where: {
+          type: {
+            contains: normalizedType,
+            mode: 'insensitive',
+          },
+        },
+        include: contentInclude,
+        orderBy: [{ rating: 'desc' }, { updatedAt: 'desc' }],
+        take: limit,
+      });
+
+      return res.json(sortForCatalog(contents));
+    }
+
+    const [movies, series] = await Promise.all([
+      prisma.content.findMany({
+        where: { type: { contains: 'movie', mode: 'insensitive' } },
+        include: contentInclude,
+        orderBy: [{ rating: 'desc' }, { updatedAt: 'desc' }],
+        take: limit,
+      }),
+      prisma.content.findMany({
+        where: {
+          OR: [
+            { type: { contains: 'tv', mode: 'insensitive' } },
+            { type: { contains: 'serie', mode: 'insensitive' } },
+          ],
+        },
+        include: contentInclude,
+        orderBy: [{ rating: 'desc' }, { updatedAt: 'desc' }],
+      }),
+    ]);
+
+    res.json([
+      ...sortForCatalog(movies),
+      ...sortForCatalog(series),
+    ]);
   } catch (error) {
     console.error('Error critico en GET /api/movies:', error);
     res.status(500).json({
