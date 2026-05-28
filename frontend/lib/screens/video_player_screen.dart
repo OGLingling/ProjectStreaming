@@ -22,6 +22,9 @@ class VideoPlayerScreen extends StatefulWidget {
   final String type;
   final int season;
   final int episode;
+  final String? subtitleUrl;
+  final String subtitleLanguage;
+  final String subtitleLabel;
 
   const VideoPlayerScreen({
     super.key,
@@ -34,6 +37,9 @@ class VideoPlayerScreen extends StatefulWidget {
     required this.type,
     this.season = 1,
     this.episode = 1,
+    this.subtitleUrl,
+    this.subtitleLanguage = 'es-419',
+    this.subtitleLabel = 'Espanol Latino',
   });
 
   @override
@@ -527,6 +533,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     headers: _headersForUrl(playbackUrl),
                     showSubtitles: settings.showSubtitles,
                     subtitleColor: settings.subtitleColor,
+                    subtitleUrl: widget.subtitleUrl,
+                    subtitleLanguage: widget.subtitleLanguage,
+                    subtitleLabel: widget.subtitleLabel,
                     onNativePlaybackFailed: _fallbackToEmbeddedPlayer,
                     onNativeUrlFound: _promoteToNativeStream,
                     onWebViewCreated: (controller) {

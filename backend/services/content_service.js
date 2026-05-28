@@ -5,7 +5,11 @@ const TMDBApi = require('./tmdb_api_service');
 const prisma = new PrismaClient();
 
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
-const TMDB_DATASET_DIR = process.env.TMDB_DATASET_DIR || 'C:\\Users\\Usuario\\Desktop\\tmdb_dataset';
+const LOCAL_DATASET_DIR = path.resolve(__dirname);
+const LEGACY_DATASET_DIR = 'C:\\Users\\Usuario\\Desktop\\tmdb_dataset';
+const TMDB_DATASET_DIR = process.env.TMDB_DATASET_DIR
+  || (fs.existsSync(path.join(LOCAL_DATASET_DIR, 'movies.json')) ? LOCAL_DATASET_DIR : LEGACY_DATASET_DIR);
+const DATASET_IMPORT_LIMIT = Number.parseInt(process.env.DATASET_IMPORT_LIMIT || '500', 10);
 
 const SERIES_EPISODE_OVERRIDES = {
   '37854': [1160], // One Piece
@@ -394,10 +398,17 @@ class ContentService {
 
   async importMoviesFromDataset({ limit } = {}) {
     const datasetMovies = loadDatasetMovies();
-    const moviesToImport = Number.isInteger(limit) && limit > 0
-      ? datasetMovies.slice(0, limit)
+    const requestedLimit = Number.isInteger(limit) && limit > 0
+      ? limit
+      : DATASET_IMPORT_LIMIT;
+    const safeLimit = Number.isInteger(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, 500)
+      : 500;
+    const moviesToImport = safeLimit > 0
+      ? datasetMovies.slice(0, safeLimit)
       : datasetMovies;
     let imported = 0;
+    let withoutImages = 0;
 
     for (const movie of moviesToImport) {
       const data = datasetMovieData(movie);
@@ -407,6 +418,11 @@ class ContentService {
         const imagePayload = imageUpdatePayload(metadata);
         data.imageUrl = data.imageUrl || imagePayload.imageUrl || null;
         data.backdropUrl = data.backdropUrl || imagePayload.backdropUrl || null;
+      }
+
+      if (!data.imageUrl && !data.backdropUrl) {
+        withoutImages++;
+        console.warn(`[content-service] Pelicula TMDB ${data.tmdbId} importada sin imagen disponible.`);
       }
 
       await prisma.content.upsert({
@@ -422,8 +438,8 @@ class ContentService {
       imported++;
     }
 
-    console.log(`[content-service] Dataset de peliculas sincronizado: ${imported}/${datasetMovies.length}`);
-    return { success: true, imported, total: datasetMovies.length };
+    console.log(`[content-service] Dataset de peliculas sincronizado: ${imported}/${datasetMovies.length} (limite ${moviesToImport.length}, sin imagen ${withoutImages})`);
+    return { success: true, imported, total: datasetMovies.length, withoutImages };
   }
 
   async enrichMissingImages({ limit, type } = {}) {

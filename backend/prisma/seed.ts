@@ -8,7 +8,11 @@ const prisma = new PrismaClient()
 const TMDB_API_KEY = process.env.TMDB_API_KEY || 'd8a00b94f5c00821e497b569fec9a61f'
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3'
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original'
-const TMDB_DATASET_DIR = process.env.TMDB_DATASET_DIR || 'C:\\Users\\Usuario\\Desktop\\tmdb_dataset'
+const LOCAL_DATASET_DIR = path.resolve(__dirname, '../services')
+const LEGACY_DATASET_DIR = 'C:\\Users\\Usuario\\Desktop\\tmdb_dataset'
+const TMDB_DATASET_DIR = process.env.TMDB_DATASET_DIR
+  || (fs.existsSync(path.join(LOCAL_DATASET_DIR, 'movies.json')) ? LOCAL_DATASET_DIR : LEGACY_DATASET_DIR)
+const DATASET_IMPORT_LIMIT = Number.parseInt(process.env.DATASET_IMPORT_LIMIT || '500', 10)
 
 const seriesTmdbIds = [
   '209867', // Frieren: Beyond Journey's End
@@ -324,16 +328,6 @@ async function createMovie(tmdbId: string) {
 }
 
 async function createSeries(tmdbId: string) {
-  const existing = await prisma.content.findUnique({
-    where: { tmdbId },
-    select: { id: true, title: true },
-  })
-
-  if (existing) {
-    console.log(`Serie TMDB ${tmdbId} ya existe (${existing.title}); se conserva.`)
-    return
-  }
-
   const data = await fetchContentDetails(tmdbId, 'tv')
   const seasons = data.seasons || []
   const availableSeasons = seasons.filter((season) => (season.episode_count || 0) > 0)
@@ -367,17 +361,29 @@ async function createSeries(tmdbId: string) {
     }
   }
 
-  await prisma.content.create({
-    data: {
+  const contentData = {
+    title: data.name || data.title || data.original_name || 'Sin titulo',
+    description: data.overview || null,
+    releaseDate: data.first_air_date || data.release_date || null,
+    imageUrl: imageUrl(data.poster_path),
+    backdropUrl: imageUrl(data.backdrop_path),
+    type: 'tv',
+    category: data.genres?.map((genre) => genre.name).join(', ') || null,
+    rating: data.vote_average || 0,
+  }
+
+  await prisma.content.upsert({
+    where: { tmdbId: String(data.id) },
+    update: {
+      ...contentData,
+      seasons: {
+        deleteMany: {},
+        create: seasonsForCreate,
+      },
+    },
+    create: {
       tmdbId: String(data.id),
-      title: data.name || data.title || data.original_name || 'Sin titulo',
-      description: data.overview || null,
-      releaseDate: data.first_air_date || data.release_date || null,
-      imageUrl: imageUrl(data.poster_path),
-      backdropUrl: imageUrl(data.backdrop_path),
-      type: 'tv',
-      category: data.genres?.map((genre) => genre.name).join(', ') || null,
-      rating: data.vote_average || 0,
+      ...contentData,
       seasons: {
         create: seasonsForCreate,
       },
@@ -387,14 +393,29 @@ async function createSeries(tmdbId: string) {
 
 async function createDatasetMovies() {
   const datasetMovies = loadDatasetMovies()
+  const importLimit = Number.isInteger(DATASET_IMPORT_LIMIT) && DATASET_IMPORT_LIMIT > 0
+    ? DATASET_IMPORT_LIMIT
+    : 500
+  const moviesToImport = datasetMovies.slice(0, importLimit)
   let imported = 0
+  let skipped = 0
 
-  for (const movie of datasetMovies) {
+  for (const movie of moviesToImport) {
     const localData = datasetMovieData(movie)
-    const tmdbImages = (!localData.imageUrl || !localData.backdropUrl)
-      ? await fetchContentImages(localData.tmdbId, 'movie')
-      : null
-    const data = mergeImageData(localData, tmdbImages)
+    let tmdbMetadata: TmdbDetails | null = null
+
+    try {
+      tmdbMetadata = await fetchContentImages(localData.tmdbId, 'movie')
+    } catch (_) {
+      tmdbMetadata = null
+    }
+
+    const data = mergeImageData(localData, tmdbMetadata)
+
+    if (!data.imageUrl && !data.backdropUrl) {
+      skipped++
+      console.warn(`Pelicula TMDB ${data.tmdbId} importada sin imagen disponible.`)
+    }
 
     await prisma.content.upsert({
       where: { tmdbId: data.tmdbId },
@@ -409,7 +430,7 @@ async function createDatasetMovies() {
     imported++
   }
 
-  console.log(`Peliculas del dataset sincronizadas: ${imported}.`)
+  console.log(`Peliculas del dataset sincronizadas: ${imported}/${datasetMovies.length} (limite ${moviesToImport.length}, sin imagen ${skipped}).`)
 }
 
 async function main() {

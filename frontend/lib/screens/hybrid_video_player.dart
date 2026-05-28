@@ -15,6 +15,9 @@ class HybridVideoPlayer extends StatefulWidget {
   final Map<String, String>? headers;
   final bool showSubtitles;
   final Color subtitleColor;
+  final String? subtitleUrl;
+  final String subtitleLanguage;
+  final String subtitleLabel;
   final void Function(InAppWebViewController)? onWebViewCreated;
   final void Function(InAppWebViewController, WebUri?)? onLoadStart;
   final void Function(InAppWebViewController, WebUri?)? onLoadStop;
@@ -40,6 +43,9 @@ class HybridVideoPlayer extends StatefulWidget {
     this.headers,
     this.showSubtitles = true,
     this.subtitleColor = Colors.white,
+    this.subtitleUrl,
+    this.subtitleLanguage = 'es-419',
+    this.subtitleLabel = 'Espanol Latino',
     this.onWebViewCreated,
     this.onLoadStart,
     this.onLoadStop,
@@ -92,7 +98,8 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
     if (oldWidget.videoUrl == widget.videoUrl) {
       if (_usesNativePlayer &&
           _videoPlayerController?.value.isInitialized == true &&
-          oldWidget.showSubtitles != widget.showSubtitles) {
+          (oldWidget.showSubtitles != widget.showSubtitles ||
+              oldWidget.subtitleUrl != widget.subtitleUrl)) {
         _loadNativeCaptions(Uri.parse(widget.videoUrl.trim()));
       }
       return;
@@ -212,29 +219,58 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
       return;
     }
 
-    final subtitleUri = await _findSubtitleUri(videoUri);
-    if (subtitleUri == null) return;
+    final ownSubtitleUrl = widget.subtitleUrl?.trim();
+    if (ownSubtitleUrl != null && ownSubtitleUrl.isNotEmpty) {
+      final ownSubtitleUri = Uri.tryParse(ownSubtitleUrl);
+      if (ownSubtitleUri != null &&
+          await _loadCaptionUri(ownSubtitleUri)) {
+        return;
+      }
+    }
 
+    final subtitleUri = await _findSubtitleUri(videoUri);
+    if (subtitleUri == null) {
+      await _videoPlayerController?.setClosedCaptionFile(null);
+      if (mounted) setState(() {});
+      return;
+    }
+
+    await _loadCaptionUri(subtitleUri);
+  }
+
+  Future<bool> _loadCaptionUri(Uri subtitleUri) async {
     try {
       final response = await http
           .get(subtitleUri, headers: widget.headers ?? {})
           .timeout(const Duration(seconds: 8));
 
-      if (response.statusCode < 200 || response.statusCode >= 300) return;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return false;
+      }
 
       final body = utf8.decode(response.bodyBytes, allowMalformed: true);
-      final path = subtitleUri.path.toLowerCase();
-      final ClosedCaptionFile captionFile = path.endsWith('.srt')
-          ? SubRipCaptionFile(body)
-          : WebVTTCaptionFile(body);
+      final captionFile = _parseCaptionFile(body, subtitleUri);
 
       await _videoPlayerController?.setClosedCaptionFile(
         Future<ClosedCaptionFile>.value(captionFile),
       );
       if (mounted) setState(() {});
+      return true;
     } catch (_) {
       // Some HLS providers expose subtitle tracks that are not reachable directly.
+      return false;
     }
+  }
+
+  ClosedCaptionFile _parseCaptionFile(String body, Uri subtitleUri) {
+    final path = subtitleUri.path.toLowerCase();
+    final trimmed = body.trimLeft();
+    final looksLikeSrt =
+        path.endsWith('.srt') ||
+        RegExp(r'^\d+\s*\r?\n\d{2}:\d{2}:\d{2}[,.]\d{3}', multiLine: true)
+            .hasMatch(trimmed);
+
+    return looksLikeSrt ? SubRipCaptionFile(body) : WebVTTCaptionFile(body);
   }
 
   Future<Uri?> _findSubtitleUri(Uri videoUri) async {
@@ -273,9 +309,16 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
 
   int _subtitleLineScore(String line) {
     final lower = line.toLowerCase();
+    final requestedLanguage = widget.subtitleLanguage.toLowerCase();
     var score = 0;
     if (lower.contains('default=yes')) score += 4;
     if (lower.contains('forced=no')) score += 2;
+    if (requestedLanguage.isNotEmpty &&
+        (lower.contains('language="$requestedLanguage"') ||
+            lower.contains('language=$requestedLanguage'))) {
+      score += 12;
+    }
+    if (lower.contains(widget.subtitleLabel.toLowerCase())) score += 10;
     if (lower.contains('language="es"') ||
         lower.contains('language=es') ||
         lower.contains('language="spa"') ||

@@ -69,7 +69,7 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
     return b.rating.compareTo(a.rating);
   }
 
-  Map<String, int>? _firstPlayableEpisode(Movie movie) {
+  Map<String, Object?>? _firstPlayableEpisode(Movie movie) {
     final seasons = movie.seasons ?? [];
 
     for (final season in seasons) {
@@ -78,6 +78,9 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
         return {
           'season': season.seasonNumber,
           'episode': episodes.first.episodeNumber,
+          'subtitleUrl': episodes.first.subtitleUrl,
+          'subtitleLanguage': episodes.first.subtitleLanguage,
+          'subtitleLabel': episodes.first.subtitleLabel,
         };
       }
     }
@@ -112,8 +115,8 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
         return;
       }
 
-      season = firstEpisode['season']!;
-      episode = firstEpisode['episode']!;
+      season = firstEpisode['season']! as int;
+      episode = firstEpisode['episode']! as int;
     }
 
     Navigator.push(
@@ -127,6 +130,19 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
           type: movie.type,
           season: season,
           episode: episode,
+          subtitleUrl: _isTv(movie)
+              ? firstEpisode?['subtitleUrl'] as String?
+              : movie.subtitleUrl,
+          subtitleLanguage:
+              (_isTv(movie)
+                      ? firstEpisode?['subtitleLanguage'] as String?
+                      : movie.subtitleLanguage) ??
+                  'es-419',
+          subtitleLabel:
+              (_isTv(movie)
+                      ? firstEpisode?['subtitleLabel'] as String?
+                      : movie.subtitleLabel) ??
+                  'Espanol Latino',
         ),
       ),
     );

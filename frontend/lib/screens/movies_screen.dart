@@ -39,7 +39,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
   Future<void> _loadData() async {
     try {
       final userId = widget.user?['id']?.toString();
-      final response = await http.get(Uri.parse('$apiBaseUrl?limit=260'));
+      final response = await http.get(Uri.parse('$apiBaseUrl?limit=500'));
       final progressFuture = userId == null || userId.isEmpty
           ? Future<List<dynamic>>.value([])
           : ApiService.getViewingProgress(userId);

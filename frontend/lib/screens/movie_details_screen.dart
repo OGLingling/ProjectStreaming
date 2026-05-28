@@ -26,7 +26,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
 
   bool _isProcessing = false;
 
-  Map<String, int>? _firstPlayableEpisode() {
+  Map<String, Object?>? _firstPlayableEpisode() {
     final seasons = widget.movie.seasons ?? [];
 
     for (final season in seasons) {
@@ -35,6 +35,9 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
         return {
           'season': season.seasonNumber,
           'episode': episodes.first.episodeNumber,
+          'subtitleUrl': episodes.first.subtitleUrl,
+          'subtitleLanguage': episodes.first.subtitleLanguage,
+          'subtitleLabel': episodes.first.subtitleLabel,
         };
       }
     }
@@ -55,20 +58,34 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
       }
 
       _navigateToPlayer(
-        season: firstEpisode['season']!,
-        episode: firstEpisode['episode']!,
+        season: firstEpisode['season']! as int,
+        episode: firstEpisode['episode']! as int,
+        subtitleUrl: firstEpisode['subtitleUrl'] as String?,
+        subtitleLanguage: firstEpisode['subtitleLanguage'] as String?,
+        subtitleLabel: firstEpisode['subtitleLabel'] as String?,
       );
       return;
     }
 
-    _navigateToPlayer();
+    _navigateToPlayer(
+      subtitleUrl: widget.movie.subtitleUrl,
+      subtitleLanguage: widget.movie.subtitleLanguage,
+      subtitleLabel: widget.movie.subtitleLabel,
+    );
   }
 
   // --- LÓGICA DE NAVEGACIÓN ---
 
   // Esta función conecta los datos de la DB con el Reproductor Scraper
 
-  void _navigateToPlayer({int season = 1, int episode = 1, String? directUrl}) {
+  void _navigateToPlayer({
+    int season = 1,
+    int episode = 1,
+    String? directUrl,
+    String? subtitleUrl,
+    String? subtitleLanguage,
+    String? subtitleLabel,
+  }) {
     // Extraemos el ID de TMDB que guardaste con tu Seed
 
     final String? tmdbId = widget.movie.tmdbId?.toString();
@@ -92,6 +109,12 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
             season: season,
 
             episode: episode,
+
+            subtitleUrl: subtitleUrl,
+
+            subtitleLanguage: subtitleLanguage ?? 'es-419',
+
+            subtitleLabel: subtitleLabel ?? 'Espanol Latino',
           ),
         ),
       );
@@ -523,6 +546,12 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
             season: widget.movie.seasons![_selectedSeasonIndex].seasonNumber,
 
             episode: ep.episodeNumber,
+
+            subtitleUrl: ep.subtitleUrl,
+
+            subtitleLanguage: ep.subtitleLanguage,
+
+            subtitleLabel: ep.subtitleLabel,
           ),
 
           child: Row(

@@ -69,6 +69,7 @@ exports.getMovies = async (req, res) => {
         },
         include: contentInclude,
         orderBy: [{ rating: 'desc' }, { updatedAt: 'desc' }],
+        take: limit,
       }),
     ]);
 

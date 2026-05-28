@@ -32,6 +32,10 @@ model Content {
   streamExpiresAt DateTime?          // cuándo vence el token de la URL
   // ─────────────────────────────────────────────────────────────────────────
 
+  subtitleUrl      String?  @map("subtitle_url") @db.Text
+  subtitleLanguage String?  @default("es-419") @map("subtitle_language")
+  subtitleLabel    String?  @default("Espanol Latino") @map("subtitle_label")
+
   seasons         Season[]
   watchlist       Watchlist[]
   viewingProgress ViewingProgress[]
@@ -100,6 +104,10 @@ model Episode {
   streamSource    String?   // "vidsrc.me", "vidsrc.to", etc.
   streamExpiresAt DateTime? // cuándo vence el token
   // ─────────────────────────────────────────────────────────────────────────
+
+  subtitleUrl      String?   @map("subtitle_url") @db.Text
+  subtitleLanguage String?   @default("es-419") @map("subtitle_language")
+  subtitleLabel    String?   @default("Espanol Latino") @map("subtitle_label")
 
   seasonId Int
   season   Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)

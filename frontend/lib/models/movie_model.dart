@@ -10,6 +10,9 @@ class Movie {
   final double rating;
   final String? category;
   final String type;
+  final String? subtitleUrl;
+  final String? subtitleLanguage;
+  final String? subtitleLabel;
 
   // NUEVO: Relación con temporadas
   final List<Season>? seasons;
@@ -26,6 +29,9 @@ class Movie {
     required this.rating,
     this.category,
     required this.type,
+    this.subtitleUrl,
+    this.subtitleLanguage,
+    this.subtitleLabel,
     this.seasons,
   });
 
@@ -54,6 +60,11 @@ class Movie {
           : 0.0,
       category: json['category'],
       type: json['type'] ?? 'movie',
+      subtitleUrl: json['subtitle_url'] ?? json['subtitleUrl'],
+      subtitleLanguage:
+          json['subtitle_language'] ?? json['subtitleLanguage'] ?? 'es-419',
+      subtitleLabel:
+          json['subtitle_label'] ?? json['subtitleLabel'] ?? 'Espanol Latino',
       seasons: json['seasons'] != null
           ? (json['seasons'] as List).map((i) => Season.fromJson(i)).toList()
           : null,
@@ -72,6 +83,9 @@ class Movie {
     'rating': rating,
     'category': category,
     'type': type,
+    'subtitleUrl': subtitleUrl,
+    'subtitleLanguage': subtitleLanguage,
+    'subtitleLabel': subtitleLabel,
     'seasons': seasons?.map((s) => s.toJson()).toList(),
   };
 }
@@ -121,6 +135,9 @@ class Episode {
   final String? description;
   final String? stillPath;
   final String? videoUrl;
+  final String? subtitleUrl;
+  final String? subtitleLanguage;
+  final String? subtitleLabel;
 
   Episode({
     required this.id,
@@ -129,6 +146,9 @@ class Episode {
     this.description,
     this.stillPath,
     this.videoUrl,
+    this.subtitleUrl,
+    this.subtitleLanguage,
+    this.subtitleLabel,
   });
 
   factory Episode.fromJson(Map<String, dynamic> json) {
@@ -139,6 +159,11 @@ class Episode {
       description: json['description'] ?? json['overview'],
       stillPath: json['stillPath'] ?? json['still_path'],
       videoUrl: json['videoUrl'] ?? json['video_url'],
+      subtitleUrl: json['subtitle_url'] ?? json['subtitleUrl'],
+      subtitleLanguage:
+          json['subtitle_language'] ?? json['subtitleLanguage'] ?? 'es-419',
+      subtitleLabel:
+          json['subtitle_label'] ?? json['subtitleLabel'] ?? 'Espanol Latino',
     );
   }
 
@@ -149,5 +174,8 @@ class Episode {
     'description': description,
     'stillPath': stillPath,
     'videoUrl': videoUrl,
+    'subtitleUrl': subtitleUrl,
+    'subtitleLanguage': subtitleLanguage,
+    'subtitleLabel': subtitleLabel,
   };
 }
