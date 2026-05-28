@@ -105,11 +105,13 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
       return;
     }
 
+    final isTv = _isTv(movie);
+    Map<String, Object?>? firstEpisode;
     int season = 1;
     int episode = 1;
 
-    if (_isTv(movie)) {
-      final firstEpisode = _firstPlayableEpisode(movie);
+    if (isTv) {
+      firstEpisode = _firstPlayableEpisode(movie);
       if (firstEpisode == null) {
         _showSnackBar('No hay episodios disponibles para esta serie.');
         return;
@@ -118,6 +120,20 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
       season = firstEpisode['season']! as int;
       episode = firstEpisode['episode']! as int;
     }
+
+    final subtitleUrl = isTv
+        ? (firstEpisode?['subtitleUrl'] as String?)
+        : movie.subtitleUrl;
+    final subtitleLanguage =
+        (isTv
+            ? (firstEpisode?['subtitleLanguage'] as String?)
+            : movie.subtitleLanguage) ??
+        'es-419';
+    final subtitleLabel =
+        (isTv
+            ? (firstEpisode?['subtitleLabel'] as String?)
+            : movie.subtitleLabel) ??
+        'Espanol Latino';
 
     Navigator.push(
       context,
@@ -130,19 +146,9 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
           type: movie.type,
           season: season,
           episode: episode,
-          subtitleUrl: _isTv(movie)
-              ? firstEpisode?['subtitleUrl'] as String?
-              : movie.subtitleUrl,
-          subtitleLanguage:
-              (_isTv(movie)
-                      ? firstEpisode?['subtitleLanguage'] as String?
-                      : movie.subtitleLanguage) ??
-                  'es-419',
-          subtitleLabel:
-              (_isTv(movie)
-                      ? firstEpisode?['subtitleLabel'] as String?
-                      : movie.subtitleLabel) ??
-                  'Espanol Latino',
+          subtitleUrl: subtitleUrl,
+          subtitleLanguage: subtitleLanguage,
+          subtitleLabel: subtitleLabel,
         ),
       ),
     );
