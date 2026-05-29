@@ -121,7 +121,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         final path = isTv
             ? '/embed/tv/$tmdbId/${widget.season}/${widget.episode}'
             : '/embed/movie/$tmdbId';
-        return Uri.https('vidsrc.mov', path, {
+        return Uri.https('vidrock.net', path, {
           'autoplay': '1',
           'color': '00d46a',
           'sub': 'es',
