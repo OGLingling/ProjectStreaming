@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'profiles_settings_screen.dart';
+import 'help_center_screen.dart';
+import 'change_plan_screen.dart';
 
 const Color _accountBackground = Color(0xFF07110F);
 const Color _accountSurface = Color(0xFF101817);
@@ -9,15 +11,45 @@ const Color _accountSurfaceHigh = Color(0xFF17211F);
 const Color _accountPrimary = Color(0xFF00C853);
 const Color _accountSecondary = Color(0xFF00D8FF);
 
-class AccountScreen extends StatelessWidget {
+class AccountScreen extends StatefulWidget {
   final Map<String, dynamic>? userData;
 
   const AccountScreen({super.key, this.userData});
 
   @override
+  State<AccountScreen> createState() => _AccountScreenState();
+
+  static String _normalizeImagePath(dynamic value) {
+    final path = value?.toString().trim();
+    if (path == null || path.isEmpty || path.toLowerCase() == 'null') {
+      return 'assets/avatars/usuario5.webp';
+    }
+    return path;
+  }
+
+  static ImageProvider _imageProvider(dynamic value) {
+    final path = _normalizeImagePath(value);
+    if (path.startsWith('http')) return NetworkImage(path);
+    return AssetImage(path);
+  }
+}
+
+class _AccountScreenState extends State<AccountScreen> {
+  late Map<String, dynamic> _localUserData;
+
+  @override
+  void initState() {
+    super.initState();
+    _localUserData = widget.userData != null 
+        ? Map<String, dynamic>.from(widget.userData!) 
+        : {};
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final userData = _localUserData;
     final colorScheme = Theme.of(context).colorScheme;
-    final String plan = (userData?['plan'] ?? 'basico')
+    final String plan = (userData['plan'] ?? 'basico')
         .toString()
         .toLowerCase();
     final int maxProfiles = switch (plan) {
@@ -27,10 +59,10 @@ class AccountScreen extends StatelessWidget {
     };
 
     final String displayName =
-        (userData?['selectedName'] ??
-                userData?['name'] ??
-                userData?['userName'] ??
-                userData?['email']?.toString().split('@').first ??
+        (userData['selectedName'] ??
+                userData['name'] ??
+                userData['userName'] ??
+                userData['email']?.toString().split('@').first ??
                 'Usuario')
             .toString();
 
@@ -38,7 +70,7 @@ class AccountScreen extends StatelessWidget {
       {
         'name': displayName.toUpperCase(),
         'image': _normalizeImagePath(
-          userData?['selectedImage'] ?? userData?['profilePic'],
+          userData['selectedImage'] ?? userData['profilePic'],
         ),
       },
       {'name': 'USUARIO 2', 'image': 'assets/avatars/usuario6.webp'},
@@ -99,6 +131,25 @@ class AccountScreen extends StatelessWidget {
                         icon: Icons.dashboard_customize_outlined,
                         title: 'Cambiar de plan',
                         accent: colorScheme.primary,
+                        onTap: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ChangePlanScreen(
+                                currentPlan: plan,
+                                userData: userData,
+                              ),
+                            ),
+                          );
+                          if (result != null && result is String) {
+                            setState(() {
+                              _localUserData['plan'] = result;
+                              if (widget.userData != null) {
+                                widget.userData!['plan'] = result;
+                              }
+                            });
+                          }
+                        },
                       ),
                       _AccountActionTile(
                         icon: Icons.payment_rounded,
@@ -114,6 +165,19 @@ class AccountScreen extends StatelessWidget {
                         icon: Icons.lock_outline_rounded,
                         title: 'Actualizar contrasena',
                         accent: colorScheme.primary,
+                      ),
+                      _AccountActionTile(
+                        icon: Icons.help_outline_rounded,
+                        title: 'Centro de Ayuda',
+                        accent: colorScheme.secondary,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => HelpCenterScreen(userData: userData),
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -402,12 +466,14 @@ class _AccountActionTile extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Color accent;
+  final VoidCallback? onTap;
 
   const _AccountActionTile({
     required this.icon,
     required this.title,
     required this.accent,
     this.subtitle,
+    this.onTap,
   });
 
   @override
@@ -442,7 +508,7 @@ class _AccountActionTile extends StatelessWidget {
         size: 15,
         color: Colors.white.withValues(alpha: 0.42),
       ),
-      onTap: () {},
+      onTap: onTap,
     );
   }
 }

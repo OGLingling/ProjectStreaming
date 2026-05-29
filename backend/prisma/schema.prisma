@@ -54,6 +54,8 @@ model Watchlist {
   user      User    @relation(fields: [userId], references: [id])
   contentId Int
   content   Content @relation(fields: [contentId], references: [id])
+  profileId String?
+  profile   Profile? @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
 
@@ -71,6 +73,8 @@ model ViewingProgress {
   progressSeconds Int      @default(0)
   durationSeconds Int?
   completed       Boolean  @default(false)
+  profileId       String?
+  profile         Profile? @relation(fields: [profileId], references: [id], onDelete: Cascade)
   updatedAt       DateTime @updatedAt
   createdAt       DateTime @default(now())
 
@@ -141,8 +145,25 @@ model User {
   autoPlay          Boolean @default(true)
   myList          Watchlist[]
   viewingProgress ViewingProgress[]
+  helpTickets     HelpTicket[]
+  profiles        Profile[]
 
   createdAt DateTime @default(now())
+}
+
+enum TicketStatus {
+  PENDING
+  RESOLVED
+}
+
+model HelpTicket {
+  id        String       @id @default(uuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category  String
+  message   String       @db.Text
+  status    TicketStatus @default(PENDING)
+  createdAt DateTime     @default(now())
 }
 
 model ScrapeLog {
@@ -190,4 +211,17 @@ model ScrapeJob {
 
   @@unique([tmdbId, type, season, episode])
   @@index([status, createdAt])
+}
+
+model Profile {
+  id              String            @id @default(uuid())
+  name            String
+  profilePic      String?           @default("assets/avatars/usuario5.webp")
+  userId          String
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  myList          Watchlist[]
+  viewingProgress ViewingProgress[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

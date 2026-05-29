@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'data_privacy_screen.dart';
 import 'edit_profile.dart';
+import 'help_center_screen.dart';
+import 'transfer_profile_screen.dart';
 import 'settings/configuracion_reproduccion.dart';
 import 'settings/control_parental.dart';
 
@@ -70,6 +72,24 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
     }
   }
 
+  void _navigateToHelp() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HelpCenterScreen(userData: widget.profileData),
+      ),
+    );
+  }
+
+  void _navigateToTransfer() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TransferProfileScreen(profileData: widget.profileData),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -111,6 +131,8 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
                 imagePath: currentImg,
                 email: _email,
                 onTap: _openEditProfile,
+                onHelp: _navigateToHelp,
+                onTransfer: _navigateToTransfer,
               ),
               const SizedBox(height: 22),
               const _SectionTitle('Perfil'),
@@ -135,8 +157,7 @@ class _ManageProfilesScreenState extends State<ManageProfilesScreen> {
                     title: 'Transferencia de perfiles',
                     subtitle: 'Copia este perfil a otra cuenta',
                     accent: _manageSecondary,
-                    onTap: () =>
-                        _showPendingFeature('Transferencia de perfiles'),
+                    onTap: _navigateToTransfer,
                   ),
                 ],
               ),
@@ -400,69 +421,120 @@ class _ProfileHeroCard extends StatelessWidget {
   final String imagePath;
   final String email;
   final VoidCallback onTap;
+  final VoidCallback onHelp;
+  final VoidCallback onTransfer;
 
   const _ProfileHeroCard({
     required this.name,
     required this.imagePath,
     required this.email,
     required this.onTap,
+    required this.onHelp,
+    required this.onTransfer,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: _manageSurface,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: _manageSecondary.withValues(alpha: 0.2)),
+    return Theme(
+      data: Theme.of(context).copyWith(
+        cardColor: _manageSurfaceHigh,
+      ),
+      child: PopupMenuButton<String>(
+        color: _manageSurfaceHigh,
+        offset: const Offset(0, 70),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        onSelected: (value) {
+          if (value == 'edit') {
+            onTap();
+          } else if (value == 'help') {
+            onHelp();
+          } else if (value == 'transfer') {
+            onTransfer();
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: 'edit',
+            child: Row(
+              children: [
+                Icon(Icons.edit, color: Colors.white, size: 18),
+                SizedBox(width: 10),
+                Text('Editar Perfil', style: TextStyle(color: Colors.white)),
+              ],
+            ),
           ),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image(
-                  image: _imageProvider(imagePath),
-                  width: 62,
-                  height: 62,
-                  fit: BoxFit.cover,
+          const PopupMenuItem(
+            value: 'help',
+            child: Row(
+              children: [
+                Icon(Icons.help_outline, color: Colors.white, size: 18),
+                SizedBox(width: 10),
+                Text('Centro de Ayuda', style: TextStyle(color: Colors.white)),
+              ],
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'transfer',
+            child: Row(
+              children: [
+                Icon(Icons.switch_account_outlined, color: Colors.white, size: 18),
+                SizedBox(width: 10),
+                Text('Transferir Perfil', style: TextStyle(color: Colors.white)),
+              ],
+            ),
+          ),
+        ],
+        child: Material(
+          color: _manageSurface,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _manageSecondary.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image(
+                    image: _imageProvider(imagePath),
+                    width: 62,
+                    height: 62,
+                    fit: BoxFit.cover,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name.toUpperCase(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.montserrat(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.montserrat(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      email.isEmpty ? 'Perfil principal' : email,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.58),
-                        fontSize: 13,
+                      const SizedBox(height: 5),
+                      Text(
+                        email.isEmpty ? 'Perfil principal' : email,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.58),
+                          fontSize: 13,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const Icon(Icons.edit_rounded, color: _manageSecondary),
-            ],
+                const Icon(Icons.menu_open_rounded, color: _manageSecondary),
+              ],
+            ),
           ),
         ),
       ),

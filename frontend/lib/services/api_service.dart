@@ -281,6 +281,8 @@ class ApiService {
     return null;
   }
 
+
+
   static Future<bool> updateUser(
     String userId,
     Map<String, dynamic> data,
@@ -316,6 +318,65 @@ class ApiService {
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Error deleteUser: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> submitHelpTicket({
+    required String userId,
+    required String category,
+    required String message,
+  }) async {
+    try {
+      final cleanUserId = _cleanId(userId);
+      if (cleanUserId == null) return false;
+
+      final response = await http
+          .post(
+            _apiUri('help/tickets'),
+            headers: _jsonHeaders,
+            body: jsonEncode({
+              'userId': cleanUserId,
+              'category': category.trim(),
+              'message': message.trim(),
+            }),
+          )
+          .timeout(const Duration(seconds: 12));
+
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      debugPrint('Error submitHelpTicket: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> transferProfile({
+    required String profileId,
+    required String targetEmail,
+    required String targetPassword,
+    required String currentUserId,
+    required String profileName,
+    required String profilePic,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            _apiUri('profiles/transfer'),
+            headers: _jsonHeaders,
+            body: jsonEncode({
+              'profileId': profileId.trim(),
+              'targetEmail': targetEmail.toLowerCase().trim(),
+              'targetPassword': targetPassword.trim(),
+              'currentUserId': currentUserId.trim(),
+              'profileName': profileName.trim(),
+              'profilePic': profilePic.trim(),
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error transferProfile: $e');
       return false;
     }
   }

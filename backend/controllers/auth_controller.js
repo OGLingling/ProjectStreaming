@@ -90,8 +90,8 @@ exports.getUserByEmail = async (req, res) => {
     if (!email) return res.status(400).json({ error: "Email requerido" });
 
     try {
-        const user = await prisma.user.findUnique({ 
-            where: { email: String(email).toLowerCase().trim() } 
+        const user = await prisma.user.findUnique({
+            where: { email: String(email).toLowerCase().trim() }
         });
         res.json(withoutPassword(user) || null);
     } catch (error) {
@@ -128,7 +128,7 @@ exports.register = async (req, res) => {
 // --- 5. ACTUALIZAR PERFIL (CORREGIDO PARA EVITAR ERROR 500) ---
 exports.updateUser = async (req, res) => {
     try {
-        const { id } = req.params; 
+        const { id } = req.params;
         const { name, profilePic, plan } = req.body;
 
         // Log para que veas en Railway qué ID está llegando
@@ -142,8 +142,8 @@ exports.updateUser = async (req, res) => {
 
         const userUpdated = await prisma.user.update({
             where: { id: id },
-            data: { 
-                ...(name && { name }), 
+            data: {
+                ...(name && { name }),
                 ...(profilePic && { profilePic }),
                 ...(plan && { plan }),
             },
@@ -161,9 +161,9 @@ exports.updateUser = async (req, res) => {
         }
 
         // Cualquier otro error interno
-        res.status(500).json({ 
+        res.status(500).json({
             error: "Error interno al actualizar el perfil",
-            detalle: error.message 
+            detalle: error.message
         });
     }
 };
