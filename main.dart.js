@@ -54374,7 +54374,7 @@ q="/embed/tv/"+o+"/"+r.y+"/"+r.z}else q="/embed/movie/"+o
 return A.b3f("https","embed.streammafia.to",q,null).gqU()
 case 1:if(s){r=p.a
 q="/embed/tv/"+o+"/"+r.y+"/"+r.z}else q="/embed/movie/"+o
-return A.b3f("https","vidsrc.mov",q,A.O(["autoplay","1","color","00d46a","sub","es"],t.N,t.z)).gqU()}},
+return A.b3f("https","vidrock.net",q,A.O(["autoplay","1","color","00d46a","sub","es"],t.N,t.z)).gqU()}},
 gMx(){var s=this,r=s.at
 if(s.cy&&r!=null&&r.length!==0)return r
 if(s.db&&s.cx)return""
