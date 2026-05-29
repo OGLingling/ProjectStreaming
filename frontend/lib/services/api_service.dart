@@ -4,6 +4,42 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+class StreamPlaybackCandidate {
+  final String url;
+  final String? subtitleUrl;
+  final String subtitleLanguage;
+  final String subtitleLabel;
+
+  const StreamPlaybackCandidate({
+    required this.url,
+    this.subtitleUrl,
+    this.subtitleLanguage = 'es-419',
+    this.subtitleLabel = 'Espanol Latino',
+  });
+
+  factory StreamPlaybackCandidate.fromJson(Map<String, dynamic> json) {
+    return StreamPlaybackCandidate(
+      url: json['url']?.toString().trim() ?? '',
+      subtitleUrl: _cleanSubtitleUrl(json['subtitleUrl'] ?? json['subtitle_url']),
+      subtitleLanguage:
+          json['subtitleLanguage']?.toString() ??
+          json['subtitle_language']?.toString() ??
+          'es-419',
+      subtitleLabel:
+          json['subtitleLabel']?.toString() ??
+          json['subtitle_label']?.toString() ??
+          'Espanol Latino',
+    );
+  }
+
+  static String? _cleanSubtitleUrl(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    if (text.isEmpty || text.toLowerCase() == 'null') return null;
+    return text.startsWith('http') ? text : null;
+  }
+}
+
 class ApiService {
   static const String baseUrl = 'https://projectstreaming-1.onrender.com/api';
 
@@ -323,6 +359,58 @@ class ApiService {
     return [];
   }
 
+  static Future<List<StreamPlaybackCandidate>> getExtractionSourceCandidates({
+    String? tmdbId,
+    String? url,
+    required String type,
+    int? season,
+    int? episode,
+  }) async {
+    try {
+      final response = await http
+          .get(
+            _apiUri('extract', {
+              'tmdbId': _cleanId(tmdbId),
+              'url': _cleanString(url),
+              'type': type,
+              'season': season?.toString(),
+              'episode': episode?.toString(),
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          final sources = decoded['sources'];
+          if (sources is List && sources.isNotEmpty) {
+            return sources
+                .whereType<Map>()
+                .map((source) => StreamPlaybackCandidate.fromJson(
+                      Map<String, dynamic>.from(source),
+                    ))
+                .where((candidate) => candidate.url.startsWith('http'))
+                .toList();
+          }
+
+          final candidates = decoded['candidates'] ?? decoded['urls'];
+          if (candidates is List) {
+            return candidates
+                .map((candidate) => StreamPlaybackCandidate(
+                      url: candidate.toString().trim(),
+                    ))
+                .where((candidate) => candidate.url.startsWith('http'))
+                .toSet()
+                .toList();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error getExtractionSourceCandidates: $e');
+    }
+    return [];
+  }
+
   static Future<String?> getValidStreamUrl({
     String? tmdbId,
     String? url,
@@ -351,6 +439,44 @@ class ApiService {
         }
       } catch (e) {
         debugPrint('Stream candidate rejected: $candidate - $e');
+      }
+    }
+    return null;
+  }
+
+  static Future<StreamPlaybackCandidate?> getValidStreamCandidate({
+    String? tmdbId,
+    String? url,
+    required String type,
+    int? season,
+    int? episode,
+  }) async {
+    final candidates = await getExtractionSourceCandidates(
+      tmdbId: tmdbId,
+      url: url,
+      type: type,
+      season: season,
+      episode: episode,
+    );
+
+    final orderedCandidates = [
+      ...candidates.where((candidate) => candidate.subtitleUrl != null),
+      ...candidates.where((candidate) => candidate.subtitleUrl == null),
+    ];
+
+    for (final candidate in orderedCandidates) {
+      try {
+        final response = await http
+            .get(Uri.parse(candidate.url), headers: _streamProbeHeaders)
+            .timeout(const Duration(seconds: 5));
+
+        if (response.statusCode >= 200 &&
+            response.statusCode < 400 &&
+            response.body.length > 800) {
+          return candidate;
+        }
+      } catch (e) {
+        debugPrint('Stream candidate rejected: ${candidate.url} - $e');
       }
     }
     return null;

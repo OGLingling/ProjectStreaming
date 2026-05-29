@@ -5,14 +5,17 @@ class SettingsProvider extends ChangeNotifier {
   String _language = 'Español';
   bool _showSubtitles = true;
   Color _subtitleColor = Colors.white;
+  String _preferredServer = 'nativo';
 
   static const String _keyLanguage = 'pref_language';
   static const String _keyShowSubtitles = 'pref_show_subtitles';
   static const String _keySubtitleColor = 'pref_subtitle_color';
+  static const String _keyPreferredServer = 'pref_preferred_server';
 
   String get language => _language;
   bool get showSubtitles => _showSubtitles;
   Color get subtitleColor => _subtitleColor;
+  String get preferredServer => _preferredServer;
 
   // Propiedad derivada para el texto de ejemplo
   String get sampleText {
@@ -47,6 +50,10 @@ class SettingsProvider extends ChangeNotifier {
         _subtitleColor = Color(colorValue);
       }
     }
+
+    if (prefs.containsKey(_keyPreferredServer)) {
+      _preferredServer = prefs.getString(_keyPreferredServer)!;
+    }
     notifyListeners();
   }
 
@@ -54,6 +61,7 @@ class SettingsProvider extends ChangeNotifier {
     String? newLanguage,
     bool? newShowSubtitles,
     Color? newSubtitleColor,
+    String? newPreferredServer,
   }) async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -68,6 +76,10 @@ class SettingsProvider extends ChangeNotifier {
     if (newSubtitleColor != null) {
       _subtitleColor = newSubtitleColor;
       await prefs.setInt(_keySubtitleColor, newSubtitleColor.toARGB32());
+    }
+    if (newPreferredServer != null) {
+      _preferredServer = newPreferredServer;
+      await prefs.setString(_keyPreferredServer, newPreferredServer);
     }
 
     notifyListeners();

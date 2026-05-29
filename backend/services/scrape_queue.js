@@ -33,6 +33,18 @@ function detectStreamType(url) {
   return 'unknown';
 }
 
+function normalizeStreamSource(source) {
+  const url = typeof source === 'string' ? source : source?.url;
+  if (!url) return null;
+  return {
+    url,
+    subtitleUrl: source?.subtitleUrl || source?.subtitle_url || null,
+    subtitleLanguage: source?.subtitleLanguage || source?.subtitle_language || 'es-419',
+    subtitleLabel: source?.subtitleLabel || source?.subtitle_label || 'Espanol Latino',
+    provider: source?.provider || null
+  };
+}
+
 // ─── ENQUEUE ─────────────────────────────────────────────────────────────────
 /**
  * Encola un scraping. Si `force` es true, saltea la verificación de BD y
@@ -93,6 +105,7 @@ async function processJob(job) {
   let allCandidates = [];
   let source = null;
   let streamType = null;
+  let selectedSource = null;
   let expiresAt = null;
   let duration = 0;
 
@@ -115,7 +128,14 @@ async function processJob(job) {
       }
 
       // Filtrar candidatos ya conocidos como caídos o descartados
-      const validCandidates = result.candidates.filter(url => !excludedUrls.has(url));
+      const enrichedSources = Array.isArray(result.sources)
+        ? result.sources.map(normalizeStreamSource).filter(Boolean)
+        : [];
+      const rawSources = enrichedSources.length > 0
+        ? enrichedSources
+        : result.candidates.map((url) => normalizeStreamSource(url)).filter(Boolean);
+      const validSources = rawSources.filter((item) => !excludedUrls.has(item.url));
+      const validCandidates = validSources.map((item) => item.url);
 
       if (validCandidates.length === 0) {
         console.warn(`${label} → Todos los candidatos de este intento ya están descartados.`);
@@ -123,7 +143,8 @@ async function processJob(job) {
       }
 
       allCandidates = validCandidates;
-      primaryUrl = allCandidates[0];
+      selectedSource = validSources.find((item) => item.subtitleUrl) || validSources[0];
+      primaryUrl = selectedSource.url;
       source = extractDomain(primaryUrl);
       streamType = detectStreamType(primaryUrl);
       expiresAt = new Date(Date.now() + URL_TTL_MS);
@@ -168,7 +189,10 @@ async function processJob(job) {
               data: {
                 videoUrl: primaryUrl,
                 streamSource: source,
-                streamExpiresAt: expiresAt
+                streamExpiresAt: expiresAt,
+                subtitleUrl: selectedSource.subtitleUrl || undefined,
+                subtitleLanguage: selectedSource.subtitleLanguage || undefined,
+                subtitleLabel: selectedSource.subtitleLabel || undefined
               }
             });
             console.log(`${label} → Episodio actualizado definitivamente (${streamType}): ${primaryUrl.substring(0, 70)}...`);
@@ -184,7 +208,10 @@ async function processJob(job) {
             data: {
               videoUrl: primaryUrl,
               streamSource: source,
-              streamExpiresAt: expiresAt
+              streamExpiresAt: expiresAt,
+              subtitleUrl: selectedSource.subtitleUrl || undefined,
+              subtitleLanguage: selectedSource.subtitleLanguage || undefined,
+              subtitleLabel: selectedSource.subtitleLabel || undefined
             }
           });
           console.log(`${label} → Película actualizada definitivamente (${streamType}): ${primaryUrl.substring(0, 70)}...`);
@@ -196,7 +223,16 @@ async function processJob(job) {
         }).catch(() => {});
 
         console.log(`${label} → OK en ${duration}ms (fuente: ${source})`);
-        return { url: primaryUrl, source, allCandidates, streamType, duration };
+        return {
+          url: primaryUrl,
+          source,
+          allCandidates,
+          streamType,
+          duration,
+          subtitleUrl: selectedSource.subtitleUrl || null,
+          subtitleLanguage: selectedSource.subtitleLanguage || null,
+          subtitleLabel: selectedSource.subtitleLabel || null
+        };
 
       } else {
         // SI LA URL NO REPRODUCE/ESTÁ CAÍDA: Elimina esa URL inmediatamente del log y descártala

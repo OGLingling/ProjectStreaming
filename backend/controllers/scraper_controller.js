@@ -17,6 +17,22 @@ const isDirectStreamUrl = (url) => {
     lower.includes('googlevideo.com/videoplayback');
 };
 
+const normalizeSource = (source, index) => {
+  const url = typeof source === 'string' ? source : source?.url;
+  if (!isDirectStreamUrl(url)) return null;
+
+  return {
+    url,
+    name: source?.name || `Server Mirror ${index + 1}`,
+    quality: source?.quality || 'Auto',
+    provider: source?.provider || null,
+    subtitleUrl: source?.subtitleUrl || source?.subtitle_url || null,
+    subtitleLanguage: source?.subtitleLanguage || source?.subtitle_language || 'es-419',
+    subtitleLabel: source?.subtitleLabel || source?.subtitle_label || 'Espanol Latino',
+    subtitles: Array.isArray(source?.subtitles) ? source.subtitles : []
+  };
+};
+
 const extractLink = async (req, res) => {
   const tmdbId = firstValue(req.query.tmdbId, req.query.id, req.body?.tmdbId);
   const url = firstValue(req.query.url, req.body?.url);
@@ -33,18 +49,30 @@ const extractLink = async (req, res) => {
   try {
     const result = await VideoScraper.extractStreamUrl({ url, tmdbId, type, season, episode });
 
+    const enrichedSources = Array.isArray(result.sources)
+      ? result.sources.map(normalizeSource).filter(Boolean)
+      : [];
     const resultCandidates = Array.isArray(result.candidates)
       ? result.candidates
       : Array.isArray(result.results)
         ? result.results.map(r => r.url).filter(Boolean)
         : [];
 
-    const candidateStrings = [...new Set(resultCandidates)].filter(isDirectStreamUrl);
-    const candidateObjects = candidateStrings.map((candidateUrl, index) => ({
-      url: candidateUrl,
-      name: `Server Mirror ${index + 1}`,
-      quality: 'Auto'
-    }));
+    const candidateStrings = [...new Set([
+      ...enrichedSources.map((source) => source.url),
+      ...resultCandidates
+    ])].filter(isDirectStreamUrl);
+    const candidateObjects = candidateStrings.map((candidateUrl, index) => {
+      return enrichedSources.find((source) => source.url === candidateUrl) || {
+        url: candidateUrl,
+        name: `Server Mirror ${index + 1}`,
+        quality: 'Auto',
+        subtitleUrl: null,
+        subtitleLanguage: 'es-419',
+        subtitleLabel: 'Espanol Latino',
+        subtitles: []
+      };
+    });
 
     const finalResponse = {
       success: true,

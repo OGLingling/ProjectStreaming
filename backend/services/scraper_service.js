@@ -86,6 +86,72 @@ const isDirectStreamUrl = (url) => {
          s.includes('manifest.m3u8');
 };
 
+const isSubtitleUrl = (url) => {
+  const s = String(url || '').toLowerCase().split('?')[0];
+  return s.endsWith('.vtt') || s.endsWith('.srt');
+};
+
+const subtitleLanguageFromText = (value = '') => {
+  const s = String(value || '').toLowerCase();
+  if (s.includes('es-419') || s.includes('latino') || s.includes('latin')) return 'es-419';
+  if (s.includes('es-es') || s.includes('castellano') || s.includes('spain')) return 'es-ES';
+  if (s.includes('spanish') || s.includes('espanol') || s.includes('español') || s.includes('spa') || s.includes(' es')) return 'es';
+  return null;
+};
+
+const subtitleLabelForLanguage = (language, fallback = '') => {
+  const lower = String(fallback || '').toLowerCase();
+  if (language === 'es-419' || lower.includes('latino')) return 'Espanol Latino';
+  if (language === 'es-ES' || lower.includes('castellano')) return 'Espanol Espana';
+  if (language === 'es') return 'Espanol';
+  return fallback || 'Subtitulos';
+};
+
+function scoreSubtitle(subtitle = {}) {
+  const haystack = `${subtitle.language || ''} ${subtitle.label || ''} ${subtitle.url || ''}`.toLowerCase();
+  let score = 0;
+  if (haystack.includes('es-419') || haystack.includes('latino') || haystack.includes('latin')) score += 40;
+  if (haystack.includes('es-es') || haystack.includes('castellano')) score += 34;
+  if (haystack.includes('language="es"') || haystack.includes('language=es')) score += 25;
+  if (haystack.includes('spanish') || haystack.includes('espanol') || haystack.includes('español')) score += 24;
+  if (haystack.includes('spa')) score += 22;
+  if (haystack.includes('forced')) score -= 8;
+  if (haystack.includes('sdh') || haystack.includes('cc')) score -= 2;
+  return score;
+}
+
+function normalizeSubtitleCandidate(url, baseUrl, metadata = {}) {
+  if (!url) return null;
+  let abs;
+  try {
+    abs = isValidUrl(url) ? url : new URL(url, baseUrl).toString();
+  } catch (_) {
+    return null;
+  }
+  if (!isSubtitleUrl(abs)) return null;
+
+  const hint = `${metadata.language || ''} ${metadata.label || ''} ${abs}`;
+  const language = metadata.language || subtitleLanguageFromText(hint) || 'es';
+  const label = subtitleLabelForLanguage(language, metadata.label);
+  return {
+    url: abs.replace(/[),;'"\\]+$/, ''),
+    language,
+    label,
+    score: scoreSubtitle({ url: abs, language, label })
+  };
+}
+
+function uniqueSubtitles(subtitles) {
+  const byUrl = new Map();
+  for (const sub of subtitles.filter(Boolean)) {
+    const existing = byUrl.get(sub.url);
+    if (!existing || scoreSubtitle(sub) > scoreSubtitle(existing)) {
+      byUrl.set(sub.url, sub);
+    }
+  }
+  return [...byUrl.values()].sort((a, b) => scoreSubtitle(b) - scoreSubtitle(a));
+}
+
 const SNIFFER_SCRIPT = `
 (function() {
     // Evitar detección simple de automatización en subframes y spoofear propiedades críticas
@@ -110,25 +176,37 @@ const SNIFFER_SCRIPT = `
         }
     }
 
-    const originalOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url) {
-        if (url && (url.includes('.m3u8') || url.includes('.mp4') || url.includes('videoplayback'))) {
+    function reportSubtitle(url) {
+        if (typeof window.onSubtitleFound === 'function') {
+            window.onSubtitleFound(url);
+        }
+    }
+
+    function inspectMediaUrl(url) {
+        if (!url || typeof url !== 'string') return;
+        if (url.includes('.m3u8') || url.includes('.mp4') || url.includes('videoplayback')) {
             reportStream(url);
         }
+        if (url.includes('.vtt') || url.includes('.srt')) {
+            reportSubtitle(url);
+        }
+    }
+
+    const originalOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url) {
+        inspectMediaUrl(url);
         return originalOpen.apply(this, arguments);
     };
     const originalFetch = window.fetch;
     window.fetch = function() {
         const url = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url);
-        if (url && (url.includes('.m3u8') || url.includes('.mp4') || url.includes('videoplayback'))) {
-            reportStream(url);
-        }
+        inspectMediaUrl(url);
         return originalFetch.apply(this, arguments);
     };
     // Capturar si el player usa postMessage para comunicar el link
     window.addEventListener('message', function(e) {
-        if (e.data && typeof e.data === 'string' && (e.data.includes('.m3u8') || e.data.includes('.mp4'))) {
-            reportStream(e.data);
+        if (e.data && typeof e.data === 'string') {
+            inspectMediaUrl(e.data);
         }
     });
 })();
@@ -174,6 +252,60 @@ function extractStreamUrlsFromText(text, baseUrl) {
 }
 
 // ─── WAIT HELPER ─────────────────────────────────────────────────────────────
+function readHlsAttribute(line, key) {
+  const match = new RegExp(`(?:^|,)${key}=(?:"([^"]*)"|([^,]*))`, 'i').exec(line);
+  return match?.[1] || match?.[2] || null;
+}
+
+function extractSubtitleCandidatesFromText(text, baseUrl) {
+  const decoded = decodeEscapedText(text);
+  const found = [];
+
+  const absPattern = /https?:\/\/[^\s"'<>\\]+?\.(?:vtt|srt)(?:\?[^\s"'<>]*)?/gi;
+  for (const m of decoded.matchAll(absPattern)) {
+    found.push(normalizeSubtitleCandidate(m[0], baseUrl));
+  }
+
+  const relPattern = /(?:file|url|src|subtitle|subtitles|captions|tracks?)\s*[:=]\s*["']([^"']+?\.(?:vtt|srt)(?:\?[^"']*)?)/gi;
+  for (const m of decoded.matchAll(relPattern)) {
+    found.push(normalizeSubtitleCandidate(m[1], baseUrl));
+  }
+
+  const trackPattern = /<(?:track|source)\b[^>]*(?:src|file)=["']([^"']+?\.(?:vtt|srt)(?:\?[^"']*)?)["'][^>]*>/gi;
+  for (const m of decoded.matchAll(trackPattern)) {
+    const tag = m[0];
+    found.push(normalizeSubtitleCandidate(m[1], baseUrl, {
+      language: readHlsAttribute(tag.replace(/\s+/g, ','), 'srclang') || subtitleLanguageFromText(tag),
+      label: readHlsAttribute(tag.replace(/\s+/g, ','), 'label') || ''
+    }));
+  }
+
+  for (const rawLine of decoded.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line.startsWith('#EXT-X-MEDIA') || !/TYPE=SUBTITLES/i.test(line)) continue;
+    const uri = readHlsAttribute(line, 'URI');
+    if (!uri) continue;
+    found.push(normalizeSubtitleCandidate(uri, baseUrl, {
+      language: readHlsAttribute(line, 'LANGUAGE') || subtitleLanguageFromText(line),
+      label: readHlsAttribute(line, 'NAME') || ''
+    }));
+  }
+
+  return uniqueSubtitles(found);
+}
+
+function attachBestSubtitle(streamUrls, subtitles) {
+  const bestSubtitle = uniqueSubtitles(subtitles)[0] || null;
+  return unique(streamUrls).filter(isDirectStreamUrl).map((url) => ({
+    url,
+    subtitles: bestSubtitle ? [bestSubtitle] : [],
+    subtitleUrl: bestSubtitle?.url || null,
+    subtitleLanguage: bestSubtitle?.language || null,
+    subtitleLabel: bestSubtitle?.label || null,
+    subtitleScore: bestSubtitle ? scoreSubtitle(bestSubtitle) : 0
+  }));
+}
+
 async function waitForStreamOrTimeout(found, maxMs = 20000, intervalMs = 300) {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
@@ -392,9 +524,74 @@ async function extractFromDOM(page, baseUrl) {
   return unique(found).filter(isDirectStreamUrl);
 }
 
+async function extractSubtitlesFromDOM(page, baseUrl) {
+  const found = [];
+
+  const domTracks = await page.evaluate(() => {
+    const tracks = [];
+    document.querySelectorAll('track, [data-subtitle], [data-subtitles], [data-caption], [data-captions]').forEach(el => {
+      ['src', 'file', 'data-subtitle', 'data-subtitles', 'data-caption', 'data-captions'].forEach(attr => {
+        const value = el.getAttribute(attr);
+        if (value) {
+          tracks.push({
+            url: value,
+            language: el.getAttribute('srclang') || el.getAttribute('lang') || '',
+            label: el.getAttribute('label') || el.getAttribute('title') || ''
+          });
+        }
+        const subtitle = normalizeSubtitleCandidate(u, embedUrl);
+        if (subtitle && !subtitles.some((item) => item.url === subtitle.url)) {
+          subtitles.push(subtitle);
+        }
+      });
+    });
+    return tracks;
+  }).catch(() => []);
+
+  for (const track of domTracks) {
+    found.push(normalizeSubtitleCandidate(track.url, baseUrl, {
+      language: track.language || subtitleLanguageFromText(`${track.label} ${track.url}`),
+      label: track.label
+    }));
+  }
+
+  const html = await page.content().catch(() => '');
+  found.push(...extractSubtitleCandidatesFromText(html, baseUrl));
+
+  const jsVars = await page.evaluate(() => {
+    const candidates = [];
+    const keys = [
+      'jwplayer', 'videojs', 'playerConfig', 'streamConfig',
+      'playerSetup', 'subtitles', 'subtitle', 'captions', 'tracks'
+    ];
+    for (const key of keys) {
+      try {
+        const val = window[key];
+        if (!val) continue;
+        candidates.push(typeof val === 'string' ? val : JSON.stringify(val));
+      } catch (_) {}
+    }
+    try {
+      if (window.jwplayer) {
+        const p = window.jwplayer();
+        const item = p?.getPlaylistItem?.();
+        if (item?.tracks) item.tracks.forEach(t => candidates.push(JSON.stringify(t)));
+      }
+    } catch (_) {}
+    return candidates;
+  }).catch(() => []);
+
+  for (const text of jsVars) {
+    found.push(...extractSubtitleCandidatesFromText(text, baseUrl));
+  }
+
+  return uniqueSubtitles(found);
+}
+
 // ─── BROWSER SCRAPER PRINCIPAL ───────────────────────────────────────────────
 async function extractWithBrowser(embedUrl) {
   const found = [];
+  const subtitles = [];
   let browser;
   const browserlessToken = process.env.BROWSERLESS_TOKEN;
   const scraperMode = process.env.SCRAPER_MODE || 'auto';
@@ -476,6 +673,14 @@ async function extractWithBrowser(embedUrl) {
       });
 
       // Registrar el script de inicialización del sniffer en la página principal y subframes
+      await context.exposeFunction('onSubtitleFound', (url) => {
+        const subtitle = normalizeSubtitleCandidate(url, embedUrl);
+        if (subtitle && !subtitles.some((item) => item.url === subtitle.url)) {
+          console.log(`[browser sniffer] Subtitulo detectado: ${subtitle.url.substring(0, 80)}`);
+          subtitles.push(subtitle);
+        }
+      });
+
       await context.addInitScript(SNIFFER_SCRIPT);
 
       const page = await context.newPage();
@@ -509,6 +714,10 @@ async function extractWithBrowser(embedUrl) {
           console.log(`[browser] 🎯 Request: ${u.substring(0, 80)}`);
           found.push(u);
         }
+        const subtitle = normalizeSubtitleCandidate(u, embedUrl);
+        if (subtitle && !subtitles.some((item) => item.url === subtitle.url)) {
+          subtitles.push(subtitle);
+        }
       });
 
       // ─── MONITOREO DE RED: RESPONSE BODIES ───────────────────────────────────
@@ -524,23 +733,35 @@ async function extractWithBrowser(embedUrl) {
             console.log(`[browser] 🎯 Response URL: ${u.substring(0, 80)}`);
             found.push(u);
           }
+          const subtitleFromUrl = normalizeSubtitleCandidate(u, embedUrl);
+          if (subtitleFromUrl && !subtitles.some((item) => item.url === subtitleFromUrl.url)) {
+            subtitles.push(subtitleFromUrl);
+          }
 
           // Segundo: leer el cuerpo para encontrar URLs embebidas
           const ct = (response.headers()['content-type'] || '').toLowerCase();
           const isTextContent = ct.includes('json') || ct.includes('javascript') ||
-                                ct.includes('text/plain') || ct.includes('text/html');
+                                ct.includes('text/plain') || ct.includes('text/html') ||
+                                ct.includes('mpegurl') || ct.includes('vnd.apple.mpegurl');
           if (!isTextContent) return;
 
           const body = await response.text().catch(() => '');
           if (!body || body.length < 10) return;
 
-          if (!body.includes('.m3u8') && !body.includes('.mp4') && !body.includes('videoplayback')) return;
+          if (!body.includes('.m3u8') && !body.includes('.mp4') && !body.includes('videoplayback') &&
+              !body.includes('.vtt') && !body.includes('.srt') && !body.includes('TYPE=SUBTITLES')) return;
 
           const matches = extractStreamUrlsFromText(body, u);
           for (const match of matches) {
             if (!found.includes(match)) {
               console.log(`[browser] 📡 Body(${u.substring(0,40)}): ${match.substring(0, 80)}`);
               found.push(match);
+            }
+          }
+          const subtitleMatches = extractSubtitleCandidatesFromText(body, u);
+          for (const match of subtitleMatches) {
+            if (!subtitles.some((item) => item.url === match.url)) {
+              subtitles.push(match);
             }
           }
         } catch (_) {}
@@ -644,6 +865,8 @@ async function extractWithBrowser(embedUrl) {
         if (found.length > 0) break;
 
         const domUrls = await extractFromDOM(page, page.url());
+        const domSubtitles = await extractSubtitlesFromDOM(page, page.url());
+        subtitles.push(...domSubtitles.filter((sub) => !subtitles.some((item) => item.url === sub.url)));
         if (domUrls.length > 0) {
           found.push(...domUrls);
           break;
@@ -655,6 +878,8 @@ async function extractWithBrowser(embedUrl) {
           try {
             const frameUrls = await extractFromDOM(frame, frame.url()).catch(() => []);
             if (frameUrls.length > 0) found.push(...frameUrls);
+            const frameSubtitles = await extractSubtitlesFromDOM(frame, frame.url()).catch(() => []);
+            subtitles.push(...frameSubtitles.filter((sub) => !subtitles.some((item) => item.url === sub.url)));
           } catch (_) {}
         }
 
@@ -671,7 +896,14 @@ async function extractWithBrowser(embedUrl) {
     }
   }
 
-  return { urls: unique(found).filter(isDirectStreamUrl), error: null };
+  const urls = unique(found).filter(isDirectStreamUrl);
+  const subtitleTracks = uniqueSubtitles(subtitles);
+  return {
+    urls,
+    sources: attachBestSubtitle(urls, subtitleTracks),
+    subtitles: subtitleTracks,
+    error: null
+  };
 }
 
 // ─── CLASE PRINCIPAL ──────────────────────────────────────────────────────────
@@ -724,6 +956,14 @@ class VideoScraper {
 
     if (isTV) {
       return [
+        `https://embed.streammafia.to/embed/${tvPath}?autoplay=true&lang=es`,
+        `https://vidsrc.fyi/embed/${tvPath}`,
+        `https://vidsrc-embed.ru/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}&ds_lang=es`,
+        `https://vidsrcme.su/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}&ds_lang=es`,
+        `https://vsrc.su/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}&ds_lang=es`,
+        `https://letsembed.cc/embed/tv/?id=${tmdbId}/${season}/${episode}`,
+        `https://vixsrc.to/${tvPath}?lang=es&primaryColor=00D46A`,
+
         // Proveedores de alta tasa de éxito primero (con interacción mejorada)
         `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
         `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${season}&e=${episode}`,
@@ -751,6 +991,14 @@ class VideoScraper {
     }
 
     return [
+      `https://embed.streammafia.to/embed/${moviePath}?autoplay=true&lang=es`,
+      `https://vidsrc.fyi/embed/${moviePath}`,
+      `https://vidsrc-embed.ru/embed/movie?tmdb=${tmdbId}&ds_lang=es`,
+      `https://vidsrcme.su/embed/movie?tmdb=${tmdbId}&ds_lang=es`,
+      `https://vsrc.su/embed/movie?tmdb=${tmdbId}&ds_lang=es`,
+      `https://letsembed.cc/embed/movie/?id=${tmdbId}`,
+      `https://vixsrc.to/${moviePath}?lang=es&primaryColor=00D46A`,
+
       // Proveedores de alta tasa de éxito primero (con interacción mejorada)
       `https://embed.smashystream.com/playere.php?tmdb=${tmdbId}`,
       `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`,
@@ -781,8 +1029,15 @@ class VideoScraper {
     const debug = { embedUrl, streamsFound: 0, errors: [] };
     const result = await extractWithBrowser(embedUrl);
     debug.streamsFound = result.urls.length;
+    debug.subtitlesFound = result.subtitles?.length || 0;
     if (result.error) debug.errors.push(result.error);
-    return { urls: unique(result.urls).filter(isDirectStreamUrl), error: result.error, debug };
+    return {
+      urls: unique(result.urls).filter(isDirectStreamUrl),
+      sources: Array.isArray(result.sources) ? result.sources : attachBestSubtitle(result.urls, result.subtitles || []),
+      subtitles: result.subtitles || [],
+      error: result.error,
+      debug
+    };
   }
 
   static async createPayload(source) {
@@ -806,6 +1061,7 @@ class VideoScraper {
       const payload = {
         success: isDirectStreamUrl(n.url),
         candidates: isDirectStreamUrl(n.url) ? [n.url] : [],
+        sources: isDirectStreamUrl(n.url) ? attachBestSubtitle([n.url], []) : [],
         tmdbId: n.tmdbId,
         type: n.type,
         debug_info: { source: 'direct_url' }
@@ -816,11 +1072,12 @@ class VideoScraper {
 
     const embeds = this.buildCandidates(n);
     const candidates = [];
+    const sourceCandidates = [];
     const debugList = [];
-    const browserLimit = Number(process.env.SCRAPER_BROWSER_LIMIT) || 3;
+    const browserLimit = Number(process.env.SCRAPER_BROWSER_LIMIT) || 6;
 
     for (const [i, embedUrl] of embeds.entries()) {
-      if (candidates.length >= 1) break;
+      if (sourceCandidates.some((item) => item.subtitleUrl)) break;
       // Si un proveedor falla por "unavailable", no cuenta contra el límite de navegadores
       // para darnos más oportunidades de encontrar uno que sí funcione.
       if (i >= browserLimit && !debugList.some(d => d.errors.includes('unavailable'))) break;
@@ -829,21 +1086,29 @@ class VideoScraper {
       const result = await this.extractFromEmbed(embedUrl);
       debugList.push(result.debug);
       candidates.push(...result.urls);
+      sourceCandidates.push(...(result.sources || []).map((item) => ({
+        ...item,
+        provider: embedUrl
+      })));
 
-      // Si encontramos algo, salimos
-      if (candidates.length > 0) break;
+      if (sourceCandidates.some((item) => item.subtitleUrl)) break;
     }
 
     const streamCandidates = unique(candidates).filter(isDirectStreamUrl);
+    const sources = sourceCandidates.length > 0
+      ? sourceCandidates
+      : attachBestSubtitle(streamCandidates, []);
     const payload = {
       success: streamCandidates.length > 0,
       candidates: streamCandidates,
+      sources,
       tmdbId: n.tmdbId,
       type: n.type,
       searchMode: true,
       debug_info: {
         embedsChecked: debugList.length,
         streamsFound: streamCandidates.length,
+        subtitlesFound: sources.filter((item) => item.subtitleUrl).length,
         providers: debugList
       }
     };

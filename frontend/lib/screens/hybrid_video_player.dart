@@ -35,6 +35,7 @@ class HybridVideoPlayer extends StatefulWidget {
   onReceivedHttpError;
   final VoidCallback? onNativePlaybackFailed;
   final ValueChanged<String>? onNativeUrlFound;
+  final bool allowNativeUrlPromotion;
 
   const HybridVideoPlayer({
     super.key,
@@ -53,6 +54,7 @@ class HybridVideoPlayer extends StatefulWidget {
     this.onReceivedHttpError,
     this.onNativePlaybackFailed,
     this.onNativeUrlFound,
+    this.allowNativeUrlPromotion = true,
   });
 
   @override
@@ -221,9 +223,8 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
 
     final ownSubtitleUrl = widget.subtitleUrl?.trim();
     if (ownSubtitleUrl != null && ownSubtitleUrl.isNotEmpty) {
-      final ownSubtitleUri = Uri.tryParse(ownSubtitleUrl);
-      if (ownSubtitleUri != null &&
-          await _loadCaptionUri(ownSubtitleUri)) {
+      final ownSubtitleUri = _resolveCaptionUri(videoUri, ownSubtitleUrl);
+      if (ownSubtitleUri != null && await _loadCaptionUri(ownSubtitleUri)) {
         return;
       }
     }
@@ -240,16 +241,20 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
 
   Future<bool> _loadCaptionUri(Uri subtitleUri) async {
     try {
-      final response = await http
-          .get(subtitleUri, headers: widget.headers ?? {})
-          .timeout(const Duration(seconds: 8));
+      final response = await _getCaptionResponse(subtitleUri);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return false;
       }
 
       final body = utf8.decode(response.bodyBytes, allowMalformed: true);
-      final captionFile = _parseCaptionFile(body, subtitleUri);
+      final captionBody = _looksLikeHlsManifest(body, subtitleUri)
+          ? await _loadHlsCaptionPlaylist(body, subtitleUri)
+          : body;
+
+      if (captionBody == null || captionBody.trim().isEmpty) return false;
+
+      final captionFile = _parseCaptionFile(captionBody, subtitleUri);
 
       await _videoPlayerController?.setClosedCaptionFile(
         Future<ClosedCaptionFile>.value(captionFile),
@@ -264,13 +269,108 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
 
   ClosedCaptionFile _parseCaptionFile(String body, Uri subtitleUri) {
     final path = subtitleUri.path.toLowerCase();
-    final trimmed = body.trimLeft();
+    final trimmed = body.replaceFirst('\uFEFF', '').trimLeft();
     final looksLikeSrt =
         path.endsWith('.srt') ||
-        RegExp(r'^\d+\s*\r?\n\d{2}:\d{2}:\d{2}[,.]\d{3}', multiLine: true)
-            .hasMatch(trimmed);
+        RegExp(
+          r'^\d+\s*\r?\n\d{2}:\d{2}:\d{2}[,.]\d{3}',
+          multiLine: true,
+        ).hasMatch(trimmed);
 
-    return looksLikeSrt ? SubRipCaptionFile(body) : WebVTTCaptionFile(body);
+    return looksLikeSrt
+        ? SubRipCaptionFile(trimmed)
+        : WebVTTCaptionFile(_ensureWebVttHeader(trimmed));
+  }
+
+  Uri? _resolveCaptionUri(Uri videoUri, String value) {
+    final uri = Uri.tryParse(value);
+    if (uri == null) return null;
+    return uri.hasScheme ? uri : videoUri.resolveUri(uri);
+  }
+
+  Future<http.Response> _getCaptionResponse(Uri uri) async {
+    final attempts = [
+      _headersForCaptionUri(uri),
+      widget.headers ?? const <String, String>{},
+      const <String, String>{},
+    ];
+
+    Object? lastError;
+    for (final headers in attempts) {
+      try {
+        final response = await http
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 8));
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          return response;
+        }
+        lastError = 'HTTP ${response.statusCode}';
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw Exception('Caption request failed: $lastError');
+  }
+
+  Map<String, String> _headersForCaptionUri(Uri uri) {
+    final headers = Map<String, String>.from(widget.headers ?? {});
+    headers.putIfAbsent('User-Agent', () => _desktopUserAgent);
+    headers.putIfAbsent(
+      'Accept',
+      () => 'text/vtt,text/plain,application/x-subrip,*/*',
+    );
+    headers.putIfAbsent(
+      'Accept-Language',
+      () => 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
+    );
+    headers.putIfAbsent('Referer', () => '${uri.origin}/');
+    headers.putIfAbsent('Origin', () => uri.origin);
+    return headers;
+  }
+
+  bool _looksLikeHlsManifest(String body, Uri uri) {
+    final lowerPath = uri.path.toLowerCase();
+    return lowerPath.endsWith('.m3u8') || body.trimLeft().startsWith('#EXTM3U');
+  }
+
+  Future<String?> _loadHlsCaptionPlaylist(
+    String manifest,
+    Uri playlistUri,
+  ) async {
+    final segmentUris = manifest
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty && !line.startsWith('#'))
+        .map(playlistUri.resolve)
+        .where(
+          (uri) =>
+              uri.path.toLowerCase().endsWith('.vtt') ||
+              uri.path.toLowerCase().endsWith('.srt'),
+        )
+        .take(8)
+        .toList();
+
+    if (segmentUris.isEmpty) return null;
+
+    final chunks = <String>[];
+    for (final uri in segmentUris) {
+      final response = await _getCaptionResponse(uri);
+      if (response.statusCode < 200 || response.statusCode >= 300) continue;
+      final body = utf8.decode(response.bodyBytes, allowMalformed: true);
+      final cleaned = body
+          .replaceFirst('\uFEFF', '')
+          .replaceFirst(RegExp(r'^WEBVTT[^\n\r]*(\r?\n)+'), '')
+          .trim();
+      if (cleaned.isNotEmpty) chunks.add(cleaned);
+    }
+
+    if (chunks.isEmpty) return null;
+    return 'WEBVTT\n\n${chunks.join('\n\n')}';
+  }
+
+  String _ensureWebVttHeader(String body) {
+    return body.startsWith('WEBVTT') ? body : 'WEBVTT\n\n$body';
   }
 
   Future<Uri?> _findSubtitleUri(Uri videoUri) async {
@@ -374,7 +474,12 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   }
 
   void _reportNativeUrl(String url) {
-    if (_nativeUrlReported || _usesNativePlayer || !_isPlayableUrl(url)) return;
+    if (!widget.allowNativeUrlPromotion ||
+        _nativeUrlReported ||
+        _usesNativePlayer ||
+        !_isPlayableUrl(url)) {
+      return;
+    }
     _nativeUrlReported = true;
     widget.onNativeUrlFound?.call(url);
   }

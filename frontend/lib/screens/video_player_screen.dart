@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -58,10 +59,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   int _lastProgressSeconds = 0;
   int? _lastDurationSeconds;
   String? _nativeStreamUrl;
+  String? _nativeSourceUrl;
+  String? _nativeSubtitleUrl;
+  String? _nativeSubtitleLanguage;
+  String? _nativeSubtitleLabel;
   bool _isResolvingNativeStream = true;
   bool _usingNativeStream = false;
   bool _nativeModeRequested = true;
   int _nativeResolveToken = 0;
+  bool _showSettingsPanel = false;
 
   static const String _desktopUserAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -71,11 +77,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     return type.contains('serie') || type.contains('tv') ? 'tv' : 'movie';
   }
 
-  Map<String, String> _headersForUrl(String url) {
+  Map<String, String> _headersForUrl(String url, {String? sourceUrl}) {
     final lower = url.toLowerCase();
     if (_isDirectPlayableUrl(lower)) {
+      final sourceUri = Uri.tryParse(sourceUrl ?? '');
+      final sourceOrigin = sourceUri?.origin;
       return {
         'User-Agent': _desktopUserAgent,
+        ...?sourceOrigin == null
+            ? null
+            : {'Referer': '$sourceOrigin/', 'Origin': sourceOrigin},
         'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
       };
     }
@@ -110,7 +121,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         final path = isTv
             ? '/embed/tv/$tmdbId/${widget.season}/${widget.episode}'
             : '/embed/movie/$tmdbId';
-        return Uri.https('vidsrc.wiki', path, {
+        return Uri.https('vidsrc.mov', path, {
           'autoplay': '1',
           'color': '00d46a',
           'sub': 'es',
@@ -158,7 +169,42 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _enterPlaybackMode();
     _scheduleControlsHide();
     _startProgressTracking();
-    unawaited(_resolveNativeStream());
+
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final pref = settings.preferredServer;
+    if (pref == 'embed') {
+      _provider = EmbedProvider.embed;
+      _nativeModeRequested = false;
+      _usingNativeStream = false;
+      _isResolvingNativeStream = false;
+      _isLoading = _currentEmbedUrl.isNotEmpty;
+    } else if (pref == 'vidsrc_vip') {
+      _provider = EmbedProvider.vidSrcVip;
+      _nativeModeRequested = false;
+      _usingNativeStream = false;
+      _isResolvingNativeStream = false;
+      _isLoading = _currentEmbedUrl.isNotEmpty;
+    } else {
+      _provider = EmbedProvider.embed;
+      _nativeModeRequested = true;
+      _isResolvingNativeStream = true;
+      _isLoading = true;
+    }
+
+    if (_nativeModeRequested) {
+      unawaited(_resolveNativeStream());
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_currentEmbedUrl.isNotEmpty) {
+          _webViewController?.loadUrl(
+            urlRequest: URLRequest(
+              url: WebUri(_currentEmbedUrl),
+              headers: _mobileHeaders,
+            ),
+          );
+        }
+      });
+    }
   }
 
   @override
@@ -298,6 +344,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _revealControls();
     setState(() {
       _provider = provider;
+      _nativeStreamUrl = null;
+      _nativeSourceUrl = null;
+      _nativeSubtitleUrl = null;
+      _nativeSubtitleLanguage = null;
+      _nativeSubtitleLabel = null;
       _usingNativeStream = false;
       _nativeModeRequested = false;
       _isResolvingNativeStream = false;
@@ -335,18 +386,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _reloadNativePlayer() {
     _nativeResolveToken++;
     _revealControls();
-    setState(() {
-      _nativeStreamUrl = null;
-      _usingNativeStream = false;
+    final activeEmbedUrl = !_usingNativeStream && !_nativeModeRequested
+        ? _currentEmbedUrl
+        : null;
+      setState(() {
+        _nativeStreamUrl = null;
+        _nativeSourceUrl = null;
+        _nativeSubtitleUrl = null;
+        _nativeSubtitleLanguage = null;
+        _nativeSubtitleLabel = null;
+        _usingNativeStream = false;
       _nativeModeRequested = true;
       _isResolvingNativeStream = true;
       _isLoading = true;
       _loadError = null;
     });
-    unawaited(_resolveNativeStream());
+    unawaited(_resolveNativeStream(preferredEmbedUrl: activeEmbedUrl));
   }
 
-  Future<void> _resolveNativeStream() async {
+  Future<void> _resolveNativeStream({String? preferredEmbedUrl}) async {
     final token = ++_nativeResolveToken;
     final directUrl = widget.directUrl?.trim();
 
@@ -356,6 +414,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (!mounted || token != _nativeResolveToken) return;
       setState(() {
         _nativeStreamUrl = directUrl;
+        _nativeSourceUrl = null;
+        _nativeSubtitleUrl = null;
+        _nativeSubtitleLanguage = null;
+        _nativeSubtitleLabel = null;
         _usingNativeStream = true;
         _nativeModeRequested = true;
         _isResolvingNativeStream = false;
@@ -384,8 +446,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _loadError = null;
     });
 
+    final activeEmbedUrl = preferredEmbedUrl?.trim();
+
+    if (activeEmbedUrl != null && activeEmbedUrl.isNotEmpty) {
+      try {
+        final streamCandidate = await ApiService.getValidStreamCandidate(
+          url: activeEmbedUrl,
+          type: _normalizedMediaType,
+          season: widget.season,
+          episode: widget.episode,
+        ).timeout(const Duration(seconds: 45));
+
+        if (!mounted || token != _nativeResolveToken) return;
+
+        if (streamCandidate != null && streamCandidate.url.isNotEmpty) {
+          _promoteToNativeCandidate(streamCandidate, sourceUrl: activeEmbedUrl);
+          return;
+        }
+      } catch (error) {
+        debugPrint('Active embed extraction failed: $error');
+      }
+    }
+
     try {
-      final streamUrl = await ApiService.getValidStreamUrl(
+      final streamCandidate = await ApiService.getValidStreamCandidate(
         tmdbId: tmdbId,
         url: directUrl,
         type: _normalizedMediaType,
@@ -395,8 +479,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       if (!mounted || token != _nativeResolveToken) return;
 
-      if (streamUrl != null && streamUrl.isNotEmpty) {
-        _promoteToNativeStream(streamUrl);
+      if (streamCandidate != null && streamCandidate.url.isNotEmpty) {
+        _promoteToNativeCandidate(streamCandidate);
         return;
       }
     } catch (error) {
@@ -406,6 +490,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (!mounted || token != _nativeResolveToken) return;
     setState(() {
       _nativeStreamUrl = null;
+      _nativeSourceUrl = null;
+      _nativeSubtitleUrl = null;
+      _nativeSubtitleLanguage = null;
+      _nativeSubtitleLabel = null;
       _usingNativeStream = false;
       _nativeModeRequested = false;
       _isResolvingNativeStream = false;
@@ -414,12 +502,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
-  void _promoteToNativeStream(String url) {
+  void _promoteToNativeStream(String url, {String? sourceUrl}) {
     if (!mounted || !_isDirectPlayableUrl(url)) return;
     if (_usingNativeStream && _nativeStreamUrl == url) return;
 
     setState(() {
       _nativeStreamUrl = url;
+      _nativeSourceUrl = sourceUrl;
+      _nativeSubtitleUrl = null;
+      _nativeSubtitleLanguage = null;
+      _nativeSubtitleLabel = null;
+      _usingNativeStream = true;
+      _nativeModeRequested = true;
+      _isResolvingNativeStream = false;
+      _isLoading = false;
+      _loadError = null;
+    });
+  }
+
+  void _promoteToNativeCandidate(StreamPlaybackCandidate candidate, {String? sourceUrl}) {
+    if (!mounted || !_isDirectPlayableUrl(candidate.url)) return;
+    if (_usingNativeStream && _nativeStreamUrl == candidate.url) return;
+
+    setState(() {
+      _nativeStreamUrl = candidate.url;
+      _nativeSourceUrl = sourceUrl;
+      _nativeSubtitleUrl = candidate.subtitleUrl;
+      _nativeSubtitleLanguage = candidate.subtitleLanguage;
+      _nativeSubtitleLabel = candidate.subtitleLabel;
       _usingNativeStream = true;
       _nativeModeRequested = true;
       _isResolvingNativeStream = false;
@@ -433,6 +543,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _nativeResolveToken++;
     setState(() {
       _nativeStreamUrl = null;
+      _nativeSourceUrl = null;
+      _nativeSubtitleUrl = null;
+      _nativeSubtitleLanguage = null;
+      _nativeSubtitleLabel = null;
       _usingNativeStream = false;
       _nativeModeRequested = false;
       _isResolvingNativeStream = false;
@@ -443,6 +557,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _scheduleControlsHide() {
     _controlsTimer?.cancel();
+    if (_showSettingsPanel) return;
     _controlsTimer = Timer(const Duration(seconds: 4), () {
       if (!mounted || _loadError != null) return;
       setState(() => _showControls = false);
@@ -476,37 +591,101 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  Widget _buildNativeButton() {
-    final selected = _nativeModeRequested || _usingNativeStream;
-
-    return TextButton(
-      onPressed: _reloadNativePlayer,
-      style: TextButton.styleFrom(
-        foregroundColor: selected ? Colors.black : Colors.white,
-        backgroundColor: selected ? const Color(0xFF00D46A) : Colors.white12,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-      ),
-      child: const Text(
-        'Nativo',
-        style: TextStyle(fontWeight: FontWeight.w700),
+  Widget _buildSettingsHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16.0, top: 12.0, bottom: 8.0),
+      child: Text(
+        title.toUpperCase(),
+        style: const TextStyle(
+          color: Colors.white38,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.2,
+        ),
       ),
     );
   }
 
-  Widget _buildProviderButton(EmbedProvider provider) {
-    final selected = !_nativeModeRequested && _provider == provider;
-    final label = provider == EmbedProvider.embed ? 'Embed' : 'VidSrc VIP';
-
-    return TextButton(
-      onPressed: () => _reloadProvider(provider),
-      style: TextButton.styleFrom(
-        foregroundColor: selected ? Colors.black : Colors.white,
-        backgroundColor: selected ? const Color(0xFF00D46A) : Colors.white12,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+  Widget _buildServerOption({
+    required String title,
+    required String subtitle,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: active ? const Color(0xFF00D46A) : Colors.white,
+                      fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            if (active)
+              const Icon(
+                Icons.check_circle,
+                color: Color(0xFF00D46A),
+                size: 20,
+              )
+            else
+              const Icon(
+                Icons.circle_outlined,
+                color: Colors.white24,
+                size: 20,
+              ),
+          ],
+        ),
       ),
-      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+    );
+  }
+
+  Widget _buildMockOption({
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white54, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white12,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -530,14 +709,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     key: ValueKey(playbackUrl),
                     videoUrl: playbackUrl,
                     title: widget.title,
-                    headers: _headersForUrl(playbackUrl),
+                    headers: _headersForUrl(
+                      playbackUrl,
+                      sourceUrl: _usingNativeStream ? _nativeSourceUrl : null,
+                    ),
                     showSubtitles: settings.showSubtitles,
                     subtitleColor: settings.subtitleColor,
-                    subtitleUrl: widget.subtitleUrl,
-                    subtitleLanguage: widget.subtitleLanguage,
-                    subtitleLabel: widget.subtitleLabel,
+                    subtitleUrl: _nativeSubtitleUrl ?? widget.subtitleUrl,
+                    subtitleLanguage: _nativeSubtitleLanguage ?? widget.subtitleLanguage,
+                    subtitleLabel: _nativeSubtitleLabel ?? widget.subtitleLabel,
                     onNativePlaybackFailed: _fallbackToEmbeddedPlayer,
-                    onNativeUrlFound: _promoteToNativeStream,
+                    onNativeUrlFound: (url) {
+                      _promoteToNativeStream(url, sourceUrl: _currentEmbedUrl);
+                    },
+                    allowNativeUrlPromotion: _nativeModeRequested,
                     onWebViewCreated: (controller) {
                       _webViewController = controller;
                     },
@@ -627,12 +812,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              _buildNativeButton(),
-                              const SizedBox(width: 8),
-                              _buildProviderButton(EmbedProvider.embed),
-                              const SizedBox(width: 8),
-                              _buildProviderButton(EmbedProvider.vidSrcVip),
-                              const SizedBox(width: 8),
                               if (_canPersistProgress) ...[
                                 IconButton(
                                   tooltip: 'Marcar como visto',
@@ -700,6 +879,187 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       ),
                     ),
                   ),
+                
+                // Botón de Ajustes en la esquina inferior derecha
+                Positioned(
+                  bottom: 20,
+                  right: 20,
+                  child: AnimatedOpacity(
+                    opacity: _showControls ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
+                    child: IgnorePointer(
+                      ignoring: !_showControls,
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.settings,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _showSettingsPanel = true;
+                            _controlsTimer?.cancel();
+                          });
+                        },
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black.withValues(alpha: 0.68),
+                          padding: const EdgeInsets.all(12),
+                          shape: const CircleBorder(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Fondo oscuro semi-transparente para cerrar el panel al pulsar fuera
+                if (_showSettingsPanel)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        setState(() {
+                          _showSettingsPanel = false;
+                          _scheduleControlsHide();
+                        });
+                      },
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ),
+
+                // Panel lateral de Ajustes deslizable (Slide-in)
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  top: 0,
+                  bottom: 0,
+                  right: _showSettingsPanel ? 0 : -320,
+                  width: 320,
+                  child: ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.82),
+                          border: const Border(
+                            left: BorderSide(color: Colors.white12, width: 1),
+                          ),
+                        ),
+                        child: SafeArea(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Cabecera del Panel
+                              Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.settings, color: Color(0xFF00D46A)),
+                                    const SizedBox(width: 10),
+                                    const Expanded(
+                                      child: Text(
+                                        'Ajustes de Video',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.close, color: Colors.white70),
+                                      onPressed: () {
+                                        setState(() {
+                                          _showSettingsPanel = false;
+                                          _scheduleControlsHide();
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Divider(color: Colors.white12, height: 1),
+                              Expanded(
+                                child: ListView(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  children: [
+                                    // Sección de Servidor
+                                    _buildSettingsHeader('Servidor / Fuente'),
+                                    _buildServerOption(
+                                      title: 'Nativo (Recomendado)',
+                                      subtitle: 'Reproductor fluido y nativo',
+                                      active: _usingNativeStream || _nativeModeRequested,
+                                      onTap: () async {
+                                        _reloadNativePlayer();
+                                        await settings.updateSettings(newPreferredServer: 'nativo');
+                                      },
+                                    ),
+                                    _buildServerOption(
+                                      title: 'Embed',
+                                      subtitle: 'Servidor embed estándar',
+                                      active: !_nativeModeRequested && _provider == EmbedProvider.embed,
+                                      onTap: () async {
+                                        await _reloadProvider(EmbedProvider.embed);
+                                        await settings.updateSettings(newPreferredServer: 'embed');
+                                      },
+                                    ),
+                                    _buildServerOption(
+                                      title: 'VidSrc VIP',
+                                      subtitle: 'Servidor rápido alternativo',
+                                      active: !_nativeModeRequested && _provider == EmbedProvider.vidSrcVip,
+                                      onTap: () async {
+                                        await _reloadProvider(EmbedProvider.vidSrcVip);
+                                        await settings.updateSettings(newPreferredServer: 'vidsrc_vip');
+                                      },
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const Divider(color: Colors.white10),
+                                    
+                                    // Sección de Subtítulos
+                                    _buildSettingsHeader('Subtítulos'),
+                                    SwitchListTile(
+                                      value: settings.showSubtitles,
+                                      activeThumbColor: const Color(0xFF00D46A),
+                                      title: const Text(
+                                        'Activar Subtítulos',
+                                        style: TextStyle(color: Colors.white, fontSize: 14),
+                                      ),
+                                      onChanged: (val) {
+                                        settings.updateSettings(newShowSubtitles: val);
+                                      },
+                                    ),
+                                    
+                                    const SizedBox(height: 12),
+                                    const Divider(color: Colors.white10),
+
+                                    // Sección de Calidad y Velocidad
+                                    _buildSettingsHeader('Calidad (Escalable)'),
+                                    _buildMockOption(
+                                      icon: Icons.high_quality,
+                                      title: 'Calidad de Video',
+                                      value: 'Automática (1080p)',
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const Divider(color: Colors.white10),
+
+                                    _buildSettingsHeader('Velocidad (Escalable)'),
+                                    _buildMockOption(
+                                      icon: Icons.speed,
+                                      title: 'Velocidad de reproducción',
+                                      value: 'Normal (1.0x)',
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
