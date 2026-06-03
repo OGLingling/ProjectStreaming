@@ -161,7 +161,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   bool _isDirectPlayableUrl(String url) {
-    return shouldPromoteNativePlaybackUrl(url);
+    return isHlsPlaybackUrl(url);
   }
 
   @override
@@ -559,20 +559,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
-  void _promoteToNativeStream(String url, {String? sourceUrl}) {
+  void _storeDiscoveredNativeStream(String url) {
     if (!mounted || !_isDirectPlayableUrl(url)) return;
-    if (_usingNativeStream && _nativeStreamUrl == url) return;
+    if (_nativeStreamUrl == url && !_usingNativeStream) return;
 
+    final sourceUrl = _currentEmbedUrl.trim();
     setState(() {
       _nativeStreamUrl = url;
-      _nativeSourceUrl = sourceUrl;
+      _nativeSourceUrl = sourceUrl.isEmpty ? null : sourceUrl;
       _nativeSubtitleUrl = null;
       _nativeSubtitleLanguage = null;
       _nativeSubtitleLabel = null;
-      _usingNativeStream = true;
-      _nativeModeRequested = true;
-      _isResolvingNativeStream = false;
-      _isLoading = false;
       _loadError = null;
     });
   }
@@ -764,7 +761,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     subtitleLabel: _nativeSubtitleLabel ?? widget.subtitleLabel,
                     onNativePlaybackFailed: _fallbackToEmbeddedPlayer,
                     onNativeUrlFound: (url) {
-                      _promoteToNativeStream(url, sourceUrl: _currentEmbedUrl);
+                      _storeDiscoveredNativeStream(url);
                     },
                     allowNativeUrlPromotion: !_usingNativeStream,
                     onWebViewCreated: (controller) {

@@ -438,7 +438,7 @@ class _AuthScreenState extends State<AuthScreen> {
         const SizedBox(height: 12),
 
         Text(
-          "Streaming premium con el impulso de MovieWind.",
+          "Entra gratis a un catalogo hecho para descubrir tu proxima obsesion.",
 
           textAlign: TextAlign.center,
 
@@ -472,7 +472,7 @@ class _AuthScreenState extends State<AuthScreen> {
         const SizedBox(height: 12),
 
         Text(
-          "A partir de S/ 24.90. Cancela cuando quieras.",
+          "Gratis para empezar. Elige tu experiencia y disfruta sin barreras.",
 
           textAlign: TextAlign.center,
 
@@ -544,7 +544,7 @@ class _AuthScreenState extends State<AuthScreen> {
         const SizedBox(height: 28),
 
         Text(
-          "PASO 1 DE 3",
+          "PASO 1 DE 2",
 
           textAlign: TextAlign.center,
 

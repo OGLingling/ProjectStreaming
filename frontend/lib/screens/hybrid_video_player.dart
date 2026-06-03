@@ -468,7 +468,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   }
 
   bool _isNativePlayableUrl(String url) {
-    return shouldPromoteNativePlaybackUrl(url);
+    return isHlsPlaybackUrl(url);
   }
 
   void _reportNativeUrl(String url) {

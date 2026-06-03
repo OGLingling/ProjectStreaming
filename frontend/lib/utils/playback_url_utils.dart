@@ -8,5 +8,5 @@ bool isHlsPlaybackUrl(String? url) {
 }
 
 bool shouldPromoteNativePlaybackUrl(String? url) {
-  return isHlsPlaybackUrl(url);
+  return false;
 }

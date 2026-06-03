@@ -1,7 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'payment_method_screen.dart';
+import '../models/user_model.dart';
+import '../services/api_service.dart';
+import '../services/session_service.dart';
+import 'profiles_screen.dart';
 
 const Color _planBackground = Color(0xFF07110F);
 const Color _planSurface = Color(0xFF101817);
@@ -33,11 +37,11 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
     {
       'id': 'basico',
       'name': 'Basico',
-      'price': 'S/ 24.90',
+      'availability': 'Gratis',
       'quality': 'Buena',
       'resolution': '720p HD',
       'screens': '1 pantalla',
-      'downloads': '1 dispositivo',
+      'downloads': '1 perfil',
       'badge': 'Entrada',
       'icon': Icons.phone_android_rounded,
       'accent': const Color(0xFF00D8FF),
@@ -45,11 +49,11 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
     {
       'id': 'estandar',
       'name': 'Estandar',
-      'price': 'S/ 34.90',
+      'availability': 'Gratis',
       'quality': 'Excelente',
       'resolution': '1080p Full HD',
       'screens': '2 pantallas',
-      'downloads': '2 dispositivos',
+      'downloads': '2 perfiles',
       'badge': 'Equilibrado',
       'icon': Icons.live_tv_rounded,
       'accent': const Color(0xFF00C853),
@@ -57,11 +61,11 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
     {
       'id': 'premium',
       'name': 'Premium',
-      'price': 'S/ 44.90',
+      'availability': 'Gratis',
       'quality': 'Excepcional',
       'resolution': '4K Ultra HD + HDR',
       'screens': '4 pantallas',
-      'downloads': '6 dispositivos',
+      'downloads': '4 perfiles',
       'badge': 'Mas elegido',
       'icon': Icons.workspace_premium_rounded,
       'accent': const Color(0xFFFFC857),
@@ -75,25 +79,122 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
 
     final String planId = _plans[_selectedPlanIndex]['id'].toString();
 
-    await Future.delayed(const Duration(milliseconds: 300));
+    firebase_auth.UserCredential? userCredential;
 
-    if (!mounted) return;
+    try {
+      userCredential = await firebase_auth.FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+            email: widget.userEmail.trim(),
+            password: widget.password.trim(),
+          );
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PaymentMethodScreen(
-          userEmail: widget.userEmail,
-          userName: widget.userName,
-          selectedPlan: planId,
-          password: widget.password,
+      final String firebaseUid = userCredential.user!.uid;
+
+      final userData = await ApiService.registerUser(
+        email: widget.userEmail.trim(),
+        name: widget.userName.trim(),
+        plan: planId,
+        password: widget.password.trim(),
+      );
+
+      if (userData == null) {
+        throw Exception('API_ERROR');
+      }
+
+      final String dbUserId = userData['id']?.toString() ?? firebaseUid;
+
+      await ApiService.sendOTP(widget.userEmail.trim());
+
+      final User newUser = User(
+        id: dbUserId,
+        name: widget.userName,
+        email: widget.userEmail,
+        plan: planId,
+      );
+
+      await SessionService.startSession({
+        ...newUser.toJson(),
+        'firebase_uid': firebaseUid,
+      });
+
+      if (!mounted) return;
+
+      _showWelcomeMessage(planId);
+
+      await Future.delayed(const Duration(milliseconds: 950));
+
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ProfilesScreen(user: newUser.toJson()),
         ),
+        (route) => false,
+      );
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      if (userCredential != null) {
+        await userCredential.user?.delete();
+      }
+
+      if (!mounted) return;
+
+      String errorMessage = 'Error al registrar: ${e.code}';
+
+      if (e.code == 'email-already-in-use') {
+        errorMessage = 'El correo ya esta registrado.';
+      } else if (e.code == 'weak-password') {
+        errorMessage = 'La contrasena es demasiado debil.';
+      } else if (e.code == 'invalid-email') {
+        errorMessage = 'El formato del correo no es valido.';
+      }
+
+      _showError(errorMessage);
+    } catch (e) {
+      if (userCredential != null) {
+        await userCredential.user?.delete();
+      }
+
+      debugPrint('Error tecnico: $e');
+
+      if (!mounted) return;
+
+      final String message = e.toString().contains('API_ERROR')
+          ? 'No se pudo conectar con el servidor. Intenta de nuevo.'
+          : 'Hubo un error al crear tu cuenta. Intenta de nuevo.';
+      _showError(message);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showWelcomeMessage(String planId) {
+    final planName = _plans.firstWhere(
+      (plan) => plan['id'] == planId,
+      orElse: () => _plans[_selectedPlanIndex],
+    )['name'];
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Bienvenido a MovieWind. Tu plan $planName ya esta activo.',
+        ),
+        backgroundColor: _planPrimary,
+        behavior: SnackBarBehavior.floating,
       ),
     );
+  }
 
-    if (mounted) {
-      setState(() => _isLoading = false);
-    }
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Theme.of(context).colorScheme.error,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -120,10 +221,10 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                 children: [
-                  _StepPill(label: 'Paso 2 de 3'),
+                  _StepPill(label: 'Paso 2 de 2'),
                   const SizedBox(height: 16),
                   Text(
-                    'Elige como quieres ver MovieWind',
+                    'Elige como quieres disfrutar MovieWind',
                     style: GoogleFonts.montserrat(
                       color: Colors.white,
                       fontSize: 26,
@@ -133,7 +234,7 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Puedes cambiar el plan cuando quieras desde tu cuenta.',
+                    'Todos los planes son gratuitos. Solo ajustan calidad, pantallas y perfiles disponibles.',
                     style: GoogleFonts.geologica(
                       color: Colors.white.withValues(alpha: 0.64),
                       fontSize: 14,
@@ -277,7 +378,7 @@ class _PlanOptionCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${plan['price']} al mes',
+                          plan['availability'].toString(),
                           style: GoogleFonts.geologica(
                             color: Colors.white.withValues(alpha: 0.68),
                             fontSize: 13,
@@ -444,7 +545,7 @@ class _PlanNote extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'El plan $planName se activara despues de confirmar el metodo de pago.',
+              'El plan $planName se activa gratis al continuar. Tu cuenta queda lista para crear perfiles.',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.64),
                 fontSize: 13,
@@ -494,7 +595,7 @@ class _BottomActionBar extends StatelessWidget {
                 ),
               ),
               Text(
-                selectedPlan['price'].toString(),
+                selectedPlan['availability'].toString(),
                 style: const TextStyle(
                   color: _planPrimary,
                   fontWeight: FontWeight.w900,
@@ -514,7 +615,7 @@ class _BottomActionBar extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.arrow_forward_rounded),
-              label: Text(isLoading ? 'Preparando...' : 'Continuar'),
+              label: Text(isLoading ? 'Activando...' : 'Activar y continuar'),
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size.fromHeight(54),
                 shape: RoundedRectangleBorder(
