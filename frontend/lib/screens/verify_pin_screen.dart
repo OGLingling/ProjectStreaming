@@ -165,6 +165,9 @@ class _VerifyPinScreenState extends State<VerifyPinScreen> {
         controller: _controllers[index],
         focusNode: _focusNodes[index],
         keyboardType: TextInputType.number,
+        textInputAction: index == 3
+            ? TextInputAction.done
+            : TextInputAction.next,
         textAlign: TextAlign.center,
         maxLength: 1,
         style: const TextStyle(color: Colors.white, fontSize: 24),
@@ -179,13 +182,30 @@ class _VerifyPinScreenState extends State<VerifyPinScreen> {
             borderRadius: BorderRadius.circular(8),
           ),
         ),
-        onChanged: (value) {
-          if (value.isNotEmpty && index < 3) {
+        onTap: () {
+          _controllers[index].selection = TextSelection(
+            baseOffset: 0,
+            extentOffset: _controllers[index].text.length,
+          );
+        },
+        onSubmitted: (_) {
+          if (index == 3) {
+            _verifyOtp();
+          } else {
             _focusNodes[index + 1].requestFocus();
-          } else if (value.isEmpty && index > 0) {
-            _focusNodes[index - 1].requestFocus();
           }
-          if (index == 3 && value.isNotEmpty) _verifyOtp();
+        },
+        onChanged: (value) {
+          if (value.isEmpty) {
+            _focusNodes[index].requestFocus();
+            return;
+          }
+
+          if (index < 3) {
+            _focusNodes[index + 1].requestFocus();
+          } else {
+            _verifyOtp();
+          }
         },
       ),
     );
@@ -196,6 +216,9 @@ class _VerifyPinScreenState extends State<VerifyPinScreen> {
     _timer?.cancel();
     for (var c in _controllers) {
       c.dispose();
+    }
+    for (var n in _focusNodes) {
+      n.dispose();
     }
     super.dispose();
   }

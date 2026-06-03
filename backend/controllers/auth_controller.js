@@ -8,6 +8,10 @@ function withoutPassword(user) {
     return safeUser;
 }
 
+function isBcryptHash(value) {
+    return typeof value === 'string' && /^\$2[aby]\$\d{2}\$/.test(value);
+}
+
 // --- FUNCIÓN PRIVADA: ENVÍO DE EMAIL VÍA BREVO ---
 async function sendEmail(to, subject, htmlContent) {
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -125,7 +129,39 @@ exports.register = async (req, res) => {
     }
 };
 
-// --- 5. ACTUALIZAR PERFIL (CORREGIDO PARA EVITAR ERROR 500) ---
+// --- 5. LOGIN CON CONTRASENA ---
+exports.login = async (req, res) => {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+        return res.status(400).json({ error: "Email y contrasena requeridos" });
+    }
+
+    const normalizedEmail = String(email).toLowerCase().trim();
+
+    try {
+        const user = await prisma.user.findUnique({
+            where: { email: normalizedEmail }
+        });
+
+        if (!user || !user.password || !isBcryptHash(user.password)) {
+            return res.status(401).json({ error: "Credenciales invalidas" });
+        }
+
+        const passwordMatches = await bcrypt.compare(String(password), user.password);
+
+        if (!passwordMatches) {
+            return res.status(401).json({ error: "Credenciales invalidas" });
+        }
+
+        res.json(withoutPassword(user));
+    } catch (error) {
+        console.error("Error en login:", error);
+        res.status(500).json({ error: "Error en login" });
+    }
+};
+
+// --- 6. ACTUALIZAR PERFIL (CORREGIDO PARA EVITAR ERROR 500) ---
 exports.updateUser = async (req, res) => {
     try {
         const { id } = req.params;

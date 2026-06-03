@@ -171,25 +171,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _startProgressTracking();
 
     final settings = Provider.of<SettingsProvider>(context, listen: false);
-    final pref = settings.preferredServer;
-    if (pref == 'embed') {
-      _provider = EmbedProvider.embed;
-      _nativeModeRequested = false;
-      _usingNativeStream = false;
-      _isResolvingNativeStream = false;
-      _isLoading = _currentEmbedUrl.isNotEmpty;
-    } else if (pref == 'vidsrc_vip') {
-      _provider = EmbedProvider.vidSrcVip;
-      _nativeModeRequested = false;
-      _usingNativeStream = false;
-      _isResolvingNativeStream = false;
-      _isLoading = _currentEmbedUrl.isNotEmpty;
-    } else {
-      _provider = EmbedProvider.embed;
-      _nativeModeRequested = true;
-      _isResolvingNativeStream = true;
-      _isLoading = true;
-    }
+    _provider = EmbedProvider.vidSrcVip;
+    _nativeModeRequested = false;
+    _usingNativeStream = false;
+    _isResolvingNativeStream = false;
+    _isLoading = _currentEmbedUrl.isNotEmpty;
+    unawaited(settings.updateSettings(newPreferredServer: 'vidsrc_vip'));
 
     if (_nativeModeRequested) {
       unawaited(_resolveNativeStream());
@@ -389,13 +376,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final activeEmbedUrl = !_usingNativeStream && !_nativeModeRequested
         ? _currentEmbedUrl
         : null;
-      setState(() {
-        _nativeStreamUrl = null;
-        _nativeSourceUrl = null;
-        _nativeSubtitleUrl = null;
-        _nativeSubtitleLanguage = null;
-        _nativeSubtitleLabel = null;
-        _usingNativeStream = false;
+    setState(() {
+      _nativeStreamUrl = null;
+      _nativeSourceUrl = null;
+      _nativeSubtitleUrl = null;
+      _nativeSubtitleLanguage = null;
+      _nativeSubtitleLabel = null;
+      _usingNativeStream = false;
       _nativeModeRequested = true;
       _isResolvingNativeStream = true;
       _isLoading = true;
@@ -520,7 +507,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
-  void _promoteToNativeCandidate(StreamPlaybackCandidate candidate, {String? sourceUrl}) {
+  void _promoteToNativeCandidate(
+    StreamPlaybackCandidate candidate, {
+    String? sourceUrl,
+  }) {
     if (!mounted || !_isDirectPlayableUrl(candidate.url)) return;
     if (_usingNativeStream && _nativeStreamUrl == candidate.url) return;
 
@@ -639,11 +629,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             ),
             if (active)
-              const Icon(
-                Icons.check_circle,
-                color: Color(0xFF00D46A),
-                size: 20,
-              )
+              const Icon(Icons.check_circle, color: Color(0xFF00D46A), size: 20)
             else
               const Icon(
                 Icons.circle_outlined,
@@ -716,7 +702,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     showSubtitles: settings.showSubtitles,
                     subtitleColor: settings.subtitleColor,
                     subtitleUrl: _nativeSubtitleUrl ?? widget.subtitleUrl,
-                    subtitleLanguage: _nativeSubtitleLanguage ?? widget.subtitleLanguage,
+                    subtitleLanguage:
+                        _nativeSubtitleLanguage ?? widget.subtitleLanguage,
                     subtitleLabel: _nativeSubtitleLabel ?? widget.subtitleLabel,
                     onNativePlaybackFailed: _fallbackToEmbeddedPlayer,
                     onNativeUrlFound: (url) {
@@ -879,7 +866,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       ),
                     ),
                   ),
-                
+
                 // Botón de Ajustes en la esquina inferior derecha
                 Positioned(
                   bottom: 20,
@@ -956,7 +943,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                 padding: const EdgeInsets.all(16.0),
                                 child: Row(
                                   children: [
-                                    const Icon(Icons.settings, color: Color(0xFF00D46A)),
+                                    const Icon(
+                                      Icons.settings,
+                                      color: Color(0xFF00D46A),
+                                    ),
                                     const SizedBox(width: 10),
                                     const Expanded(
                                       child: Text(
@@ -969,7 +959,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                       ),
                                     ),
                                     IconButton(
-                                      icon: const Icon(Icons.close, color: Colors.white70),
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: Colors.white70,
+                                      ),
                                       onPressed: () {
                                         setState(() {
                                           _showSettingsPanel = false;
@@ -983,40 +976,45 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               const Divider(color: Colors.white12, height: 1),
                               Expanded(
                                 child: ListView(
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
                                   children: [
                                     // Sección de Servidor
                                     _buildSettingsHeader('Servidor / Fuente'),
                                     _buildServerOption(
-                                      title: 'Nativo (Recomendado)',
-                                      subtitle: 'Reproductor fluido y nativo',
-                                      active: _usingNativeStream || _nativeModeRequested,
-                                      onTap: () async {
-                                        _reloadNativePlayer();
-                                        await settings.updateSettings(newPreferredServer: 'nativo');
-                                      },
-                                    ),
-                                    _buildServerOption(
                                       title: 'Embed',
                                       subtitle: 'Servidor embed estándar',
-                                      active: !_nativeModeRequested && _provider == EmbedProvider.embed,
+                                      active:
+                                          !_nativeModeRequested &&
+                                          _provider == EmbedProvider.embed,
                                       onTap: () async {
-                                        await _reloadProvider(EmbedProvider.embed);
-                                        await settings.updateSettings(newPreferredServer: 'embed');
+                                        await _reloadProvider(
+                                          EmbedProvider.embed,
+                                        );
+                                        await settings.updateSettings(
+                                          newPreferredServer: 'embed',
+                                        );
                                       },
                                     ),
                                     _buildServerOption(
                                       title: 'VidSrc VIP',
                                       subtitle: 'Servidor rápido alternativo',
-                                      active: !_nativeModeRequested && _provider == EmbedProvider.vidSrcVip,
+                                      active:
+                                          !_nativeModeRequested &&
+                                          _provider == EmbedProvider.vidSrcVip,
                                       onTap: () async {
-                                        await _reloadProvider(EmbedProvider.vidSrcVip);
-                                        await settings.updateSettings(newPreferredServer: 'vidsrc_vip');
+                                        await _reloadProvider(
+                                          EmbedProvider.vidSrcVip,
+                                        );
+                                        await settings.updateSettings(
+                                          newPreferredServer: 'vidsrc_vip',
+                                        );
                                       },
                                     ),
                                     const SizedBox(height: 12),
                                     const Divider(color: Colors.white10),
-                                    
+
                                     // Sección de Subtítulos
                                     _buildSettingsHeader('Subtítulos'),
                                     SwitchListTile(
@@ -1024,13 +1022,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                       activeThumbColor: const Color(0xFF00D46A),
                                       title: const Text(
                                         'Activar Subtítulos',
-                                        style: TextStyle(color: Colors.white, fontSize: 14),
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
                                       ),
                                       onChanged: (val) {
-                                        settings.updateSettings(newShowSubtitles: val);
+                                        settings.updateSettings(
+                                          newShowSubtitles: val,
+                                        );
                                       },
                                     ),
-                                    
+
                                     const SizedBox(height: 12),
                                     const Divider(color: Colors.white10),
 
@@ -1044,7 +1047,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                     const SizedBox(height: 12),
                                     const Divider(color: Colors.white10),
 
-                                    _buildSettingsHeader('Velocidad (Escalable)'),
+                                    _buildSettingsHeader(
+                                      'Velocidad (Escalable)',
+                                    ),
                                     _buildMockOption(
                                       icon: Icons.speed,
                                       title: 'Velocidad de reproducción',

@@ -459,6 +459,10 @@ class _AuthScreenState extends State<AuthScreen> {
           "Email",
 
           keyboardType: TextInputType.emailAddress,
+
+          textInputAction: TextInputAction.done,
+
+          onSubmitted: _handleAction,
         ),
 
         const SizedBox(height: 16),
@@ -515,6 +519,10 @@ class _AuthScreenState extends State<AuthScreen> {
           "Email",
 
           keyboardType: TextInputType.emailAddress,
+
+          textInputAction: TextInputAction.done,
+
+          onSubmitted: _handleAction,
         ),
 
         const SizedBox(height: 18),
@@ -575,6 +583,8 @@ class _AuthScreenState extends State<AuthScreen> {
           "Contrase\u00f1a",
 
           isPassword: true,
+
+          onSubmitted: _handleAction,
         ),
 
         const SizedBox(height: 8),
@@ -674,6 +684,10 @@ class _AuthScreenState extends State<AuthScreen> {
     bool isPassword = false,
 
     TextInputType? keyboardType,
+
+    TextInputAction? textInputAction,
+
+    VoidCallback? onSubmitted,
   }) {
     final theme = Theme.of(context);
 
@@ -682,7 +696,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
       keyboardType: keyboardType,
 
-      textInputAction: isPassword ? TextInputAction.done : TextInputAction.next,
+      textInputAction:
+          textInputAction ??
+          (isPassword ? TextInputAction.done : TextInputAction.next),
+
+      onSubmitted: (_) => onSubmitted?.call(),
 
       obscureText: isPassword ? _obscurePassword : false,
 
@@ -789,11 +807,16 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
 
         onChanged: (v) {
-          if (v.isNotEmpty && index < 3) {
-            _codeFocusNodes[index + 1].requestFocus();
+          if (v.isEmpty) {
+            _codeFocusNodes[index].requestFocus();
+            return;
           }
 
-          if (v.isEmpty && index > 0) _codeFocusNodes[index - 1].requestFocus();
+          if (index < 3) {
+            _codeFocusNodes[index + 1].requestFocus();
+          } else {
+            _handleAction();
+          }
         },
       ),
     );

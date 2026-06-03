@@ -7,6 +7,7 @@ const authController = require('../controllers/auth_controller');
 router.post('/send-otp', authController.sendOtp);
 router.post('/verify-otp', authController.verifyOtp);
 router.post('/register', authController.register);
+router.post('/login', authController.login);
 router.get('/users', authController.getUserByEmail); // Cambié la ruta a /user para ser más descriptivo
 router.put('/users/:id', authController.updateUser);
 router.delete('/users/:id', authController.deleteUser);
