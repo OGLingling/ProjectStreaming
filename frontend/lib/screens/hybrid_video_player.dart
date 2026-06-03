@@ -6,6 +6,8 @@ import 'package:chewie/chewie.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:http/http.dart' as http;
 
+import '../utils/playback_url_utils.dart';
+
 /// Un reproductor de video híbrido inteligente en Flutter.
 /// Si la URL es un stream directo, utiliza video_player y chewie nativo.
 /// Si no, actúa como fallback y renderiza la lógica del WebView embebido actual.
@@ -466,11 +468,7 @@ class _HybridVideoPlayerState extends State<HybridVideoPlayer> {
   }
 
   bool _isNativePlayableUrl(String url) {
-    final lower = url.toLowerCase();
-    return lower.contains('.m3u8') ||
-        lower.contains('.mp4') ||
-        lower.contains('googlevideo.com/videoplayback') ||
-        lower.contains('application/x-mpegurl');
+    return shouldPromoteNativePlaybackUrl(url);
   }
 
   void _reportNativeUrl(String url) {

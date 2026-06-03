@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
+import '../utils/playback_url_utils.dart';
 import 'hybrid_video_player.dart';
 
 enum EmbedProvider { embed, vidSrcVip }
@@ -55,9 +56,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   String? _loadError;
   Timer? _controlsTimer;
   Timer? _progressTimer;
+  Timer? _embedRecoveryTimer;
   late DateTime _playbackStartedAt;
   int _lastProgressSeconds = 0;
   int? _lastDurationSeconds;
+  int? _lastWebVideoProgressSeconds;
+  DateTime? _lastWebVideoProgressAt;
   String? _nativeStreamUrl;
   String? _nativeSourceUrl;
   String? _nativeSubtitleUrl;
@@ -67,6 +71,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _usingNativeStream = false;
   bool _nativeModeRequested = true;
   int _nativeResolveToken = 0;
+  int _embedRecoveryAttempts = 0;
   bool _showSettingsPanel = false;
 
   static const String _desktopUserAgent =
@@ -156,10 +161,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   bool _isDirectPlayableUrl(String url) {
-    final lower = url.toLowerCase();
-    return lower.contains('.m3u8') ||
-        lower.contains('.mp4') ||
-        lower.contains('googlevideo.com/videoplayback');
+    return shouldPromoteNativePlaybackUrl(url);
   }
 
   @override
@@ -198,6 +200,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void dispose() {
     _controlsTimer?.cancel();
     _progressTimer?.cancel();
+    _embedRecoveryTimer?.cancel();
     unawaited(_saveViewingProgress());
     _exitPlaybackMode();
     super.dispose();
@@ -231,7 +234,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             return {
               progressSeconds: Math.floor(video.currentTime || 0),
               durationSeconds: duration,
-              completed: Boolean(video.ended || (duration && video.currentTime / duration >= 0.92))
+              completed: Boolean(video.ended || (duration && video.currentTime / duration >= 0.92)),
+              hasVideo: true,
+              paused: Boolean(video.paused),
+              readyState: Number(video.readyState || 0)
             };
           })();
         ''',
@@ -246,6 +252,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ? null
               : int.tryParse(parsed['durationSeconds'].toString()),
           'completed': parsed['completed'] == true ? 1 : 0,
+          'hasVideo': parsed['hasVideo'] == true ? 1 : 0,
+          'paused': parsed['paused'] == true ? 1 : 0,
+          'readyState': int.tryParse(parsed['readyState'].toString()),
         };
       }
     } catch (_) {
@@ -258,6 +267,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           .inSeconds,
       'durationSeconds': _lastDurationSeconds,
       'completed': 0,
+      'hasVideo': 0,
+      'paused': 0,
+      'readyState': null,
     };
   }
 
@@ -275,6 +287,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (durationSeconds != null && durationSeconds > 0) {
       _lastDurationSeconds = durationSeconds;
     }
+    _trackWebPlaybackHealth(position);
 
     if (ended) {
       await ApiService.completeViewingProgress(
@@ -296,6 +309,60 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       progressSeconds: _lastProgressSeconds,
       durationSeconds: _lastDurationSeconds,
     );
+  }
+
+  void _trackWebPlaybackHealth(Map<String, int?> position) {
+    if (_usingNativeStream || _nativeModeRequested || _loadError != null) {
+      return;
+    }
+
+    final hasVideo = position['hasVideo'] == 1;
+    if (!hasVideo) return;
+
+    final progressSeconds = position['progressSeconds'] ?? 0;
+    final paused = position['paused'] == 1;
+    final now = DateTime.now();
+
+    if (_lastWebVideoProgressSeconds == null ||
+        progressSeconds > _lastWebVideoProgressSeconds!) {
+      _lastWebVideoProgressSeconds = progressSeconds;
+      _lastWebVideoProgressAt = now;
+      _embedRecoveryAttempts = 0;
+      return;
+    }
+
+    final lastProgressAt = _lastWebVideoProgressAt;
+    if (lastProgressAt == null ||
+        now.difference(lastProgressAt) < const Duration(seconds: 45) ||
+        paused) {
+      return;
+    }
+
+    _scheduleEmbedRecovery();
+  }
+
+  void _scheduleEmbedRecovery() {
+    if (_embedRecoveryTimer?.isActive == true) return;
+    _embedRecoveryTimer = Timer(const Duration(milliseconds: 300), () {
+      unawaited(_recoverEmbeddedPlayback());
+    });
+  }
+
+  Future<void> _recoverEmbeddedPlayback() async {
+    if (!mounted || _usingNativeStream || _nativeModeRequested) return;
+
+    _embedRecoveryAttempts++;
+    _lastWebVideoProgressAt = DateTime.now();
+
+    if (_embedRecoveryAttempts == 1) {
+      await _reloadCurrent();
+      return;
+    }
+
+    final nextProvider = _provider == EmbedProvider.vidSrcVip
+        ? EmbedProvider.embed
+        : EmbedProvider.vidSrcVip;
+    await _reloadProvider(nextProvider);
   }
 
   Future<void> _markAsFinished() async {
@@ -329,6 +396,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
     _nativeResolveToken++;
     _revealControls();
+    _resetEmbeddedPlaybackHealth();
     setState(() {
       _provider = provider;
       _nativeStreamUrl = null;
@@ -363,6 +431,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return;
     }
 
+    _resetEmbeddedPlaybackHealth();
     setState(() {
       _isLoading = true;
       _loadError = null;
@@ -373,6 +442,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _reloadNativePlayer() {
     _nativeResolveToken++;
     _revealControls();
+    _resetEmbeddedPlaybackHealth();
     final activeEmbedUrl = !_usingNativeStream && !_nativeModeRequested
         ? _currentEmbedUrl
         : null;
@@ -531,6 +601,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _fallbackToEmbeddedPlayer() {
     if (!_usingNativeStream || !mounted) return;
     _nativeResolveToken++;
+    _resetEmbeddedPlaybackHealth();
     setState(() {
       _nativeStreamUrl = null;
       _nativeSourceUrl = null;
@@ -554,31 +625,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
+  void _resetEmbeddedPlaybackHealth() {
+    _embedRecoveryTimer?.cancel();
+    _lastWebVideoProgressSeconds = null;
+    _lastWebVideoProgressAt = null;
+  }
+
   void _revealControls() {
-    final wasHidden = !_showControls;
     if (!_showControls && mounted) {
       setState(() => _showControls = true);
     }
-    if (wasHidden) {
-      unawaited(_pauseVisibleVideo());
-    }
     _scheduleControlsHide();
-  }
-
-  Future<void> _pauseVisibleVideo() async {
-    try {
-      await _webViewController?.evaluateJavascript(
-        source: '''
-          (() => {
-            const videos = Array.from(document.querySelectorAll('video'));
-            videos.forEach((video) => video.pause());
-            return videos.length;
-          })();
-        ''',
-      );
-    } catch (_) {
-      // Some providers isolate the player in a cross-origin iframe.
-    }
   }
 
   Widget _buildSettingsHeader(String title) {
@@ -709,7 +766,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     onNativeUrlFound: (url) {
                       _promoteToNativeStream(url, sourceUrl: _currentEmbedUrl);
                     },
-                    allowNativeUrlPromotion: _nativeModeRequested,
+                    allowNativeUrlPromotion: !_usingNativeStream,
                     onWebViewCreated: (controller) {
                       _webViewController = controller;
                     },
