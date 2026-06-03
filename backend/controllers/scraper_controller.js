@@ -13,8 +13,24 @@ const firstValue = (...values) => {
 const isDirectStreamUrl = (url) => {
   const lower = String(url || '').toLowerCase();
   return lower.includes('.m3u8') ||
-    lower.includes('.mp4') ||
-    lower.includes('googlevideo.com/videoplayback');
+    lower.includes('master.m3u8') ||
+    lower.includes('manifest.m3u8') ||
+    lower.includes('application/x-mpegurl');
+};
+
+const isEmbedUrl = (url) => {
+  const lower = String(url || '').toLowerCase();
+  return lower.startsWith('http') && !isDirectStreamUrl(lower);
+};
+
+const normalizeUrlList = (items, predicate) => {
+  if (!Array.isArray(items)) return [];
+  return [...new Set(
+    items
+      .map((item) => (typeof item === 'string' ? item : item?.url))
+      .map((item) => String(item || '').trim())
+      .filter(predicate)
+  )];
 };
 
 const normalizeSource = (source, index) => {
@@ -57,6 +73,12 @@ const extractLink = async (req, res) => {
       : Array.isArray(result.results)
         ? result.results.map(r => r.url).filter(Boolean)
         : [];
+    const embedCandidates = normalizeUrlList(result.embedCandidates || result.embeds, isEmbedUrl);
+    const mp4Candidates = normalizeUrlList(result.mp4Candidates, (candidate) => {
+      const lower = String(candidate || '').toLowerCase();
+      return lower.startsWith('http') &&
+        (lower.includes('.mp4') || lower.includes('googlevideo.com/videoplayback'));
+    });
 
     const candidateStrings = [...new Set([
       ...enrichedSources.map((source) => source.url),
@@ -75,10 +97,13 @@ const extractLink = async (req, res) => {
     });
 
     const finalResponse = {
-      success: true,
+      success: candidateStrings.length > 0 || embedCandidates.length > 0,
       candidates: candidateStrings, // Formato string []
       sources: candidateObjects,    // Formato objeto {}
       urls: candidateStrings,       // Backup común
+      embedCandidates,
+      embeds: embedCandidates,
+      mp4Candidates,
       tmdbId: result.tmdbId || tmdbId || null,
       tmdb_id: tmdbId ? parseInt(tmdbId) : null,    // Lo enviamos como string y como int por si acaso
       type: type,

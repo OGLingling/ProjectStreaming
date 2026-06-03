@@ -86,6 +86,20 @@ const isDirectStreamUrl = (url) => {
          s.includes('manifest.m3u8');
 };
 
+const isHlsStreamUrl = (url) => {
+  const s = String(url || '').toLowerCase();
+  return s.includes('.m3u8') ||
+         s.includes('/playlist.m3u8') ||
+         s.includes('master.m3u8') ||
+         s.includes('manifest.m3u8') ||
+         s.includes('application/x-mpegurl');
+};
+
+const isMp4StreamUrl = (url) => {
+  const s = String(url || '').toLowerCase();
+  return s.includes('.mp4') || s.includes('googlevideo.com/videoplayback');
+};
+
 const isSubtitleUrl = (url) => {
   const s = String(url || '').toLowerCase().split('?')[0];
   return s.endsWith('.vtt') || s.endsWith('.srt');
@@ -1058,13 +1072,22 @@ class VideoScraper {
     }
 
     if (n.scenario === 'url') {
+      const isHls = isHlsStreamUrl(n.url);
+      const isMp4 = isMp4StreamUrl(n.url);
+      const embedCandidates = isValidUrl(n.url) && !isDirectStreamUrl(n.url) ? [n.url] : [];
       const payload = {
-        success: isDirectStreamUrl(n.url),
-        candidates: isDirectStreamUrl(n.url) ? [n.url] : [],
-        sources: isDirectStreamUrl(n.url) ? attachBestSubtitle([n.url], []) : [],
+        success: isHls || embedCandidates.length > 0,
+        candidates: isHls ? [n.url] : [],
+        sources: isHls ? attachBestSubtitle([n.url], []) : [],
+        mp4Candidates: isMp4 ? [n.url] : [],
+        embedCandidates,
         tmdbId: n.tmdbId,
         type: n.type,
-        debug_info: { source: 'direct_url' }
+        debug_info: {
+          source: 'direct_url',
+          hlsFound: isHls ? 1 : 0,
+          mp4Ignored: isMp4 ? 1 : 0
+        }
       };
       if (payload.success) cacheSet(cacheKey, payload);
       return payload;
@@ -1073,6 +1096,7 @@ class VideoScraper {
     const embeds = this.buildCandidates(n);
     const candidates = [];
     const sourceCandidates = [];
+    const mp4Candidates = [];
     const debugList = [];
     const browserLimit = Number(process.env.SCRAPER_BROWSER_LIMIT) || 6;
 
@@ -1086,28 +1110,33 @@ class VideoScraper {
       const result = await this.extractFromEmbed(embedUrl);
       debugList.push(result.debug);
       candidates.push(...result.urls);
+      mp4Candidates.push(...result.urls.filter(isMp4StreamUrl));
       sourceCandidates.push(...(result.sources || []).map((item) => ({
         ...item,
         provider: embedUrl
       })));
 
-      if (sourceCandidates.some((item) => item.subtitleUrl)) break;
+      if (sourceCandidates.some((item) => item.subtitleUrl && isHlsStreamUrl(item.url))) break;
     }
 
-    const streamCandidates = unique(candidates).filter(isDirectStreamUrl);
-    const sources = sourceCandidates.length > 0
-      ? sourceCandidates
+    const streamCandidates = unique(candidates).filter(isHlsStreamUrl);
+    const hlsSources = sourceCandidates.filter((item) => isHlsStreamUrl(item.url));
+    const sources = hlsSources.length > 0
+      ? hlsSources
       : attachBestSubtitle(streamCandidates, []);
     const payload = {
-      success: streamCandidates.length > 0,
+      success: streamCandidates.length > 0 || embeds.length > 0,
       candidates: streamCandidates,
       sources,
+      embedCandidates: embeds,
+      mp4Candidates: unique(mp4Candidates),
       tmdbId: n.tmdbId,
       type: n.type,
       searchMode: true,
       debug_info: {
         embedsChecked: debugList.length,
         streamsFound: streamCandidates.length,
+        mp4Ignored: unique(mp4Candidates).length,
         subtitlesFound: sources.filter((item) => item.subtitleUrl).length,
         providers: debugList
       }
